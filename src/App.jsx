@@ -9,6 +9,8 @@ import {
   Tooltip,
 } from "recharts";
 import { THEMES } from "./theme.js";
+import logoLight from "./assets/logo-light.png";
+import logoDark from "./assets/logo-dark.png";
 
 const THEME_STORAGE_KEY = "kratos-dashboard-theme";
 
@@ -331,11 +333,12 @@ export default function Dashboard() {
             marginBottom: 28,
           }}
         >
-          <div style={{ display: "flex", alignItems: "baseline", gap: 14 }}>
-            <span style={{ fontWeight: 800, fontSize: 22, letterSpacing: "-0.02em", color: theme.ink }}>
-              KRATOS
-              <span style={{ color: theme.red }}>.</span>
-            </span>
+          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+            <img
+              src={mode === "dark" ? logoDark : logoLight}
+              alt="Kratos"
+              style={{ height: 22, width: "auto", display: "block" }}
+            />
             <span style={{ ...eyebrow, fontSize: 11 }}>Produktionsdashboard</span>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
