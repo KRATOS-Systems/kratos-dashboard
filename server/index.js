@@ -211,5 +211,5 @@ if (existsSync(DIST_PATH)) {
 }
 
 app.listen(PORT, () => {
-  console.log(`Kratos Dashboard läuft auf http://localhost:${PORT}`);
+  console.log(`Kratos Dashboard (v1.0.1) läuft auf http://localhost:${PORT}`);
 });
