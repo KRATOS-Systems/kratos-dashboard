@@ -10,7 +10,6 @@ import {
 } from "recharts";
 import { THEMES } from "./theme.js";
 
-const STUNDENSATZ = 60;
 const THEME_STORAGE_KEY = "kratos-dashboard-theme";
 
 const MACHINES = [
@@ -29,14 +28,6 @@ function pct(part, whole) {
 
 function fmtPct(x) {
   return `${Math.round(x * 100)}`;
-}
-
-function fmtEuro(x) {
-  return x.toLocaleString("de-DE", {
-    style: "currency",
-    currency: "EUR",
-    maximumFractionDigits: 0,
-  });
 }
 
 function initialMode() {
@@ -153,6 +144,16 @@ export default function Dashboard() {
   const [capacity, setCapacity] = useState(DEFAULT_CAPACITY);
   const [trendMetric, setTrendMetric] = useState("spindle"); // spindle | beleg
 
+  // Wochen-Metadaten (Jahr/KW/Label) je Wochenschlüssel, für die Auswahl im
+  // Kopfbereich. Wird um manuell nachgetragene Wochen erweitert.
+  const [weekMeta, setWeekMeta] = useState({});
+  const [selectedWeekKey, setSelectedWeekKey] = useState(null);
+  const [customWeeks, setCustomWeeks] = useState([]);
+  const [showCustomWeek, setShowCustomWeek] = useState(false);
+  const [customYear, setCustomYear] = useState(new Date().getFullYear());
+  const [customWeekNum, setCustomWeekNum] = useState(1);
+  const [weekLoadError, setWeekLoadError] = useState("");
+
   useEffect(() => {
     async function load() {
       const [entriesRes, settingsRes] = await Promise.all([
@@ -162,35 +163,76 @@ export default function Dashboard() {
       setWeeks(entriesRes.weeks);
       setEntries(entriesRes.entries);
       setCapacity({ ...DEFAULT_CAPACITY, ...settingsRes.capacities });
+
+      const meta = {};
+      entriesRes.weeks.forEach((w) => {
+        meta[w.key] = w;
+      });
+      setWeekMeta(meta);
+      const last = entriesRes.weeks[entriesRes.weeks.length - 1];
+      if (last) setSelectedWeekKey(last.key);
+
       setLoading(false);
     }
     load();
   }, []);
 
-  const currentWeek = weeks[weeks.length - 1];
+  const selectedWeek = selectedWeekKey ? weekMeta[selectedWeekKey] : undefined;
 
   const getEntry = useCallback(
     (weekKey, machineId) => (entries[weekKey] && entries[weekKey][machineId]) || EMPTY_ENTRY,
     [entries]
   );
 
+  // Lädt eine beliebige Kalenderwoche nach (auch außerhalb der letzten 8
+  // Wochen) und macht sie zur ausgewählten Woche.
+  async function loadWeek(year, week) {
+    setWeekLoadError("");
+    const key = `${year}-${week}`;
+
+    if (weekMeta[key]) {
+      setSelectedWeekKey(key);
+      return;
+    }
+
+    try {
+      const res = await fetch(`/api/entries/week?year=${year}&week=${week}`);
+      if (!res.ok) throw new Error("Woche konnte nicht geladen werden");
+      const data = await res.json();
+
+      setEntries((prev) => ({ ...prev, [data.key]: data.entries }));
+      setWeekMeta((prev) => ({ ...prev, [data.key]: data }));
+      setCustomWeeks((prev) => (prev.some((w) => w.key === data.key) ? prev : [...prev, data]));
+      setSelectedWeekKey(data.key);
+      setShowCustomWeek(false);
+    } catch (err) {
+      setWeekLoadError("Woche konnte nicht geladen werden.");
+    }
+  }
+
+  const weekOptions = useMemo(() => {
+    const merged = [...weeks, ...customWeeks];
+    const byKey = new Map(merged.map((w) => [w.key, w]));
+    return [...byKey.values()].sort((a, b) => b.year - a.year || b.week - a.week);
+  }, [weeks, customWeeks]);
+
   function updateEntry(machineId, field, raw) {
-    if (!currentWeek) return;
+    if (!selectedWeek) return;
     const num = raw === "" ? 0 : Math.max(0, Number(raw));
-    const prevEntry = getEntry(currentWeek.key, machineId);
+    const prevEntry = getEntry(selectedWeek.key, machineId);
     const nextEntry = { ...prevEntry, [field]: num };
 
     setEntries((prev) => ({
       ...prev,
-      [currentWeek.key]: { ...prev[currentWeek.key], [machineId]: nextEntry },
+      [selectedWeek.key]: { ...prev[selectedWeek.key], [machineId]: nextEntry },
     }));
 
     fetch("/api/entries", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        year: currentWeek.year,
-        week: currentWeek.week,
+        year: selectedWeek.year,
+        week: selectedWeek.week,
         machine: machineId,
         on_hours: nextEntry.on,
         spindle: nextEntry.spindle,
@@ -209,15 +251,15 @@ export default function Dashboard() {
     }).catch((err) => console.error("Speichern fehlgeschlagen", err));
   }
 
-  const current = currentWeek
+  const current = selectedWeek
     ? {
-        dmu40: getEntry(currentWeek.key, "dmu40"),
-        m1: getEntry(currentWeek.key, "m1"),
-        h800u: getEntry(currentWeek.key, "h800u"),
+        dmu40: getEntry(selectedWeek.key, "dmu40"),
+        m1: getEntry(selectedWeek.key, "m1"),
+        h800u: getEntry(selectedWeek.key, "h800u"),
       }
     : { dmu40: EMPTY_ENTRY, m1: EMPTY_ENTRY, h800u: EMPTY_ENTRY };
 
-  // Summen der aktuellen Woche
+  // Summen der ausgewählten Woche
   const totals = useMemo(() => {
     let on = 0;
     let spindle = 0;
@@ -296,12 +338,47 @@ export default function Dashboard() {
             </span>
             <span style={{ ...eyebrow, fontSize: 11 }}>Produktionsdashboard</span>
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-            <div style={{ ...eyebrow, fontSize: 11, color: theme.ink }}>
-              Aktuelle Woche{" "}
-              <span style={{ ...mono, color: theme.red, marginLeft: 6 }}>
-                {currentWeek ? currentWeek.label : "–"}
-              </span>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ ...eyebrow, fontSize: 11 }}>Woche bearbeiten</span>
+              <select
+                value={selectedWeekKey || ""}
+                onChange={(ev) => setSelectedWeekKey(ev.target.value)}
+                style={{
+                  ...mono,
+                  fontSize: 13,
+                  fontWeight: 600,
+                  color: theme.red,
+                  background: theme.panel,
+                  border: `1px solid ${theme.line}`,
+                  borderRadius: 6,
+                  padding: "5px 8px",
+                  outline: "none",
+                  cursor: "pointer",
+                }}
+              >
+                {weekOptions.map((w) => (
+                  <option key={w.key} value={w.key}>
+                    {w.label}
+                    {weeks.length && w.key === weeks[weeks.length - 1].key ? " (aktuell)" : ""}
+                  </option>
+                ))}
+              </select>
+              <button
+                onClick={() => setShowCustomWeek((v) => !v)}
+                style={{
+                  ...eyebrow,
+                  fontSize: 11,
+                  padding: "6px 10px",
+                  borderRadius: 6,
+                  border: `1px solid ${theme.line}`,
+                  background: showCustomWeek ? theme.ink : theme.panel,
+                  color: showCustomWeek ? theme.bg : theme.steel,
+                  cursor: "pointer",
+                }}
+              >
+                Andere Woche
+              </button>
             </div>
             <button
               onClick={() => setMode((m) => (m === "dark" ? "light" : "dark"))}
@@ -323,6 +400,88 @@ export default function Dashboard() {
             </button>
           </div>
         </div>
+
+        {showCustomWeek && (
+          <div
+            style={{
+              display: "flex",
+              alignItems: "flex-end",
+              gap: 12,
+              flexWrap: "wrap",
+              background: theme.panel,
+              border: `1px solid ${theme.line}`,
+              borderRadius: 10,
+              padding: 16,
+              marginTop: -16,
+              marginBottom: 28,
+            }}
+          >
+            <label>
+              <div style={eyebrow}>Kalenderwoche</div>
+              <input
+                type="number"
+                min={1}
+                max={53}
+                value={customWeekNum}
+                onChange={(ev) => setCustomWeekNum(ev.target.value)}
+                style={{
+                  ...mono,
+                  width: 70,
+                  marginTop: 4,
+                  border: `1px solid ${theme.line}`,
+                  borderRadius: 6,
+                  padding: "6px 8px",
+                  fontSize: 14,
+                  color: theme.ink,
+                  background: theme.panel,
+                  outline: "none",
+                }}
+              />
+            </label>
+            <label>
+              <div style={eyebrow}>Jahr</div>
+              <input
+                type="number"
+                value={customYear}
+                onChange={(ev) => setCustomYear(ev.target.value)}
+                style={{
+                  ...mono,
+                  width: 80,
+                  marginTop: 4,
+                  border: `1px solid ${theme.line}`,
+                  borderRadius: 6,
+                  padding: "6px 8px",
+                  fontSize: 14,
+                  color: theme.ink,
+                  background: theme.panel,
+                  outline: "none",
+                }}
+              />
+            </label>
+            <button
+              onClick={() => {
+                const week = Math.min(53, Math.max(1, Number(customWeekNum) || 1));
+                const year = Number(customYear) || new Date().getFullYear();
+                loadWeek(year, week);
+              }}
+              style={{
+                ...eyebrow,
+                fontSize: 11,
+                padding: "8px 14px",
+                borderRadius: 6,
+                border: `1px solid ${theme.ink}`,
+                background: theme.ink,
+                color: theme.bg,
+                cursor: "pointer",
+              }}
+            >
+              Laden
+            </button>
+            {weekLoadError && (
+              <span style={{ ...eyebrow, color: theme.red, fontSize: 11 }}>{weekLoadError}</span>
+            )}
+          </div>
+        )}
 
         {/* Maschinenkarten */}
         <div
@@ -558,12 +717,6 @@ export default function Dashboard() {
               label: "Spindelstunden diese Woche",
               value: `${totals.spindle} h`,
               sub: "produktive Zeit unter Span",
-              color: theme.ink,
-            },
-            {
-              label: "Verrechenbarer Spindelwert",
-              value: fmtEuro(totals.spindle * STUNDENSATZ),
-              sub: `bei ${STUNDENSATZ} Euro Stundensatz`,
               color: theme.ink,
             },
           ].map((t) => (

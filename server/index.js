@@ -147,6 +147,23 @@ app.get("/api/entries", (req, res) => {
   res.json({ weeks, entries: data });
 });
 
+app.get("/api/entries/week", (req, res) => {
+  const year = Number(req.query.year);
+  const week = Number(req.query.week);
+
+  if (!Number.isFinite(year) || !Number.isFinite(week) || week < 1 || week > 53) {
+    return res.status(400).json({ error: "invalid year/week" });
+  }
+
+  const rows = db.prepare("SELECT * FROM entries WHERE year = ? AND week = ?").all(year, String(week));
+  const entries = {};
+  rows.forEach((r) => {
+    entries[r.machine] = { on: r.on_hours, spindle: r.spindle };
+  });
+
+  res.json({ key: weekKey(year, week), year, week, label: `KW ${week}`, entries });
+});
+
 app.put("/api/entries", (req, res) => {
   const { year, week, machine, on_hours, spindle } = req.body || {};
 
