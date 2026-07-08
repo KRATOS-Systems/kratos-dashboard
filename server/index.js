@@ -3,7 +3,7 @@ import cors from "cors";
 import { DatabaseSync } from "node:sqlite";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { existsSync } from "node:fs";
+import { existsSync, mkdirSync } from "node:fs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PORT || 3001;
@@ -13,7 +13,12 @@ const MACHINES = ["dmu40", "m1", "h800u"];
 const DEFAULT_CAPACITY = 40;
 const WEEKS_HISTORY = 8;
 
-const db = new DatabaseSync(path.join(__dirname, "dashboard.db"));
+// DB_PATH sollte außerhalb des per Git deployten App-Ordners liegen,
+// sonst wird die Datenbank bei jedem Redeploy zurückgesetzt.
+const DB_PATH = process.env.DB_PATH || path.join(__dirname, "dashboard.db");
+mkdirSync(path.dirname(DB_PATH), { recursive: true });
+
+const db = new DatabaseSync(DB_PATH);
 db.exec("PRAGMA journal_mode = WAL");
 
 db.exec(`
