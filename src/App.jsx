@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
   LineChart,
   Line,
@@ -6,27 +6,57 @@ import {
   YAxis,
   CartesianGrid,
   ResponsiveContainer,
+  ReferenceArea,
   Tooltip,
 } from "recharts";
 import { THEMES } from "./theme.js";
+import {
+  DEFAULT_WEEK_CAPACITY,
+  MACHINES,
+  SHIFT_MODELS,
+  addDays,
+  daysBetween,
+  fmtH,
+  fmtShort,
+  makeStyles,
+  mondayOf,
+  todayStr,
+  weekInfo,
+} from "./lib.js";
+import Planning from "./Planning.jsx";
 import logoLight from "./assets/logo-light.png";
 import logoDark from "./assets/logo-dark.png";
 
 const THEME_STORAGE_KEY = "kratos-dashboard-theme";
 
-const MACHINES = [
-  { id: "dmu40", name: "DMG DMU 40 eVo", short: "DMU 40", colorKey: "red" },
-  { id: "m1", name: "DMG M1", short: "M1", colorKey: "graphite" },
-  { id: "h800u", name: "POS Mill H800U", short: "H800U", colorKey: "steel" },
+// Die Planung ist die erste Seite und öffnet beim Start
+const PAGES = [
+  { id: "planung", label: "Produktionsplanung" },
+  { id: "dashboard", label: "Produktionsdashboard" },
 ];
+const readPage = () => (window.location.hash === "#dashboard" ? "dashboard" : "planung");
 
-const DEFAULT_CAPACITY = { dmu40: 40, m1: 40, h800u: 40 };
-const EMPTY_ENTRY = { on: 0, spindle: 0 };
+const TREND_WEEKS = 8;
 
 function pct(part, whole) {
   if (!whole) return 0;
   return part / whole;
 }
+
+// Ampel für die Kapazitätsauslastung (gerundet wie angezeigt): 80-100 % grün (im Soll), 65-79 % und 101-110 % gelb,
+// darunter bzw. darüber rot. Über 100 % heißt: länger gelaufen als die Betriebszeit des Schichtmodells.
+const utilColor = (theme, v) => {
+  const p = Math.round(v * 100);
+  if (p >= 80 && p <= 100) return theme.green;
+  if ((p >= 65 && p < 80) || (p > 100 && p <= 110)) return theme.amber;
+  return theme.red;
+};
+
+// Ampel für die Spindelquote (gerundet wie angezeigt): ab 70 % grün, 55-69 % gelb, darunter rot
+const spindleColor = (theme, v) => {
+  const p = Math.round(v * 100);
+  return p >= 70 ? theme.green : p >= 55 ? theme.amber : theme.red;
+};
 
 function fmtPct(x) {
   return `${Math.round(x * 100)}`;
@@ -36,6 +66,89 @@ function initialMode() {
   const stored = window.localStorage.getItem(THEME_STORAGE_KEY);
   if (stored === "light" || stored === "dark") return stored;
   return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+}
+
+// Wochenstunden = Differenz zweier aufeinanderfolgender Zählerstände. Die
+// Stunden gehören zu der Kalenderwoche, in der sie gearbeitet wurden (Ablesung
+// vom 28.9. = Stunden von KW 39, 21.-27.9.). Fehlt eine Ablesung, wird
+// die Differenz gleichmäßig auf die Wochen dazwischen verteilt.
+function computeWeekly(readings) {
+  const result = {};
+  MACHINES.forEach((m) => {
+    const list = readings
+      .filter((r) => r.machine === m.id)
+      .sort((a, b) => a.date.localeCompare(b.date));
+
+    for (let i = 1; i < list.length; i++) {
+      const prev = list[i - 1];
+      const next = list[i];
+      const weeks = Math.max(1, Math.round(daysBetween(prev.date, next.date) / 7));
+      const diff = (a, b) => (a == null || b == null || b < a ? null : (b - a) / weeks);
+      const on = diff(prev.machine_total, next.machine_total);
+      const spindle = diff(prev.spindle_total, next.spindle_total);
+      if (on == null && spindle == null) continue;
+
+      for (let k = 0; k < weeks; k++) {
+        const info = weekInfo(mondayOf(addDays(next.date, -7 * (k + 1))));
+        const entry = result[info.key] || (result[info.key] = { ...info, machines: {} });
+        entry.machines[m.id] = { on, spindle, spread: weeks > 1, from: prev.date, to: next.date };
+      }
+    }
+  });
+  return result;
+}
+
+// Kapazität einer Woche: Schichtmodell wählen oder die Stunden von Hand eintragen
+function CapacityPicker({ value, onChange, theme, mode, label = "Kapazität" }) {
+  const { eyebrow, mono } = makeStyles(theme);
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+      <span style={eyebrow}>{label}</span>
+      {SHIFT_MODELS.map((s) => {
+        const active = value === s.hours;
+        return (
+          <button
+            key={s.label}
+            onClick={() => onChange(s.hours)}
+            title={`${s.label}: ${s.hours} h pro Woche`}
+            style={{
+              ...eyebrow,
+              fontSize: 10,
+              padding: "5px 9px",
+              borderRadius: 6,
+              cursor: "pointer",
+              border: `1px solid ${active ? theme.ink : theme.line}`,
+              background: active ? theme.ink : "transparent",
+              color: active ? theme.bg : theme.steel,
+            }}
+          >
+            {s.label} · {s.hours} h
+          </button>
+        );
+      })}
+      <input
+        type="number"
+        min={0}
+        max={168}
+        value={value}
+        onChange={(ev) => ev.target.value !== "" && onChange(Math.min(168, Math.max(0, Number(ev.target.value))))}
+        title="Stunden pro Woche von Hand eintragen, z. B. bei einem Feiertag"
+        style={{
+          ...mono,
+          width: 52,
+          fontSize: 12,
+          textAlign: "center",
+          color: theme.ink,
+          background: "transparent",
+          border: "none",
+          borderBottom: `1px solid ${theme.line}`,
+          outline: "none",
+          colorScheme: mode,
+        }}
+      />
+      <span style={eyebrow}>h pro Woche</span>
+    </div>
+  );
 }
 
 // Instrumenten Anzeige, Halbkreis Gauge für die Spindelquote
@@ -108,10 +221,7 @@ function ThemeIcon({ mode }) {
   if (mode === "dark") {
     return (
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
-        <path
-          d="M21 12.8A9 9 0 1 1 11.2 3 7 7 0 0 0 21 12.8Z"
-          fill="currentColor"
-        />
+        <path d="M21 12.8A9 9 0 1 1 11.2 3 7 7 0 0 0 21 12.8Z" fill="currentColor" />
       </svg>
     );
   }
@@ -140,126 +250,183 @@ export default function Dashboard() {
     window.localStorage.setItem(THEME_STORAGE_KEY, mode);
   }, [mode]);
 
-  const [loading, setLoading] = useState(true);
-  const [weeks, setWeeks] = useState([]);
-  const [entries, setEntries] = useState({});
-  const [capacity, setCapacity] = useState(DEFAULT_CAPACITY);
-  const [trendMetric, setTrendMetric] = useState("spindle"); // spindle | beleg
+  const [page, setPage] = useState(readPage);
+  useEffect(() => {
+    const onHash = () => setPage(readPage());
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
+  }, []);
+  useEffect(() => {
+    document.title = `Kratos ${PAGES.find((p) => p.id === page).label}`;
+  }, [page]);
+  const goTo = (id) => {
+    window.location.hash = id;
+  };
 
-  // Wochen-Metadaten (Jahr/KW/Label) je Wochenschlüssel, für die Auswahl im
-  // Kopfbereich. Wird um manuell nachgetragene Wochen erweitert.
-  const [weekMeta, setWeekMeta] = useState({});
-  const [selectedWeekKey, setSelectedWeekKey] = useState(null);
-  const [customWeeks, setCustomWeeks] = useState([]);
-  const [showCustomWeek, setShowCustomWeek] = useState(false);
-  const [customYear, setCustomYear] = useState(new Date().getFullYear());
-  const [customWeekNum, setCustomWeekNum] = useState(1);
-  const [weekLoadError, setWeekLoadError] = useState("");
+  const today = useMemo(() => todayStr(), []);
+  const [loading, setLoading] = useState(true);
+  const [readings, setReadings] = useState([]);
+  const [restore, setRestore] = useState(null); // { backup, counts, created } oder { error }
+  const [freeDays, setFreeDays] = useState([]); // arbeitsfreie Tage (Feiertage, Betriebsurlaub) aus der Planung
+  const [weekCap, setWeekCap] = useState({}); // Schichtmodell (Stunden) je Woche. Schlüssel = Montag der Ablesung, ab dem es für die KOMMENDE Woche gilt
+  const [trendMetric, setTrendMetric] = useState("spindle"); // spindle | beleg
+  const [pickedWeek, setPickedWeek] = useState(null);
+  const [showEntry, setShowEntry] = useState(false);
+  const [entryDate, setEntryDate] = useState(() => mondayOf(todayStr()));
 
   useEffect(() => {
     async function load() {
-      const [entriesRes, settingsRes] = await Promise.all([
-        fetch("/api/entries").then((r) => r.json()),
-        fetch("/api/settings").then((r) => r.json()),
+      const [readingsRes, capRes] = await Promise.all([
+        fetch("/api/readings").then((r) => r.json()),
+        fetch("/api/week-capacity").then((r) => r.json()),
       ]);
-      setWeeks(entriesRes.weeks);
-      setEntries(entriesRes.entries);
-      setCapacity({ ...DEFAULT_CAPACITY, ...settingsRes.capacities });
-
-      const meta = {};
-      entriesRes.weeks.forEach((w) => {
-        meta[w.key] = w;
-      });
-      setWeekMeta(meta);
-      const last = entriesRes.weeks[entriesRes.weeks.length - 1];
-      if (last) setSelectedWeekKey(last.key);
-
+      setReadings(readingsRes.readings);
+      setWeekCap(capRes.capacities);
       setLoading(false);
     }
     load();
   }, []);
 
-  const selectedWeek = selectedWeekKey ? weekMeta[selectedWeekKey] : undefined;
+  useEffect(() => {
+    if (page !== "dashboard") return;
+    fetch("/api/free-days")
+      .then((r) => r.json())
+      .then((d) => setFreeDays(d.days || []))
+      .catch(() => {});
+  }, [page]);
 
-  const getEntry = useCallback(
-    (weekKey, machineId) => (entries[weekKey] && entries[weekKey][machineId]) || EMPTY_ENTRY,
-    [entries]
+  const weekly = useMemo(() => computeWeekly(readings), [readings]);
+  const weekOptions = useMemo(
+    () => Object.values(weekly).sort((a, b) => b.monday.localeCompare(a.monday)),
+    [weekly]
   );
+  const selectedKey = weekly[pickedWeek] ? pickedWeek : weekOptions[0]?.key;
+  const selected = selectedKey ? weekly[selectedKey] : undefined;
+  const period = selected ? Object.values(selected.machines)[0] : undefined;
 
-  // Lädt eine beliebige Kalenderwoche nach (auch außerhalb der letzten 8
-  // Wochen) und macht sie zur ausgewählten Woche.
-  async function loadWeek(year, week) {
-    setWeekLoadError("");
-    const key = `${year}-${week}`;
+  const entryValid = /^\d{4}-\d{2}-\d{2}$/.test(entryDate) && !Number.isNaN(Date.parse(entryDate));
+  const readingFor = (machineId, date) =>
+    readings.find((r) => r.date === date && r.machine === machineId);
+  const previousReading = (machineId) =>
+    readings
+      .filter((r) => r.machine === machineId && r.date < entryDate)
+      .sort((a, b) => b.date.localeCompare(a.date))[0];
 
-    if (weekMeta[key]) {
-      setSelectedWeekKey(key);
-      return;
-    }
+  function updateReading(machineId, field, raw) {
+    if (!entryValid) return;
+    // Das Schichtmodell der kommenden Woche wird mit der ersten Eingabe festgeschrieben (Vorbelegung: Vorwoche)
+    if (weekCap[entryDate] === undefined) saveCapacity(entryDate, capPrefill(entryDate));
+    const cur = readingFor(machineId, entryDate) || { machine_total: null, spindle_total: null };
+    const next = { ...cur, [field]: raw === "" ? null : Math.max(0, Number(raw)) };
 
-    try {
-      const res = await fetch(`/api/entries/week?year=${year}&week=${week}`);
-      if (!res.ok) throw new Error("Woche konnte nicht geladen werden");
-      const data = await res.json();
+    setReadings((prev) => {
+      const rest = prev.filter((r) => !(r.date === entryDate && r.machine === machineId));
+      if (next.machine_total == null && next.spindle_total == null) return rest;
+      return [
+        ...rest,
+        {
+          date: entryDate,
+          machine: machineId,
+          machine_total: next.machine_total,
+          spindle_total: next.spindle_total,
+        },
+      ];
+    });
 
-      setEntries((prev) => ({ ...prev, [data.key]: data.entries }));
-      setWeekMeta((prev) => ({ ...prev, [data.key]: data }));
-      setCustomWeeks((prev) => (prev.some((w) => w.key === data.key) ? prev : [...prev, data]));
-      setSelectedWeekKey(data.key);
-      setShowCustomWeek(false);
-    } catch (err) {
-      setWeekLoadError("Woche konnte nicht geladen werden.");
-    }
-  }
-
-  const weekOptions = useMemo(() => {
-    const merged = [...weeks, ...customWeeks];
-    const byKey = new Map(merged.map((w) => [w.key, w]));
-    return [...byKey.values()].sort((a, b) => b.year - a.year || b.week - a.week);
-  }, [weeks, customWeeks]);
-
-  function updateEntry(machineId, field, raw) {
-    if (!selectedWeek) return;
-    const num = raw === "" ? 0 : Math.max(0, Number(raw));
-    const prevEntry = getEntry(selectedWeek.key, machineId);
-    const nextEntry = { ...prevEntry, [field]: num };
-
-    setEntries((prev) => ({
-      ...prev,
-      [selectedWeek.key]: { ...prev[selectedWeek.key], [machineId]: nextEntry },
-    }));
-
-    fetch("/api/entries", {
+    fetch("/api/readings", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        year: selectedWeek.year,
-        week: selectedWeek.week,
+        date: entryDate,
         machine: machineId,
-        on_hours: nextEntry.on,
-        spindle: nextEntry.spindle,
+        machine_total: next.machine_total,
+        spindle_total: next.spindle_total,
       }),
     }).catch((err) => console.error("Speichern fehlgeschlagen", err));
   }
 
-  function updateCapacity(machineId, raw) {
-    const num = raw === "" ? 0 : Math.max(0, Number(raw));
-    setCapacity((c) => ({ ...c, [machineId]: num }));
+  // Schichtmodell (Stunden pro Woche) der Woche, die mit der Ablesung `date` beginnt
+  const modelOf = (date) => weekCap[date] ?? DEFAULT_WEEK_CAPACITY;
+  // Arbeitstage (Mo-Sa) der Woche ab `date`, die auf einen freien Tag fallen
+  const freeDates = useMemo(() => new Set(freeDays.map((d) => d.date)), [freeDays]);
+  const lostDays = (date) => {
+    let n = 0;
+    for (let k = 0; k < 7; k++) {
+      const d = addDays(date, k);
+      if (freeDates.has(d) && new Date(d + "T00:00:00Z").getUTCDay() !== 0) n++;
+    }
+    return n;
+  };
+  // Die Stunden einer Woche (Ablesung A bis B) gehören zum Modell, das bei A für die kommende Woche eingetragen wurde;
+  // jeder freie Arbeitstag kürzt die Kapazität um 1/6
+  const capOf = (date) => (modelOf(date) * (6 - lostDays(date))) / 6;
+  // Vorbelegung für eine neue Woche: der zuletzt eingetragene Wert davor
+  const capPrefill = (date) => {
+    const before = Object.keys(weekCap)
+      .filter((d) => d < date)
+      .sort()
+      .pop();
+    return weekCap[date] ?? (before ? weekCap[before] : DEFAULT_WEEK_CAPACITY);
+  };
 
-    fetch("/api/settings", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ machine: machineId, capacity_hours: num }),
-    }).catch((err) => console.error("Speichern fehlgeschlagen", err));
+  // Schichtmodell der laufenden Woche: der zuletzt eingetragene Wert bis heute (gilt, bis ein neuer eingetragen wird)
+  const shiftNow = (() => {
+    const last = Object.keys(weekCap)
+      .filter((d) => d <= today)
+      .sort()
+      .pop();
+    const hours = last ? weekCap[last] : DEFAULT_WEEK_CAPACITY;
+    const model = SHIFT_MODELS.find((s) => s.hours === hours);
+    return { hours, label: model ? model.label : "Eigener Wert" };
+  })();
+
+  // Backup einspielen: Datei lesen, Inhalt prüfen und zählen, erst nach Bestätigung ersetzen
+  async function onRestoreFile(ev) {
+    const file = ev.target.files[0];
+    ev.target.value = "";
+    if (!file) return;
+    try {
+      const backup = JSON.parse(await file.text());
+      const res = await fetch("/api/restore", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ backup, dryRun: true }),
+      });
+      const data = await res.json();
+      setRestore(res.ok ? { backup, counts: data.counts, created: data.created, name: file.name } : { error: data.error });
+    } catch {
+      setRestore({ error: "Die Datei konnte nicht gelesen werden" });
+    }
   }
 
-  const current = selectedWeek
-    ? {
-        dmu40: getEntry(selectedWeek.key, "dmu40"),
-        m1: getEntry(selectedWeek.key, "m1"),
-        h800u: getEntry(selectedWeek.key, "h800u"),
-      }
-    : { dmu40: EMPTY_ENTRY, m1: EMPTY_ENTRY, h800u: EMPTY_ENTRY };
+  async function doRestore() {
+    const res = await fetch("/api/restore", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ backup: restore.backup }),
+    });
+    const data = await res.json();
+    if (res.ok) window.location.reload();
+    else setRestore({ error: data.error });
+  }
+
+  function deleteCapacity(date) {
+    setWeekCap((c) => {
+      const next = { ...c };
+      delete next[date];
+      return next;
+    });
+    fetch(`/api/week-capacity/${date}`, { method: "DELETE" }).catch((err) => console.error("Löschen fehlgeschlagen", err));
+  }
+
+  function saveCapacity(date, hours) {
+    setWeekCap((c) => ({ ...c, [date]: hours }));
+    fetch("/api/week-capacity", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ date, capacity_hours: hours }),
+    }).catch((err) => console.error("Speichern fehlgeschlagen", err));
+  }
 
   // Summen der ausgewählten Woche
   const totals = useMemo(() => {
@@ -267,35 +434,53 @@ export default function Dashboard() {
     let spindle = 0;
     let cap = 0;
     MACHINES.forEach((m) => {
-      on += current[m.id].on;
-      spindle += current[m.id].spindle;
-      cap += capacity[m.id] || 0;
+      const e = selected?.machines[m.id];
+      on += e?.on ?? 0;
+      spindle += e?.spindle ?? 0;
+      cap += e ? capOf(e.from) : 0;
     });
     return { on, spindle, cap };
-  }, [current, capacity]);
+  }, [selected, weekCap, freeDates]);
 
-  // Trenddaten für das Chart
+  // Trenddaten: die letzten Wochen bis zur aktuellen, fehlende Werte als Lücke
   const trend = useMemo(() => {
-    return weeks.map((wk) => {
-      const row = { week: wk.label };
+    const lastMonday = addDays(mondayOf(today), -7); // die zuletzt abgeschlossene Woche
+    const rows = [];
+    for (let i = TREND_WEEKS - 1; i >= 0; i--) {
+      const info = weekInfo(addDays(lastMonday, -7 * i));
+      const row = { week: info.label };
       MACHINES.forEach((m) => {
-        const e = getEntry(wk.key, m.id);
-        const val = trendMetric === "spindle" ? pct(e.spindle, e.on) : pct(e.on, capacity[m.id]);
-        row[m.id] = Math.round(val * 100);
+        const e = weekly[info.key]?.machines[m.id];
+        let val = null;
+        if (e) {
+          if (trendMetric === "spindle") {
+            val = e.on && e.spindle != null ? e.spindle / e.on : null;
+          } else {
+            val = e.on != null && capOf(e.from) ? e.on / capOf(e.from) : null;
+          }
+        }
+        row[m.id] = val == null ? null : Math.round(val * 100);
       });
-      return row;
-    });
-  }, [weeks, getEntry, capacity, trendMetric]);
+      rows.push(row);
+    }
+    return rows;
+  }, [weekly, weekCap, freeDates, trendMetric, today]);
 
-  const eyebrow = {
-    fontSize: 10,
-    letterSpacing: "0.14em",
-    textTransform: "uppercase",
-    color: theme.steel,
+  const { eyebrow, mono } = makeStyles(theme);
+
+  const inputStyle = {
+    ...mono,
+    width: "100%",
+    boxSizing: "border-box",
+    border: `1px solid ${theme.line}`,
+    borderRadius: 6,
+    padding: "6px 8px",
+    fontSize: 15,
     fontWeight: 600,
+    color: theme.ink,
+    background: theme.panel,
+    outline: "none",
   };
-
-  const mono = { fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" };
 
   if (loading) {
     return (
@@ -304,6 +489,8 @@ export default function Dashboard() {
       </div>
     );
   }
+
+  const anySpread = selected && Object.values(selected.machines).some((e) => e.spread);
 
   return (
     <div
@@ -324,7 +511,7 @@ export default function Dashboard() {
         <div
           style={{
             display: "flex",
-            alignItems: "baseline",
+            alignItems: "center",
             justifyContent: "space-between",
             flexWrap: "wrap",
             gap: 12,
@@ -333,20 +520,45 @@ export default function Dashboard() {
             marginBottom: 28,
           }}
         >
-          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 28, flexWrap: "wrap" }}>
             <img
               src={mode === "dark" ? logoDark : logoLight}
               alt="Kratos"
               style={{ height: 22, width: "auto", display: "block" }}
             />
-            <span style={{ ...eyebrow, fontSize: 11 }}>Produktionsdashboard</span>
+            <nav style={{ display: "flex", gap: 20 }}>
+              {PAGES.map((p) => {
+                const active = page === p.id;
+                return (
+                  <button
+                    key={p.id}
+                    onClick={() => goTo(p.id)}
+                    style={{
+                      ...eyebrow,
+                      fontSize: 11,
+                      color: active ? theme.ink : theme.steel,
+                      background: "none",
+                      border: "none",
+                      borderBottom: `2px solid ${active ? theme.red : "transparent"}`,
+                      padding: "6px 0",
+                      cursor: "pointer",
+                    }}
+                  >
+                    {p.label}
+                  </button>
+                );
+              })}
+            </nav>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+            {page === "dashboard" && (
+              <>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <span style={{ ...eyebrow, fontSize: 11 }}>Woche bearbeiten</span>
+              <span style={{ ...eyebrow, fontSize: 11 }}>Auswertung</span>
               <select
-                value={selectedWeekKey || ""}
-                onChange={(ev) => setSelectedWeekKey(ev.target.value)}
+                value={selectedKey || ""}
+                onChange={(ev) => setPickedWeek(ev.target.value)}
+                disabled={!weekOptions.length}
                 style={{
                   ...mono,
                   fontSize: 13,
@@ -360,29 +572,31 @@ export default function Dashboard() {
                   cursor: "pointer",
                 }}
               >
+                {!weekOptions.length && <option value="">Keine Daten</option>}
                 {weekOptions.map((w) => (
                   <option key={w.key} value={w.key}>
-                    {w.label}
-                    {weeks.length && w.key === weeks[weeks.length - 1].key ? " (aktuell)" : ""}
+                    {w.label} ({fmtShort(Object.values(w.machines)[0].from)} – {fmtShort(addDays(Object.values(w.machines)[0].to, -1))}, Ablesung {fmtShort(Object.values(w.machines)[0].to)})
                   </option>
                 ))}
               </select>
-              <button
-                onClick={() => setShowCustomWeek((v) => !v)}
-                style={{
-                  ...eyebrow,
-                  fontSize: 11,
-                  padding: "6px 10px",
-                  borderRadius: 6,
-                  border: `1px solid ${theme.line}`,
-                  background: showCustomWeek ? theme.ink : theme.panel,
-                  color: showCustomWeek ? theme.bg : theme.steel,
-                  cursor: "pointer",
-                }}
-              >
-                Andere Woche
-              </button>
             </div>
+            <button
+              onClick={() => setShowEntry((v) => !v)}
+              style={{
+                ...eyebrow,
+                fontSize: 11,
+                padding: "7px 12px",
+                borderRadius: 6,
+                border: `1px solid ${theme.ink}`,
+                background: showEntry ? theme.ink : theme.panel,
+                color: showEntry ? theme.bg : theme.ink,
+                cursor: "pointer",
+              }}
+            >
+              Zählerstände eintragen
+            </button>
+              </>
+            )}
             <button
               onClick={() => setMode((m) => (m === "dark" ? "light" : "dark"))}
               aria-label="Dark Mode umschalten"
@@ -404,85 +618,193 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {showCustomWeek && (
+        {page === "planung" && <Planning theme={theme} mode={mode} shift={shiftNow} weekCap={weekCap} onSaveShift={saveCapacity} onDeleteShift={deleteCapacity} />}
+
+        {page === "dashboard" && (
+        <>
+        {/* Zählerstände erfassen */}
+        {showEntry && (
           <div
             style={{
-              display: "flex",
-              alignItems: "flex-end",
-              gap: 12,
-              flexWrap: "wrap",
+              background: theme.panel,
+              border: `1px solid ${theme.line}`,
+              borderRadius: 10,
+              padding: 20,
+              marginBottom: 28,
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                alignItems: "flex-end",
+                justifyContent: "space-between",
+                flexWrap: "wrap",
+                gap: 12,
+                marginBottom: 16,
+              }}
+            >
+              <div>
+                <div style={eyebrow}>Montags eintragen</div>
+                <div style={{ fontWeight: 700, fontSize: 15, marginTop: 2 }}>
+                  Gesamtzählerstände der Maschinen
+                </div>
+              </div>
+              <label>
+                <div style={eyebrow}>Datum der Ablesung</div>
+                <input
+                  type="date"
+                  value={entryDate}
+                  onChange={(ev) => setEntryDate(ev.target.value)}
+                  style={{ ...inputStyle, width: 160, marginTop: 4, colorScheme: mode }}
+                />
+                {entryValid && mondayOf(entryDate) !== entryDate && (
+                  <div style={{ ...eyebrow, fontSize: 10, marginTop: 4 }}>Kein Montag</div>
+                )}
+              </label>
+            </div>
+
+            {entryValid && (
+              <div style={{ marginBottom: 16 }}>
+                <CapacityPicker
+                  value={capPrefill(entryDate)}
+                  onChange={(h) => saveCapacity(entryDate, h)}
+                  label={`Schichtmodell für ${weekInfo(mondayOf(addDays(entryDate, 3))).label} (${fmtShort(entryDate)} bis ${fmtShort(addDays(entryDate, 6))})`}
+                  theme={theme}
+                  mode={mode}
+                />
+              </div>
+            )}
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
+                gap: 16,
+              }}
+            >
+              {MACHINES.map((m) => {
+                const cur = readingFor(m.id, entryDate);
+                const prev = entryValid ? previousReading(m.id) : undefined;
+                const dOn =
+                  prev && cur && prev.machine_total != null && cur.machine_total != null
+                    ? cur.machine_total - prev.machine_total
+                    : null;
+                const dSp =
+                  prev && cur && prev.spindle_total != null && cur.spindle_total != null
+                    ? cur.spindle_total - prev.spindle_total
+                    : null;
+                const negative = (dOn != null && dOn < 0) || (dSp != null && dSp < 0);
+                // Mehr Stunden, als der Zeitraum seit der letzten Ablesung hat, ist unmöglich; Spindel über Maschine an ist auffällig
+                const hoursAvailable = prev && entryValid ? daysBetween(prev.date, entryDate) * 24 : null;
+                const tooMuch = hoursAvailable != null && ((dOn != null && dOn > hoursAvailable) || (dSp != null && dSp > hoursAvailable));
+                const spindleOver = dOn != null && dSp != null && dSp > dOn && dOn >= 0;
+                return (
+                  <div
+                    key={m.id}
+                    style={{
+                      border: `1px solid ${theme.line}`,
+                      borderRadius: 8,
+                      padding: 14,
+                    }}
+                  >
+                    <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 10 }}>{m.name}</div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                      <label>
+                        <span style={eyebrow}>Maschine an</span>
+                        <input
+                          type="number"
+                          min={0}
+                          step="any"
+                          disabled={!entryValid}
+                          value={cur?.machine_total ?? ""}
+                          onChange={(ev) => updateReading(m.id, "machine_total", ev.target.value)}
+                          style={{ ...inputStyle, marginTop: 4 }}
+                        />
+                      </label>
+                      <label>
+                        <span style={eyebrow}>Spindel</span>
+                        <input
+                          type="number"
+                          min={0}
+                          step="any"
+                          disabled={!entryValid}
+                          value={cur?.spindle_total ?? ""}
+                          onChange={(ev) => updateReading(m.id, "spindle_total", ev.target.value)}
+                          style={{ ...inputStyle, marginTop: 4, color: theme.red }}
+                        />
+                      </label>
+                    </div>
+                    <div style={{ fontSize: 12, color: theme.steel, marginTop: 10, lineHeight: 1.5 }}>
+                      {prev ? (
+                        <>
+                          Vorherige Ablesung {fmtShort(prev.date)}:{" "}
+                          <span style={mono}>
+                            {fmtH(prev.machine_total)} / {fmtH(prev.spindle_total)}
+                          </span>
+                          {(dOn != null || dSp != null) && (
+                            <div style={{ color: negative ? theme.red : theme.ink, fontWeight: 600 }}>
+                              Seitdem: Maschine {dOn != null ? `${dOn >= 0 ? "+" : ""}${fmtH(dOn)} h` : "–"}{" "}
+                              · Spindel {dSp != null ? `${dSp >= 0 ? "+" : ""}${fmtH(dSp)} h` : "–"}
+                              {negative && " (kleiner als zuvor, bitte prüfen)"}
+                            </div>
+                          )}
+                          {tooMuch && (
+                            <div style={{ color: theme.red, fontWeight: 600 }}>
+                              Mehr Stunden, als seit {fmtShort(prev.date)} vergangen sind (höchstens {fmtH(hoursAvailable)} h). Zahlendreher?
+                            </div>
+                          )}
+                          {spindleOver && !tooMuch && (
+                            <div style={{ color: theme.amber, fontWeight: 600 }}>
+                              Spindelstunden größer als „Maschine an“, bitte prüfen (Ablesezeitpunkt?)
+                            </div>
+                          )}
+                        </>
+                      ) : (
+                        "Keine frühere Ablesung vorhanden."
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {!selected && (
+          <div
+            style={{
               background: theme.panel,
               border: `1px solid ${theme.line}`,
               borderRadius: 10,
               padding: 16,
-              marginTop: -16,
-              marginBottom: 28,
+              marginBottom: 20,
+              fontSize: 13,
+              color: theme.steel,
             }}
           >
-            <label>
-              <div style={eyebrow}>Kalenderwoche</div>
-              <input
-                type="number"
-                min={1}
-                max={53}
-                value={customWeekNum}
-                onChange={(ev) => setCustomWeekNum(ev.target.value)}
-                style={{
-                  ...mono,
-                  width: 70,
-                  marginTop: 4,
-                  border: `1px solid ${theme.line}`,
-                  borderRadius: 6,
-                  padding: "6px 8px",
-                  fontSize: 14,
-                  color: theme.ink,
-                  background: theme.panel,
-                  outline: "none",
-                }}
-              />
-            </label>
-            <label>
-              <div style={eyebrow}>Jahr</div>
-              <input
-                type="number"
-                value={customYear}
-                onChange={(ev) => setCustomYear(ev.target.value)}
-                style={{
-                  ...mono,
-                  width: 80,
-                  marginTop: 4,
-                  border: `1px solid ${theme.line}`,
-                  borderRadius: 6,
-                  padding: "6px 8px",
-                  fontSize: 14,
-                  color: theme.ink,
-                  background: theme.panel,
-                  outline: "none",
-                }}
-              />
-            </label>
-            <button
-              onClick={() => {
-                const week = Math.min(53, Math.max(1, Number(customWeekNum) || 1));
-                const year = Number(customYear) || new Date().getFullYear();
-                loadWeek(year, week);
-              }}
-              style={{
-                ...eyebrow,
-                fontSize: 11,
-                padding: "8px 14px",
-                borderRadius: 6,
-                border: `1px solid ${theme.ink}`,
-                background: theme.ink,
-                color: theme.bg,
-                cursor: "pointer",
-              }}
-            >
-              Laden
-            </button>
-            {weekLoadError && (
-              <span style={{ ...eyebrow, color: theme.red, fontSize: 11 }}>{weekLoadError}</span>
-            )}
+            Noch keine Auswertung. Für eine Woche werden zwei aufeinanderfolgende Ablesungen
+            benötigt. Trage sie über „Zählerstände eintragen“ ein.
+          </div>
+        )}
+
+        {anySpread && (
+          <div style={{ ...eyebrow, marginBottom: 12 }}>
+            Mindestens eine Ablesung fehlt: Die Werte sind gleichmäßig auf die Wochen dazwischen
+            verteilt.
+          </div>
+        )}
+        {period && (
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
+            <div style={eyebrow}>
+              {anySpread ? "" : `Stunden von ${fmtShort(period.from)} bis ${fmtShort(period.to)}`}
+            </div>
+            <CapacityPicker
+              value={modelOf(period.from)}
+              onChange={(h) => saveCapacity(period.from, h)}
+              label={`Kapazität ${selected.label} (${fmtShort(period.from)} bis ${fmtShort(addDays(period.to, -1))})`}
+              theme={theme}
+              mode={mode}
+            />
           </div>
         )}
 
@@ -496,10 +818,10 @@ export default function Dashboard() {
           }}
         >
           {MACHINES.map((m) => {
-            const e = current[m.id];
+            const e = selected?.machines[m.id] || { on: null, spindle: null };
             const color = theme[m.colorKey];
             const spindelquote = pct(e.spindle, e.on);
-            const belegung = pct(e.on, capacity[m.id]);
+            const belegung = pct(e.on, e.from ? capOf(e.from) : DEFAULT_WEEK_CAPACITY);
             return (
               <div
                 key={m.id}
@@ -507,22 +829,22 @@ export default function Dashboard() {
               >
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
                   <div>
-                    <div style={{ fontWeight: 700, fontSize: 15 }}>{m.name}</div>
-                    <div style={eyebrow}>Spindelquote</div>
+                    <div style={{ fontWeight: 700, fontSize: 15, color }}>{m.name}</div>
+                    <div style={eyebrow}>Spindelauslastung</div>
                   </div>
                   <div style={{ width: 8, height: 8, borderRadius: 2, background: color, marginTop: 4 }} />
                 </div>
 
                 <div style={{ display: "flex", justifyContent: "center", margin: "4px 0 14px" }}>
-                  <Gauge value={spindelquote} color={color} theme={theme} />
+                  <Gauge value={spindelquote} color={spindleColor(theme, spindelquote)} theme={theme} />
                 </div>
 
                 <div style={{ marginBottom: 14 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
-                    <span style={eyebrow}>Belegungsgrad</span>
+                    <span style={eyebrow}>Kapazitätsauslastung</span>
                     <span style={{ ...mono, fontSize: 13, fontWeight: 600 }}>{fmtPct(belegung)} %</span>
                   </div>
-                  <Bar value={belegung} color={theme.graphite} theme={theme} />
+                  <Bar value={belegung} color={utilColor(theme, belegung)} theme={theme} />
                 </div>
 
                 <div
@@ -534,81 +856,85 @@ export default function Dashboard() {
                     paddingTop: 12,
                   }}
                 >
-                  <label style={{ display: "block" }}>
+                  <div>
                     <span style={eyebrow}>Maschine an</span>
-                    <div style={{ display: "flex", alignItems: "baseline", gap: 4, marginTop: 4 }}>
-                      <input
-                        type="number"
-                        value={e.on}
-                        min={0}
-                        onChange={(ev) => updateEntry(m.id, "on", ev.target.value)}
-                        style={{
-                          ...mono,
-                          width: "100%",
-                          border: `1px solid ${theme.line}`,
-                          borderRadius: 6,
-                          padding: "6px 8px",
-                          fontSize: 16,
-                          fontWeight: 600,
-                          color: theme.ink,
-                          background: theme.panel,
-                          outline: "none",
-                        }}
-                      />
-                      <span style={{ ...eyebrow, fontSize: 11 }}>h</span>
+                    <div style={{ ...mono, fontSize: 18, fontWeight: 600, marginTop: 4 }}>
+                      {fmtH(e.on)} <span style={{ ...eyebrow, fontSize: 11 }}>h</span>
                     </div>
-                  </label>
-                  <label style={{ display: "block" }}>
+                  </div>
+                  <div>
                     <span style={eyebrow}>Spindelstunden</span>
-                    <div style={{ display: "flex", alignItems: "baseline", gap: 4, marginTop: 4 }}>
-                      <input
-                        type="number"
-                        value={e.spindle}
-                        min={0}
-                        onChange={(ev) => updateEntry(m.id, "spindle", ev.target.value)}
-                        style={{
-                          ...mono,
-                          width: "100%",
-                          border: `1px solid ${theme.line}`,
-                          borderRadius: 6,
-                          padding: "6px 8px",
-                          fontSize: 16,
-                          fontWeight: 600,
-                          color: theme.red,
-                          background: theme.panel,
-                          outline: "none",
-                        }}
-                      />
-                      <span style={{ ...eyebrow, fontSize: 11 }}>h</span>
+                    <div style={{ ...mono, fontSize: 18, fontWeight: 600, marginTop: 4 }}>
+                      {fmtH(e.spindle)} <span style={{ ...eyebrow, fontSize: 11 }}>h</span>
                     </div>
-                  </label>
+                  </div>
                 </div>
 
                 <div style={{ ...eyebrow, fontSize: 10, marginTop: 10, color: theme.steel }}>
-                  Kapazität{" "}
-                  <input
-                    type="number"
-                    value={capacity[m.id]}
-                    min={0}
-                    onChange={(ev) => updateCapacity(m.id, ev.target.value)}
-                    style={{
-                      ...mono,
-                      width: 46,
-                      border: "none",
-                      borderBottom: `1px solid ${theme.line}`,
-                      textAlign: "center",
-                      fontSize: 12,
-                      color: theme.ink,
-                      background: "transparent",
-                      margin: "0 4px",
-                      outline: "none",
-                    }}
-                  />
-                  h pro Woche
+                  Kapazität {fmtH(e.from ? capOf(e.from) : DEFAULT_WEEK_CAPACITY)} h in dieser Woche
+                  {e.from && lostDays(e.from) > 0
+                    ? ` (${lostDays(e.from)} freier Tag${lostDays(e.from) > 1 ? "e" : ""} abgezogen)`
+                    : ""}
                 </div>
               </div>
             );
           })}
+        </div>
+
+        {/* Legende Spindelauslastung */}
+        <div style={{ background: theme.panel, border: `1px solid ${theme.line}`, borderRadius: 10, padding: 18, marginTop: -12, marginBottom: 12 }}>
+          <div style={eyebrow}>Spindelauslastung: Bewertung</div>
+          <div style={{ fontSize: 12, color: theme.steel, margin: "6px 0 12px" }}>
+            Spindelstunden im Verhältnis zur Zeit „Maschine an“
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 14 }}>
+            {[
+              { color: theme.green, range: "ab 70 %", text: "Soll-Bereich erreicht" },
+              {
+                color: theme.amber,
+                range: "55 – 69 %",
+                text: "Akzeptabel für Einzelteil-Schichten, bei Serien-Schichten im Beobachtungsbereich",
+              },
+              {
+                color: theme.red,
+                range: "unter 55 %",
+                text: "Handlungsbedarf, Stillstandsgründe erfassen",
+              },
+            ].map((l) => (
+              <div key={l.range} style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+                <span style={{ width: 12, height: 12, borderRadius: 3, background: l.color, marginTop: 3, flexShrink: 0 }} />
+                <div>
+                  <div style={{ ...mono, fontSize: 13, fontWeight: 600 }}>{l.range}</div>
+                  <div style={{ fontSize: 12, color: theme.steel, marginTop: 2 }}>{l.text}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Legende Kapazitätsauslastung */}
+        <div style={{ background: theme.panel, border: `1px solid ${theme.line}`, borderRadius: 10, padding: 18, marginBottom: 20 }}>
+          <div style={eyebrow}>Kapazitätsauslastung: Bewertung</div>
+          <div style={{ fontSize: 12, color: theme.steel, margin: "6px 0 12px" }}>
+            Zeit „Maschine an“ im Verhältnis zur Kapazität der Woche (Schichtmodell)
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 14 }}>
+            {[
+              { color: theme.red, range: "unter 65 %", text: "Deutlich unter Plan, Ursache prüfen (Stillstand, fehlende Aufträge)" },
+              { color: theme.amber, range: "65 – 79 %", text: "Unter der Planungsannahme von 80 %, die Planung wird zu optimistisch" },
+              { color: theme.green, range: "80 – 100 %", text: "Im Soll" },
+              { color: theme.amber, range: "101 – 110 %", text: "Überlast: länger gelaufen als geplant, keine Reserve" },
+              { color: theme.red, range: "über 110 %", text: "Deutlich über der Betriebszeit: Mehrarbeit oder falsches Schichtmodell eingetragen" },
+            ].map((l) => (
+              <div key={l.range} style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+                <span style={{ width: 12, height: 12, borderRadius: 3, background: l.color, marginTop: 3, flexShrink: 0 }} />
+                <div>
+                  <div style={{ ...mono, fontSize: 13, fontWeight: 600 }}>{l.range}</div>
+                  <div style={{ fontSize: 12, color: theme.steel, marginTop: 2 }}>{l.text}</div>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
 
         {/* Trend */}
@@ -624,15 +950,15 @@ export default function Dashboard() {
             }}
           >
             <div>
-              <div style={eyebrow}>Verlauf {weeks.length} Wochen</div>
+              <div style={eyebrow}>Verlauf {TREND_WEEKS} Wochen</div>
               <div style={{ fontWeight: 700, fontSize: 15, marginTop: 2 }}>
-                {trendMetric === "spindle" ? "Spindelquote je Maschine" : "Belegungsgrad je Maschine"}
+                {trendMetric === "spindle" ? "Spindelauslastung je Maschine" : "Kapazitätsauslastung je Maschine"}
               </div>
             </div>
             <div style={{ display: "flex", gap: 4 }}>
               {[
-                { key: "spindle", label: "Spindelquote" },
-                { key: "beleg", label: "Belegung" },
+                { key: "spindle", label: "Spindelauslastung" },
+                { key: "beleg", label: "Kapazitätsauslastung" },
               ].map((opt) => {
                 const active = trendMetric === opt.key;
                 return (
@@ -662,7 +988,30 @@ export default function Dashboard() {
               <LineChart data={trend} margin={{ top: 6, right: 8, bottom: 0, left: -18 }}>
                 <CartesianGrid stroke={theme.line} vertical={false} />
                 <XAxis dataKey="week" tick={{ fontSize: 11, fill: theme.steel }} axisLine={{ stroke: theme.line }} tickLine={false} />
-                <YAxis domain={[0, 100]} tick={{ fontSize: 11, fill: theme.steel }} axisLine={false} tickLine={false} unit="%" />
+                <YAxis
+                  domain={[0, (dataMax) => Math.max(trendMetric === "beleg" ? 120 : 100, Math.ceil(dataMax / 20) * 20)]}
+                  tick={{ fontSize: 11, fill: theme.steel }}
+                  axisLine={false}
+                  tickLine={false}
+                  unit="%"
+                />
+                {/* Bewertungsbereiche wie in den Legenden, dezent hinterlegt */}
+                {(trendMetric === "beleg"
+                  ? [
+                      [0, 64.5, theme.red],
+                      [64.5, 79.5, theme.amber],
+                      [79.5, 100.5, theme.green],
+                      [100.5, 110.5, theme.amber],
+                      [110.5, 400, theme.red],
+                    ]
+                  : [
+                      [0, 54.5, theme.red],
+                      [54.5, 69.5, theme.amber],
+                      [69.5, 400, theme.green],
+                    ]
+                ).map(([y1, y2, fill]) => (
+                  <ReferenceArea key={`${trendMetric}-${y1}`} y1={y1} y2={y2} fill={fill} fillOpacity={0.09} stroke="none" ifOverflow="hidden" />
+                ))}
                 <Tooltip
                   formatter={(v, name) => {
                     const m = MACHINES.find((x) => x.id === name);
@@ -705,20 +1054,20 @@ export default function Dashboard() {
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 16 }}>
           {[
             {
-              label: "Belegung gesamt",
+              label: "Kapazitätsauslastung gesamt",
               value: `${fmtPct(pct(totals.on, totals.cap))} %`,
-              sub: `${totals.on} von ${totals.cap} h`,
-              color: theme.graphite,
+              sub: `${fmtH(totals.on)} von ${fmtH(totals.cap)} h`,
+              color: utilColor(theme, pct(totals.on, totals.cap)),
             },
             {
-              label: "Spindelquote gesamt",
+              label: "Spindelauslastung gesamt",
               value: `${fmtPct(pct(totals.spindle, totals.on))} %`,
-              sub: `${totals.spindle} von ${totals.on} h`,
-              color: theme.red,
+              sub: `${fmtH(totals.spindle)} von ${fmtH(totals.on)} h`,
+              color: spindleColor(theme, pct(totals.spindle, totals.on)),
             },
             {
-              label: "Spindelstunden diese Woche",
-              value: `${totals.spindle} h`,
+              label: "Spindelstunden in der Woche",
+              value: `${fmtH(totals.spindle)} h`,
               sub: "produktive Zeit unter Span",
               color: theme.ink,
             },
@@ -730,6 +1079,93 @@ export default function Dashboard() {
             </div>
           ))}
         </div>
+
+        </>
+        )}
+
+        {/* Datensicherung */}
+        <div
+          style={{
+            marginTop: 44,
+            paddingTop: 16,
+            borderTop: `1px solid ${theme.line}`,
+            display: "flex",
+            alignItems: "center",
+            gap: 14,
+            flexWrap: "wrap",
+          }}
+        >
+          <a
+            href="/api/backup"
+            download
+            style={{
+              ...eyebrow,
+              fontSize: 10,
+              padding: "6px 10px",
+              borderRadius: 6,
+              border: `1px solid ${theme.line}`,
+              background: theme.panel,
+              textDecoration: "none",
+            }}
+          >
+            Backup herunterladen
+          </a>
+          <span style={{ fontSize: 12, color: theme.steel }}>
+            Speichert alle Zählerstände, Aufträge und Einstellungen als Datei.
+          </span>
+          <label
+            style={{
+              ...eyebrow,
+              fontSize: 10,
+              padding: "6px 10px",
+              borderRadius: 6,
+              border: `1px solid ${theme.line}`,
+              background: theme.panel,
+              cursor: "pointer",
+            }}
+          >
+            Backup einspielen
+            <input type="file" accept=".json,application/json" onChange={onRestoreFile} style={{ display: "none" }} />
+          </label>
+        </div>
+        {restore && (
+          <div
+            style={{
+              marginTop: 12,
+              padding: 14,
+              border: `1px solid ${restore.error ? theme.red : theme.amber}`,
+              borderRadius: 8,
+              fontSize: 13,
+            }}
+          >
+            {restore.error ? (
+              <>
+                <div style={{ color: theme.red, fontWeight: 600 }}>{restore.error}</div>
+                <button onClick={() => setRestore(null)} style={{ ...eyebrow, marginTop: 10, padding: "6px 10px", borderRadius: 6, border: `1px solid ${theme.line}`, background: theme.panel, cursor: "pointer" }}>
+                  Schließen
+                </button>
+              </>
+            ) : (
+              <>
+                <div style={{ fontWeight: 600 }}>
+                  Backup {restore.created ? `vom ${restore.created.slice(0, 10)}` : restore.name} enthält: {restore.counts.readings} Zählerstände, {restore.counts.orders} Positionen,{" "}
+                  {restore.counts.free_days} freie Tage
+                </div>
+                <div style={{ color: theme.red, marginTop: 6 }}>
+                  Achtung: Beim Einspielen werden ALLE aktuellen Daten durch den Inhalt der Datei ersetzt. Lade vorher ein aktuelles Backup herunter, wenn du die jetzigen Daten behalten willst.
+                </div>
+                <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+                  <button onClick={doRestore} style={{ ...eyebrow, padding: "6px 10px", borderRadius: 6, border: `1px solid ${theme.red}`, background: theme.red, color: "#fff", cursor: "pointer" }}>
+                    Jetzt einspielen
+                  </button>
+                  <button onClick={() => setRestore(null)} style={{ ...eyebrow, padding: "6px 10px", borderRadius: 6, border: `1px solid ${theme.line}`, background: theme.panel, cursor: "pointer" }}>
+                    Abbrechen
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
