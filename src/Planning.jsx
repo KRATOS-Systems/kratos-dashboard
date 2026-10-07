@@ -1068,13 +1068,14 @@ export default function Planning({ theme, mode, shift, weekCap, onSaveShift, onD
   const isOp = (o) => /^AG /.test(o.part_label || "");
 
   function startOps(o) {
-    const other = MACHINES.find((m) => m.id !== o.machine) || MACHINES[0];
+    const own = MACHINES.some((m) => m.id === o.machine) ? o.machine : MACHINES[1].id;
+    const other = MACHINES.find((m) => m.id !== own) || MACHINES[0];
     setOpsFor({
       id: o.id,
       error: null,
       rows: [
         { label: "", machine: other.id, hours: "" },
-        { label: "", machine: o.machine, hours: "" },
+        { label: "", machine: own, hours: "" },
       ],
     });
   }
@@ -1139,7 +1140,7 @@ export default function Planning({ theme, mode, shift, weekCap, onSaveShift, onD
         ))}
         <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
           {rows.length < 6 && (
-            <button onClick={() => setOpsFor({ ...opsFor, rows: [...rows, { label: "", machine: o.machine, hours: "" }] })} style={smallBtn(false)}>
+            <button onClick={() => setOpsFor({ ...opsFor, rows: [...rows, { label: "", machine: rows[rows.length - 1].machine, hours: "" }] })} style={smallBtn(false)}>
               + Arbeitsgang
             </button>
           )}
@@ -1596,7 +1597,17 @@ export default function Planning({ theme, mode, shift, weekCap, onSaveShift, onD
                           </option>
                         ))}
                       </select>
+                      {!o.part_label && (
+                        <button
+                          onClick={() => startOps(o)}
+                          title="Auf Arbeitsgänge aufteilen und gleich einplanen: z. B. Seite 1 auf einer Maschine, Seite 2 und 3 auf einer anderen"
+                          style={smallBtn(false)}
+                        >
+                          Arbeitsgänge
+                        </button>
+                      )}
                       {deleteButton(o)}
+                      {opsFor && opsFor.id === o.id && <div style={{ flexBasis: "100%", paddingLeft: 26 }}>{opsForm(o)}</div>}
                       <div style={{ flexBasis: "100%", paddingLeft: 26 }}>{externEditor(o)}</div>
                     </div>
                   ))}

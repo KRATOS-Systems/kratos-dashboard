@@ -808,7 +808,8 @@ app.post("/api/orders/ops", (req, res) => {
   }
   const row = db.prepare("SELECT * FROM orders WHERE id = ? AND done = 0").get(id);
   if (!row) return res.status(404).json({ error: "not found" });
-  if (!MACHINES.includes(row.machine)) return res.status(400).json({ error: "Die Position liegt nicht an einer Maschine" });
+  // an einer Maschine oder noch in der Liste "nicht eingeplant" (machine ''); an einem Ort (QS, extern) nicht
+  if (!MACHINES.includes(row.machine) && row.machine !== "") return res.status(400).json({ error: "Die Position liegt nicht an einer Maschine" });
   if (row.part_label) return res.status(400).json({ error: "Die Position ist schon geteilt (Teillieferung oder Arbeitsgänge)" });
   const group = row.part_group || row.odoo_ref || row.parent_ref || `id:${row.id}`;
   const nameOf = (o, i) => `AG ${i + 1}${o.label ? `: ${o.label}` : ""}`;
