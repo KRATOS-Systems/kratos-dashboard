@@ -126,6 +126,7 @@ const orderColumns = columnsOf();
   ["done_date", "TEXT"],
   ["progress_date", "TEXT"],
   ["extern_start", "TEXT"],
+  ["after_id", "INTEGER"],
 ].forEach(([name, type]) => {
   if (!orderColumns.includes(name)) db.exec(`ALTER TABLE orders ADD COLUMN ${name} ${type}`);
 });
@@ -313,6 +314,7 @@ const orderOut = (r) => ({
   qs_required: r.qs_required === 1,
   is_split: r.is_split === 1,
   part_label: r.part_label,
+  after_id: r.after_id,
   qs_days: r.qs_days,
   from_machine: r.from_machine,
   produced_date: r.produced_date,
@@ -487,6 +489,9 @@ app.put("/api/orders/:id", (req, res) => {
 app.delete("/api/orders/:id", (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isInteger(id)) return res.status(400).json({ error: "invalid id" });
+  // Arbeitsgänge: Der nächste Arbeitsgang folgt dann auf den davor
+  const gone = db.prepare("SELECT after_id FROM orders WHERE id = ?").get(id);
+  if (gone) db.prepare("UPDATE orders SET after_id = ? WHERE after_id = ?").run(gone.after_id ?? null, id);
   db.prepare("DELETE FROM orders WHERE id = ?").run(id);
   res.json({ id });
 });
@@ -771,10 +776,65 @@ app.post("/api/orders/split", (req, res) => {
   const row = db.prepare("SELECT * FROM orders WHERE id = ? AND done = 0").get(id);
   if (!row) return res.status(404).json({ error: "not found" });
   if (!(row.quantity > 0)) return res.status(400).json({ error: "Die Position hat keine Stückzahl" });
+  if (/^AG /.test(row.part_label || "")) return res.status(400).json({ error: "Arbeitsgänge können nicht als Teillieferung geteilt werden" });
   if (!(quantity < row.quantity)) return res.status(400).json({ error: "Die Teilmenge muss kleiner als die Stückzahl sein" });
   db.exec("BEGIN");
   try {
     splitOrder(row, quantity, due);
+    db.exec("COMMIT");
+  } catch (err) {
+    db.exec("ROLLBACK");
+    throw err;
+  }
+  res.json({ ok: true });
+});
+
+// Arbeitsgänge: Eine Position wird in mehrere Arbeitsgänge auf verschiedenen Maschinen geteilt (z. B. Seite 1 auf der
+// DMU, Seite 2+3 auf der M1). Alle Stücke durchlaufen jeden Arbeitsgang nacheinander: Jeder Arbeitsgang folgt auf den
+// davor (after_id) und startet erst, wenn dieser fertig ist. Die ursprüngliche Position (Odoo-Verknüpfung, QS, Oberfläche)
+// wird der letzte Arbeitsgang, die früheren sind neue Positionen ohne QS.
+app.post("/api/orders/ops", (req, res) => {
+  const { id, ops } = req.body || {};
+  if (!Number.isInteger(id) || !Array.isArray(ops) || ops.length < 2 || ops.length > 6) {
+    return res.status(400).json({ error: "Mindestens 2, höchstens 6 Arbeitsgänge" });
+  }
+  const clean = ops.map((o) => ({
+    label: typeof o?.label === "string" ? o.label.trim().slice(0, 40) : "",
+    machine: o?.machine,
+    hours: o?.hours,
+  }));
+  if (clean.some((o) => !MACHINES.includes(o.machine) || typeof o.hours !== "number" || !Number.isFinite(o.hours) || !(o.hours > 0))) {
+    return res.status(400).json({ error: "Jeder Arbeitsgang braucht eine Maschine und Stunden" });
+  }
+  const row = db.prepare("SELECT * FROM orders WHERE id = ? AND done = 0").get(id);
+  if (!row) return res.status(404).json({ error: "not found" });
+  if (!MACHINES.includes(row.machine)) return res.status(400).json({ error: "Die Position liegt nicht an einer Maschine" });
+  if (row.part_label) return res.status(400).json({ error: "Die Position ist schon geteilt (Teillieferung oder Arbeitsgänge)" });
+  const group = row.part_group || row.odoo_ref || row.parent_ref || `id:${row.id}`;
+  const nameOf = (o, i) => `AG ${i + 1}${o.label ? `: ${o.label}` : ""}`;
+  db.exec("BEGIN");
+  try {
+    let prev = null;
+    const insert = db.prepare(
+      `INSERT INTO orders (machine, order_no, hours, done_hours, due_date, position, done, odoo_ref, source, product, quantity,
+         extern_tags, extern_days, extern_start, odoo_id, earliest_start, component_status, hours_plan, progress_date,
+         qs_required, qs_days, from_machine, is_split, part_label, part_group, parent_ref, after_id)
+       VALUES (?, ?, ?, 0, ?, ?, 0, NULL, ?, ?, ?, '[]', ?, NULL, ?, ?, ?, NULL, NULL, 0, ?, NULL, 1, ?, ?, ?, ?)`
+    );
+    clean.slice(0, -1).forEach((o, i) => {
+      const info = insert.run(
+        o.machine, row.order_no, o.hours, row.due_date, nextPosition(o.machine), row.source, row.product, row.quantity,
+        row.extern_days, row.odoo_id, i === 0 ? row.earliest_start : null, row.component_status, row.qs_days,
+        nameOf(o, i), group, row.odoo_ref || row.parent_ref, prev
+      );
+      prev = Number(info.lastInsertRowid);
+    });
+    const last = clean[clean.length - 1];
+    const position = last.machine === row.machine ? row.position : nextPosition(last.machine);
+    db.prepare(
+      `UPDATE orders SET machine = ?, position = ?, hours = ?, done_hours = 0, hours_plan = NULL, progress_date = NULL,
+         earliest_start = NULL, is_split = 1, part_group = ?, part_label = ?, after_id = ? WHERE id = ?`
+    ).run(last.machine, position, last.hours, group, nameOf(last, clean.length - 1), prev, row.id);
     db.exec("COMMIT");
   } catch (err) {
     db.exec("ROLLBACK");
@@ -793,10 +853,13 @@ app.post("/api/orders/split-many", (req, res) => {
   const rows = db.prepare("SELECT * FROM orders WHERE source = ? AND done = 0 ORDER BY id").all(source);
   let split = 0;
   let whole = 0;
+  let skipped = 0;
   db.exec("BEGIN");
   try {
     rows.forEach((row) => {
-      if (row.quantity > quantity) {
+      if (/^AG /.test(row.part_label || "")) {
+        skipped++; // Arbeitsgänge werden nicht nach Stückzahl geteilt
+      } else if (row.quantity > quantity) {
         splitOrder(db.prepare("SELECT * FROM orders WHERE id = ?").get(row.id), quantity, due);
         split++;
       } else {
@@ -810,7 +873,7 @@ app.post("/api/orders/split-many", (req, res) => {
     db.exec("ROLLBACK");
     throw err;
   }
-  res.json({ split, whole });
+  res.json({ split, whole, skipped });
 });
 
 // Datensicherung: alle Daten als lesbare JSON-Datei zum Herunterladen

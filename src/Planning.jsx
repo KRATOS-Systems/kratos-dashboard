@@ -168,7 +168,8 @@ function workEnd(start, hours, perDay, free) {
 }
 
 // Positionen je Maschine hintereinander abarbeiten, ab heute
-function buildPlan(orders, rates, defaults, monday0, todayOff, free) {
+// `depEnd`: Ende des vorherigen Arbeitsgangs (after_id) je Position-Id, der nächste Arbeitsgang startet nicht davor
+function buildPlan(orders, rates, defaults, monday0, todayOff, free, depEnd = new Map()) {
   return MACHINES.map((m) => {
     const own = rates[m.id] > 0;
     const rate = own ? rates[m.id] : defaults.now;
@@ -197,9 +198,12 @@ function buildPlan(orders, rates, defaults, monday0, todayOff, free) {
         const estimated = estDone > 0.05;
         const stale = estimated && todayOff - sinceOff >= 7; // seit einer Woche nicht bestätigt
         if (!rate || !(remaining > 0)) return { o, scheduled: false, remaining, percent, effDone, estimated, stale };
-        // "Start frühestens" (Rohmaterial, Werkzeuge …): bis dahin wartet die Maschine, leer = sobald sie frei ist
-        const waits = earliest != null && earliest > t;
-        const start = skipFree(waits ? earliest : t, free);
+        // "Start frühestens" (Rohmaterial, Werkzeuge …) und das Ende des vorherigen Arbeitsgangs: bis dahin wartet die
+        // Maschine, leer = sobald sie frei ist
+        const dep = o.after_id && depEnd.has(o.after_id) ? depEnd.get(o.after_id) : null;
+        const notBefore = dep != null ? Math.max(earliest ?? -Infinity, dep) : earliest;
+        const waits = notBefore != null && notBefore > t;
+        const start = skipFree(waits ? notBefore : t, free);
         const waitFrom = waits ? skipFree(t, free) : null;
         // Schon begonnen: liegt der Start in der Vergangenheit, beginnt der Balken dort (nur die erste Position der Maschine)
         const pastStart = earliest != null && earliest < todayOff && t === todayOff ? earliest : null;
@@ -208,11 +212,28 @@ function buildPlan(orders, rates, defaults, monday0, todayOff, free) {
         const dueEnd = o.due ? daysBetween(monday0, o.due) + 1 : null;
         const diff = dueEnd == null ? null : end - dueEnd;
         const status = diff != null && diff > 0 ? "late" : "ok";
-        return { o, scheduled: true, remaining, percent, effDone, estimated, stale, start, end, waitFrom, pastStart, dueEnd, diff, status, lateDays: diff > 0 ? Math.ceil(diff) : 0 };
+        return { o, scheduled: true, remaining, percent, effDone, estimated, stale, start, end, waitFrom, pastStart, dueEnd, diff, status, dep, lateDays: diff > 0 ? Math.ceil(diff) : 0 };
       });
     const scheduled = items.filter((i) => i.scheduled);
     return { m, rate, items, scheduled, freeAt: scheduled.length ? skipFree(t, free) : null };
   });
+}
+
+// Arbeitsgänge hängen über Maschinen hinweg voneinander ab: Die Planung wird wiederholt, bis sich die Enden nicht mehr ändern
+function buildPlanDeps(orders, rates, defaults, monday0, todayOff, free) {
+  let plan = buildPlan(orders, rates, defaults, monday0, todayOff, free);
+  if (!orders.some((o) => o.after_id && !o.done)) return plan;
+  for (let pass = 0; pass < 10; pass++) {
+    const ends = new Map();
+    plan.forEach((p) => p.items.forEach((i) => i.scheduled && ends.set(i.o.id, i.end)));
+    const next = buildPlan(orders, rates, defaults, monday0, todayOff, free, ends);
+    const changed = next.some((p, pi) =>
+      p.items.some((i, ii) => Math.abs((i.end ?? 0) - (plan[pi].items[ii].end ?? 0)) > 1e-9 || i.scheduled !== plan[pi].items[ii].scheduled)
+    );
+    plan = next;
+    if (!changed) break;
+  }
+  return plan;
 }
 
 // Aufeinanderfolgende Positionen desselben Auftrags auf einer Maschine ergeben einen Block
@@ -400,6 +421,7 @@ export default function Planning({ theme, mode, shift, weekCap, onSaveShift, onD
     }
   });
   const [viewOffset, setViewOffset] = useState(0); // Wochen bzw. Monate ab heute
+  const [opsFor, setOpsFor] = useState(null); // Arbeitsgänge einer Position: { id, rows: [{ label, machine, hours }], error }
   const [splitFor, setSplitFor] = useState(null); // Teillieferung einer Position: { id, qty, due, error }
   const [splitGroup, setSplitGroup] = useState(null); // Teillieferung eines Auftrags: { key, qty, due, error }
   const [laneDetail, setLaneDetail] = useState(null); // Positionen des angeklickten Balkens in QS / Extern (ids)
@@ -489,14 +511,14 @@ export default function Planning({ theme, mode, shift, weekCap, onSaveShift, onD
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orders, dragActive, dragKey, drag?.target?.machine, drag?.target?.index, drag?.target?.date]);
   const plan = useMemo(
-    () => buildPlan(viewOrders, rates, defaults, monday0, todayOff, free),
+    () => buildPlanDeps(viewOrders, rates, defaults, monday0, todayOff, free),
     [viewOrders, rates, defaults, monday0, todayOff, free]
   );
   // Ohne den gezogenen Block: stabile Grundlage, um die Einfügeposition zu bestimmen
   const basePlan = useMemo(
     () =>
       drag
-        ? buildPlan(orders.filter((o) => !drag.ids.includes(o.id)), rates, defaults, monday0, todayOff, free)
+        ? buildPlanDeps(orders.filter((o) => !drag.ids.includes(o.id)), rates, defaults, monday0, todayOff, free)
         : null,
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [dragKey, orders, rates, defaults, monday0, todayOff, free]
@@ -510,7 +532,7 @@ export default function Planning({ theme, mode, shift, weekCap, onSaveShift, onD
     if (dragActive) return;
     plan.forEach((p) => {
       const first = p.items.find((i) => i.scheduled);
-      if (first && !first.o.earliest_start) patchOrder(first.o.id, { earliest_start: dateOf(first.start) });
+      if (first && !first.o.earliest_start && first.dep == null) patchOrder(first.o.id, { earliest_start: dateOf(first.start) });
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [plan, dragActive]);
@@ -523,7 +545,7 @@ export default function Planning({ theme, mode, shift, weekCap, onSaveShift, onD
       late: grps.filter((g) => g.status === "late").length,
       days: grps.reduce((sum, g) => sum + g.lateDays, 0),
     });
-    const savedPlan = buildPlan(orders, rates, baseDefaults, monday0, todayOff, free);
+    const savedPlan = buildPlanDeps(orders, rates, baseDefaults, monday0, todayOff, free);
     return { before: count(buildGroups(orders, savedPlan, monday0, tightDays)), after: count(groups) };
   }, [preview, orders, rates, baseDefaults, monday0, todayOff, free, tightDays, groups]);
 
@@ -899,7 +921,11 @@ export default function Planning({ theme, mode, shift, weekCap, onSaveShift, onD
   // schickt die Position mit dem noch nötigen Rest zurück an ihre Maschine.
   function finishProduced(o) {
     const patch = { done_hours: o.hours, produced_date: today, progress_date: today };
-    if (o.qs_required !== false) {
+    const hasNext = orders.some((x) => x.after_id === o.id && !x.done);
+    if (hasNext) {
+      // Arbeitsgang fertig: der nächste Arbeitsgang ist frei, QS und Oberfläche kommen erst nach dem letzten
+      patchOrder(o.id, { ...patch, done: true, done_date: today });
+    } else if (o.qs_required !== false) {
       const qs = laneOf("qs");
       const extra = { ...patch, from_machine: o.machine };
       setOrders((prev) => applyLaneMove(prev, [o.id], today, qs).map((x) => (x.id === o.id ? { ...x, ...extra } : x)));
@@ -1035,9 +1061,102 @@ export default function Planning({ theme, mode, shift, weekCap, onSaveShift, onD
       return;
     }
     setSplitGroup(null);
-    setImportMsg(`Teillieferung: ${data.split} Positionen geteilt, ${data.whole} liefern vollständig mit der ersten Lieferung.`);
+    setImportMsg(`Teillieferung: ${data.split} Positionen geteilt, ${data.whole} liefern vollständig mit der ersten Lieferung.${data.skipped ? ` ${data.skipped} Arbeitsgänge wurden übersprungen.` : ""}`);
     reloadOrders();
   }
+
+  const isOp = (o) => /^AG /.test(o.part_label || "");
+
+  function startOps(o) {
+    const other = MACHINES.find((m) => m.id !== o.machine) || MACHINES[0];
+    setOpsFor({
+      id: o.id,
+      error: null,
+      rows: [
+        { label: "", machine: other.id, hours: "" },
+        { label: "", machine: o.machine, hours: "" },
+      ],
+    });
+  }
+
+  async function doOps(o) {
+    const ops = opsFor.rows.map((r) => ({ label: r.label, machine: r.machine, hours: Number(String(r.hours).replace(",", ".")) }));
+    const { ok, data } = await postSplit("/api/orders/ops", { id: o.id, ops });
+    if (!ok) {
+      setOpsFor((cur) => cur && { ...cur, error: data.error || "Das Aufteilen hat nicht geklappt" });
+      return;
+    }
+    setOpsFor(null);
+    reloadOrders();
+  }
+
+  const opsForm = (o) => {
+    const rows = opsFor.rows;
+    const nums = rows.map((r) => Number(String(r.hours).replace(",", ".")));
+    const valid = rows.length >= 2 && nums.every((n) => Number.isFinite(n) && n > 0);
+    const sum = nums.reduce((t, n) => t + (Number.isFinite(n) ? n : 0), 0);
+    const setRow = (i, patch) =>
+      setOpsFor({ ...opsFor, error: null, rows: rows.map((r, j) => (j === i ? { ...r, ...patch } : r)) });
+    return (
+      <div style={{ marginTop: 8, padding: 10, border: `1px dashed ${theme.line}`, borderRadius: 8, fontSize: 12 }}>
+        <div style={{ marginBottom: 8 }}>
+          Arbeitsgänge: Die Stücke durchlaufen die Arbeitsgänge nacheinander (von oben nach unten). Jeder startet, wenn der davor fertig ist.
+        </div>
+        {rows.map((r, i) => (
+          <div key={i} style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", marginBottom: 6 }}>
+            <b style={{ ...mono, width: 34 }}>AG {i + 1}</b>
+            <input
+              type="text"
+              placeholder="z. B. Seite 1"
+              maxLength={40}
+              value={r.label}
+              onChange={(ev) => setRow(i, { label: ev.target.value })}
+              style={{ ...field, width: 150 }}
+            />
+            <select value={r.machine} onChange={(ev) => setRow(i, { machine: ev.target.value })} style={{ ...field, colorScheme: mode }}>
+              {MACHINES.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.short}
+                </option>
+              ))}
+            </select>
+            <input
+              type="number"
+              min={0}
+              step="any"
+              placeholder="Std"
+              value={r.hours}
+              onChange={(ev) => setRow(i, { hours: ev.target.value })}
+              style={{ ...field, width: 72 }}
+            />
+            <span style={{ ...eyebrow, fontSize: 11 }}>h</span>
+            {rows.length > 2 && (
+              <button onClick={() => setOpsFor({ ...opsFor, rows: rows.filter((_, j) => j !== i) })} style={smallBtn(false)} aria-label="Arbeitsgang entfernen">
+                ✕
+              </button>
+            )}
+          </div>
+        ))}
+        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+          {rows.length < 6 && (
+            <button onClick={() => setOpsFor({ ...opsFor, rows: [...rows, { label: "", machine: o.machine, hours: "" }] })} style={smallBtn(false)}>
+              + Arbeitsgang
+            </button>
+          )}
+          <button disabled={!valid} onClick={() => doOps(o)} style={smallBtn(!valid)}>
+            Anlegen
+          </button>
+          <button onClick={() => setOpsFor(null)} style={smallBtn(false)}>
+            Abbrechen
+          </button>
+          <span style={{ color: theme.steel }}>
+            Summe {fmtH(sum)} h (bisher {fmtH(o.hours)} h). Der letzte Arbeitsgang behält Odoo-Link, QS und Oberfläche.
+          </span>
+        </div>
+        {opsFor.error && <div style={{ color: theme.red, marginTop: 6 }}>{opsFor.error}</div>}
+      </div>
+    );
+  };
 
   const splitForm = (o) => {
     const n = Number(String(splitFor.qty).replace(",", "."));
@@ -2839,7 +2958,16 @@ export default function Planning({ theme, mode, shift, weekCap, onSaveShift, onD
                       />
                       QS-Prüfung
                     </label>
-                    {o.quantity > 1 && (
+                    {!o.part_label && (
+                      <button
+                        onClick={() => startOps(o)}
+                        title="Auf Arbeitsgänge aufteilen: z. B. Seite 1 auf einer Maschine, Seite 2 und 3 auf einer anderen"
+                        style={smallBtn(false)}
+                      >
+                        Arbeitsgänge
+                      </button>
+                    )}
+                    {o.quantity > 1 && !isOp(o) && (
                       <button
                         onClick={() => setSplitFor({ id: o.id, qty: "", due: "", error: null })}
                         title="Teillieferung: einen Teil der Stückzahl vorab liefern"
@@ -2877,6 +3005,18 @@ export default function Planning({ theme, mode, shift, weekCap, onSaveShift, onD
                     </span>
                   </div>
                   {splitFor && splitFor.id === o.id && splitForm(o)}
+                  {opsFor && opsFor.id === o.id && opsForm(o)}
+                  {(() => {
+                    const pred = o.after_id ? orders.find((x) => x.id === o.after_id && !x.done) : null;
+                    if (!pred) return null;
+                    const pm = MACHINES.find((m) => m.id === pred.machine);
+                    return (
+                      <div style={{ fontSize: 11, color: theme.steel, marginTop: 6 }}>
+                        ↳ folgt auf {posNo(pred)}
+                        {pm ? ` (${pm.short})` : ""}: startet, wenn dieser Arbeitsgang fertig ist
+                      </div>
+                    );
+                  })()}
                   {externEditor(o)}
                   {metaLine(o) && (
                     <div style={{ fontSize: 11, color: theme.steel, marginTop: 6 }}>{metaLine(o)}</div>
