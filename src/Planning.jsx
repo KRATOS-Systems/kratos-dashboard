@@ -64,7 +64,7 @@ function MaterialBadge({ o, theme }) {
   return (
     <span
       title={`Materialstatus laut Odoo: ${text}`}
-      style={{ fontSize: 10, fontWeight: 700, color, border: `1px solid ${color}`, borderRadius: 10, padding: "1px 7px", whiteSpace: "nowrap" }}
+      style={{ fontSize: 10, fontWeight: 700, color, border: `1px solid ${color}`, borderRadius: 8, padding: "1px 7px", whiteSpace: "nowrap" }}
     >
       {/nicht verf/.test(low) ? "Material fehlt" : text}
     </span>
@@ -427,6 +427,12 @@ export default function Planning({ theme, mode, shift, weekCap, onSaveShift, onD
   const [laneDetail, setLaneDetail] = useState(null); // Positionen des angeklickten Balkens in QS / Extern (ids)
   const [reworkId, setReworkId] = useState(null); // QS: Position, für die gerade die Nacharbeit abgefragt wird
   const [reworkText, setReworkText] = useState("");
+  const [wide, setWide] = useState(() => typeof window !== "undefined" && window.innerWidth >= 1200); // Detailspalte rechts
+  useEffect(() => {
+    const on = () => setWide(window.innerWidth >= 1200);
+    window.addEventListener("resize", on);
+    return () => window.removeEventListener("resize", on);
+  }, []);
   const [detailId, setDetailId] = useState(null); // Position, deren Details unter dem Zeitstrahl stehen
   const [selected, setSelected] = useState({});
   const [importPreview, setImportPreview] = useState(null); // { items, result, fileName }
@@ -907,12 +913,12 @@ export default function Planning({ theme, mode, shift, weekCap, onSaveShift, onD
   };
   const smallBtn = (disabled) => ({
     ...eyebrow,
-    fontSize: 10,
-    padding: "5px 8px",
+    fontSize: 13,
+    padding: "4px 10px",
     borderRadius: 6,
-    border: `1px solid ${theme.line}`,
+    border: `1px solid ${theme.lineStrong}`,
     background: theme.panel,
-    color: theme.steel,
+    color: theme.ink,
     cursor: disabled ? "default" : "pointer",
     opacity: disabled ? 0.4 : 1,
   });
@@ -1130,7 +1136,7 @@ export default function Planning({ theme, mode, shift, weekCap, onSaveShift, onD
               onChange={(ev) => setRow(i, { hours: ev.target.value })}
               style={{ ...field, width: 72 }}
             />
-            <span style={{ ...eyebrow, fontSize: 11 }}>h</span>
+            <span style={{ ...eyebrow, fontSize: 12 }}>h</span>
             {rows.length > 2 && (
               <button onClick={() => setOpsFor({ ...opsFor, rows: rows.filter((_, j) => j !== i) })} style={smallBtn(false)} aria-label="Arbeitsgang entfernen">
                 ✕
@@ -1355,6 +1361,305 @@ export default function Planning({ theme, mode, shift, weekCap, onSaveShift, onD
   const assignable = selectedOrders.filter((o) => o.hours > 0);
   const draggedBar = dragActive ? drag : null;
 
+  // Eine Position bearbeiten: Kachel in der Maschinenkarte und Inhalt der Spalte rechts (bare = ohne eigenen Rahmen)
+  const renderPosition = (p, item, idx, bare = false) => {
+    const { o, scheduled, end, status, lateDays, diff, remaining, percent, estimated, effDone, stale } = item;
+    const labeled = (label, node) => (
+      <label style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0 }}>
+        <span style={{ ...eyebrow, fontSize: 11 }}>{label}</span>
+        {node}
+      </label>
+    );
+    return (
+      <div
+        key={o.id}
+        style={
+          bare
+            ? { marginTop: 12 }
+            : { border: `1px solid ${theme.line}`, borderRadius: 8, background: theme.bg, padding: 12, marginTop: 10 }
+        }
+      >
+        <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+          <button disabled={idx === 0} onClick={() => move(p.m.id, o.id, -1)} aria-label="Nach oben" style={smallBtn(idx === 0)}>
+            ↑
+          </button>
+          <button
+            disabled={idx === p.items.length - 1}
+            onClick={() => move(p.m.id, o.id, 1)}
+            aria-label="Nach unten"
+            style={smallBtn(idx === p.items.length - 1)}
+          >
+            ↓
+          </button>
+          <input
+            type="text"
+            placeholder="Auftrag"
+            maxLength={40}
+            value={o.order_no}
+            onChange={(ev) => patchOrder(o.id, { order_no: ev.target.value })}
+            style={{ ...field, width: 110 }}
+          />
+          <OdooLink o={o} />
+          <MaterialBadge o={o} theme={theme} />
+          {o.part_label && (
+            <span style={{ fontSize: 11, fontWeight: 700, color: theme.steel, border: `1px solid ${theme.line}`, borderRadius: 10, padding: "1px 7px", whiteSpace: "nowrap" }}>
+              {o.part_label}
+            </span>
+          )}
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(128px, 1fr))", gap: 10, marginTop: 10 }}>
+          {labeled(
+            "Gesamt (h)",
+            <input
+              type="number"
+              min={0}
+              step="any"
+              placeholder="Gesamt"
+              title="Gesamtstunden der Position"
+              value={o.hours || ""}
+              onChange={(ev) =>
+                patchOrder(o.id, (() => {
+                  const h = ev.target.value === "" ? 0 : Math.max(0, Number(ev.target.value));
+                  return { hours: h, hours_plan: h };
+                })())
+              }
+              style={{ ...field, width: "100%" }}
+            />
+          )}
+          {labeled(
+            "Noch nötig (h)",
+            <RestInput
+              value={o.hours > 0 ? round1(remaining) : ""}
+              title="Wie viele Stunden braucht die Position noch? (Stand heute). Mehr als geplant verlängert den Balken."
+              onCommit={(n) => setRest(o, effDone, n)}
+              style={{ ...field, width: "100%" }}
+            />
+          )}
+          {labeled(
+            "Liefertermin",
+            <input
+              type="date"
+              title="Liefertermin"
+              value={o.due || ""}
+              onChange={(ev) => patchOrder(o.id, { due: ev.target.value || null })}
+              style={{ ...field, width: "100%", colorScheme: mode }}
+            />
+          )}
+          {labeled(
+            "Start frühestens",
+            <input
+              type="date"
+              title="Start frühestens, z. B. wenn Rohmaterial und Werkzeuge da sind. Ein Datum in der Vergangenheit gilt als tatsächlicher Start: Der Balken beginnt dann dort. Leer = sobald die Maschine frei ist."
+              value={o.earliest_start || ""}
+              onChange={(ev) => patchOrder(o.id, { earliest_start: ev.target.value || null })}
+              style={{ ...field, width: "100%", colorScheme: mode }}
+            />
+          )}
+        </div>
+                  <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", marginTop: 12 }}>
+                    <button
+                      onClick={() => finishProduced(o)}
+                      title="Fertig produziert: die Position geht in die QS (ohne QS-Prüfung ist sie damit erledigt)"
+                      style={smallBtn(false)}
+                    >
+                      Fertig produziert
+                    </button>
+                    <label
+                      title="Muss die Position durch die QS-Prüfung?"
+                      style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, color: theme.steel }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={o.qs_required !== false}
+                        onChange={(ev) => patchOrder(o.id, { qs_required: ev.target.checked })}
+                        style={{ accentColor: theme.ink }}
+                      />
+                      QS-Prüfung
+                    </label>
+                    {!o.part_label && (
+                      <button
+                        onClick={() => startOps(o)}
+                        title="Auf Arbeitsgänge aufteilen: z. B. Seite 1 auf einer Maschine, Seite 2 und 3 auf einer anderen"
+                        style={smallBtn(false)}
+                      >
+                        Arbeitsgänge
+                      </button>
+                    )}
+                    {o.quantity > 1 && !isOp(o) && (
+                      <button
+                        onClick={() => setSplitFor({ id: o.id, qty: "", due: "", error: null })}
+                        title="Teillieferung: einen Teil der Stückzahl vorab liefern"
+                        style={smallBtn(false)}
+                      >
+                        Teillieferung
+                      </button>
+                    )}
+                    {deleteButton(o)}
+                    <span
+                      style={{
+                        fontSize: 12,
+                        marginLeft: 4,
+                        color: status === "late" ? theme.red : theme.steel,
+                        fontWeight: status === "late" ? 600 : 400,
+                      }}
+                    >
+                      {(percent != null ? `${estimated ? "~" : ""}${percent} % ${estimated ? "geschätzt" : "erledigt"} · Rest ${fmtH(remaining)} h · ` : "") +
+                        (stale ? "Fortschritt prüfen · " : "") +
+                        (o.hours_plan != null && o.hours > o.hours_plan + 0.05
+                          ? `Mehraufwand +${fmtH(o.hours - o.hours_plan)} h (Plan ${fmtH(o.hours_plan)} h) · `
+                          : "") +
+                        (scheduled
+                          ? `Ende ca. ${fmtShort(endDateOf(end))}` +
+                            (status === "late"
+                              ? ` · ${days(lateDays)} nach Liefertermin`
+                              : diff != null
+                              ? ` · Puffer ${fmtH(-diff)} Tage`
+                              : "")
+                          : !(o.hours > 0)
+                          ? "Stunden eintragen"
+                          : remaining === 0
+                          ? "Stunden erreicht, bitte als erledigt markieren"
+                          : "Wochenleistung fehlt")}
+                    </span>
+                  </div>
+                  {splitFor && splitFor.id === o.id && splitForm(o)}
+                  {opsFor && opsFor.id === o.id && opsForm(o)}
+                  {(() => {
+                    const pred = o.after_id ? orders.find((x) => x.id === o.after_id && !x.done) : null;
+                    if (!pred) return null;
+                    const pm = MACHINES.find((m) => m.id === pred.machine);
+                    return (
+                      <div style={{ fontSize: 11, color: theme.steel, marginTop: 6 }}>
+                        ↳ folgt auf {posNo(pred)}
+                        {pm ? ` (${pm.short})` : ""}: startet, wenn dieser Arbeitsgang fertig ist
+                      </div>
+                    );
+                  })()}
+                  {externEditor(o)}
+                  {metaLine(o) && (
+                    <div style={{ fontSize: 11, color: theme.steel, marginTop: 6 }}>{metaLine(o)}</div>
+                  )}
+      </div>
+    );
+  };
+
+  // Details der gewählten Position und der Orte: bei breitem Fenster in einer Spalte rechts, sonst unter dem Zeitstrahl
+  const detailNode = (() => {
+            const found =
+              detailId != null
+                ? plan.flatMap((pl) => pl.items.map((it) => ({ pl, it }))).find((x) => x.it.o.id === detailId)
+                : null;
+            if (!found) return null;
+            const { pl, it } = found;
+            const o = it.o;
+            const g = groupByKey.get(groupKeyOf(o));
+            const toggleKey = `${pl.m.id}|${groupKeyOf(o)}`;
+            const meta = [o.quantity != null ? `${fmtH(o.quantity)} Stück` : null, o.product].filter(Boolean).join(" · ");
+            const fact = (label, value) => (
+              <div style={{ minWidth: 130 }}>
+                <div style={{ ...eyebrow, fontSize: 12 }}>{label}</div>
+                <div style={{ fontSize: 12, marginTop: 2 }}>{value}</div>
+              </div>
+            );
+            return (
+              <div style={{ marginTop: wide ? 0 : 14, marginBottom: wide ? 12 : 0, padding: 14, border: `1px solid ${theme.line}`, borderRadius: 8, background: wide ? theme.panel : theme.bg }}>
+                <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
+                      <b style={{ ...mono, fontSize: 14 }}>{posNo(o)}</b>
+                      <span style={{ fontSize: 12, color: theme.steel }}>
+                        {o.source ? `Auftrag ${o.source} · ` : ""}
+                        <span style={{ color: theme[pl.m.colorKey], fontWeight: 600 }}>{pl.m.name}</span>
+                      </span>
+                    </div>
+                    {meta && <div style={{ fontSize: 12, marginTop: 4 }}>{meta}</div>}
+                  </div>
+                  <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+                    {o.odoo_id ? (
+                      <a
+                        href={`${ODOO_URL}/${o.odoo_id}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{ ...smallBtn(false), textDecoration: "none", color: theme.ink, fontWeight: 700 }}
+                      >
+                        In Odoo öffnen ↗
+                      </a>
+                    ) : (
+                      <span style={{ fontSize: 11, color: theme.steel }}>Kein Odoo-Link (Export ohne ID)</span>
+                    )}
+                    {expanded[toggleKey] && (
+                      <button
+                        onClick={() => {
+                          setExpanded((prev) => ({ ...prev, [toggleKey]: false }));
+                          setDetailId(null);
+                        }}
+                        style={smallBtn(false)}
+                      >
+                        Block zuklappen
+                      </button>
+                    )}
+                    <button onClick={() => setDetailId(null)} title="Schließen" style={smallBtn(false)}>
+                      ✕
+                    </button>
+                  </div>
+                </div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: "10px 24px", marginTop: 12 }}>
+                  {fact(
+                    "Auf der Maschine",
+                    it.scheduled
+                      ? `${it.pastStart != null ? "seit " : ""}${fmtShort(dateOf(it.pastStart ?? it.start))} bis ca. ${fmtShort(endDateOf(it.end))}`
+                      : "nicht eingeplant"
+                  )}
+                  {g && g.end != null && fact("Auftrag fertig ca.", `${fmtShort(endDateOf(g.end))} (${g.endMachine})`)}
+                  {o.hours_plan != null &&
+                    o.hours > o.hours_plan + 0.05 &&
+                    fact("Mehraufwand", `+${fmtH(o.hours - o.hours_plan)} h (Plan ${fmtH(o.hours_plan)} h, jetzt ${fmtH(o.hours)} h)`)}
+                  {tagsOf(o).length > 0 && fact("OBERFLÄCHE EXTERN danach", `${tagsOf(o).join(", ")} · ${fmtDuration(o.extern_days || 7)}`)}
+                </div>
+                {renderPosition(pl, it, pl.items.indexOf(it), true)}
+              </div>
+            );
+          })();
+  const laneNode = laneDetail &&
+            (() => {
+              const list = laneDetail.map((id) => orders.find((x) => x.id === id)).filter((x) => x && !x.done);
+              if (list.length === 0) return null;
+              const lane = laneOf(list[0].machine);
+              if (!lane) return null;
+              return (
+                <div style={{ marginTop: wide ? 0 : 14, marginBottom: wide ? 12 : 0, padding: 14, border: `1px solid ${theme.line}`, borderRadius: 8, background: wide ? theme.panel : theme.bg }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                    <b style={{ fontSize: 14, color: lane.colorKey ? theme[lane.colorKey] : undefined }}>{lane.name}</b>
+                    <button onClick={() => setLaneDetail(null)} title="Schließen" style={smallBtn(false)}>
+                      ✕
+                    </button>
+                  </div>
+                  {list.map((o) => {
+                    const start = o.extern_start ? daysBetween(monday0, o.extern_start) : null;
+                    return (
+                      <div key={o.id} style={{ borderTop: `1px solid ${theme.line}`, marginTop: 10, paddingTop: 10 }}>
+                        <div style={{ display: "flex", gap: 8, alignItems: "baseline", flexWrap: "wrap" }}>
+                          <b style={{ ...mono, fontSize: 13 }}>{posNo(o)}</b>
+                          <OdooLink o={o} />
+                          <span style={{ fontSize: 12, color: theme.steel }}>
+                            {o.source ? `Auftrag ${o.source} · ` : ""}
+                            {start != null
+                              ? `seit ${fmtShort(o.extern_start)}, ${fmtDuration(daysIn(o))} (bis ca. ${fmtShort(endDateOf(start + daysIn(o)))})`
+                              : "ohne Beginn"}
+                          </span>
+                        </div>
+                        {metaLine(o, false) && <div style={{ fontSize: 12, marginTop: 4 }}>{metaLine(o, false)}</div>}
+                        <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", marginTop: 8 }}>
+                          {laneButtons(o)}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })();
+  const hasSide = !!detailNode || !!laneNode;
+
   return (
     <div>
       <div
@@ -1387,7 +1692,7 @@ export default function Planning({ theme, mode, shift, weekCap, onSaveShift, onD
             background: theme.panel,
             border: `1px solid ${theme.line}`,
             borderLeft: `4px solid ${theme.ink}`,
-            borderRadius: 10,
+            borderRadius: 8,
             padding: 14,
             marginBottom: 16,
           }}
@@ -1421,7 +1726,7 @@ export default function Planning({ theme, mode, shift, weekCap, onSaveShift, onD
             background: theme.panel,
             border: `1px solid ${theme.line}`,
             borderLeft: `4px solid ${theme.red}`,
-            borderRadius: 10,
+            borderRadius: 8,
             padding: 14,
             marginBottom: 16,
           }}
@@ -1444,7 +1749,7 @@ export default function Planning({ theme, mode, shift, weekCap, onSaveShift, onD
           style={{
             background: theme.panel,
             border: `1px solid ${theme.line}`,
-            borderRadius: 10,
+            borderRadius: 8,
             padding: 18,
             marginBottom: 16,
           }}
@@ -1618,14 +1923,15 @@ export default function Planning({ theme, mode, shift, weekCap, onSaveShift, onD
         </div>
       )}
 
-      {/* Zeitstrahl */}
+      {/* Zeitstrahl, bei breitem Fenster mit den Details der gewählten Position rechts daneben */}
+      <div style={{ display: "flex", gap: 16, alignItems: "flex-start", marginBottom: 16 }}>
+      <div style={{ flex: "1 1 0", minWidth: 0 }}>
       <div
         style={{
           background: theme.panel,
           border: `1px solid ${theme.line}`,
-          borderRadius: 10,
+          borderRadius: 8,
           padding: 18,
-          marginBottom: 16,
           overflowX: "auto",
         }}
       >
@@ -2245,182 +2551,8 @@ export default function Planning({ theme, mode, shift, weekCap, onSaveShift, onD
             </div>
           ))}
 
-          {/* Details der gewählten Position, mit Link zum Fertigungsauftrag in Odoo */}
-          {(() => {
-            const found =
-              detailId != null
-                ? plan.flatMap((pl) => pl.items.map((it) => ({ pl, it }))).find((x) => x.it.o.id === detailId)
-                : null;
-            if (!found) return null;
-            const { pl, it } = found;
-            const o = it.o;
-            const g = groupByKey.get(groupKeyOf(o));
-            const toggleKey = `${pl.m.id}|${groupKeyOf(o)}`;
-            const meta = [o.quantity != null ? `${fmtH(o.quantity)} Stück` : null, o.product].filter(Boolean).join(" · ");
-            const fact = (label, value) => (
-              <div style={{ minWidth: 130 }}>
-                <div style={{ ...eyebrow, fontSize: 9 }}>{label}</div>
-                <div style={{ fontSize: 12, marginTop: 2 }}>{value}</div>
-              </div>
-            );
-            return (
-              <div style={{ marginTop: 14, padding: 14, border: `1px solid ${theme.line}`, borderRadius: 8, background: theme.bg }}>
-                <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
-                      <b style={{ ...mono, fontSize: 14 }}>{posNo(o)}</b>
-                      <span style={{ fontSize: 12, color: theme.steel }}>
-                        {o.source ? `Auftrag ${o.source} · ` : ""}
-                        <span style={{ color: theme[pl.m.colorKey], fontWeight: 600 }}>{pl.m.name}</span>
-                      </span>
-                    </div>
-                    {meta && <div style={{ fontSize: 12, marginTop: 4 }}>{meta}</div>}
-                  </div>
-                  <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
-                    {o.odoo_id ? (
-                      <a
-                        href={`${ODOO_URL}/${o.odoo_id}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        style={{ ...smallBtn(false), textDecoration: "none", color: theme.ink, fontWeight: 700 }}
-                      >
-                        In Odoo öffnen ↗
-                      </a>
-                    ) : (
-                      <span style={{ fontSize: 11, color: theme.steel }}>Kein Odoo-Link (Export ohne ID)</span>
-                    )}
-                    <button onClick={() => finishProduced(o)} title="Fertig produziert: die Position geht in die QS" style={smallBtn(false)}>
-                      Fertig produziert
-                    </button>
-                    {expanded[toggleKey] && (
-                      <button
-                        onClick={() => {
-                          setExpanded((prev) => ({ ...prev, [toggleKey]: false }));
-                          setDetailId(null);
-                        }}
-                        style={smallBtn(false)}
-                      >
-                        Block zuklappen
-                      </button>
-                    )}
-                    <button onClick={() => setDetailId(null)} title="Schließen" style={smallBtn(false)}>
-                      ✕
-                    </button>
-                  </div>
-                </div>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: "10px 24px", marginTop: 12 }}>
-                  {fact(
-                    "Gesamtstunden",
-                    <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-                      <input
-                        type="number"
-                        min={0}
-                        step="any"
-                        title="Gesamtstunden der Position (Schätzung)"
-                        value={o.hours || ""}
-                        onChange={(ev) =>
-                          patchOrder(o.id, (() => {
-                          const h = ev.target.value === "" ? 0 : Math.max(0, Number(ev.target.value));
-                          return { hours: h, hours_plan: h };
-                        })())
-                        }
-                        style={{ ...field, width: 84 }}
-                      />
-                      h
-                    </span>
-                  )}
-                  {fact(
-                    "Noch nötig",
-                    <span style={{ display: "inline-flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                      <RestInput
-                        value={o.hours > 0 ? round1(it.remaining) : ""}
-                        title="Wie viele Stunden braucht die Position noch? (Stand heute). Mehr als geplant verlängert den Balken."
-                        onCommit={(n) => setRest(o, it.effDone, n)}
-                        style={{ ...field, width: 84 }}
-                      />
-                      h
-                      <span style={{ color: it.stale ? theme.amber : theme.steel }}>
-                        {it.percent != null ? `${it.estimated ? "~" : ""}${it.percent} % ${it.estimated ? "geschätzt" : "erledigt"} · ` : ""}
-                        gelaufen {fmtH(it.effDone)} h{it.stale ? " · Fortschritt prüfen" : ""}
-                      </span>
-                    </span>
-                  )}
-                  {o.hours_plan != null &&
-                    o.hours > o.hours_plan + 0.05 &&
-                    fact("Mehraufwand", `+${fmtH(o.hours - o.hours_plan)} h (Plan ${fmtH(o.hours_plan)} h, jetzt ${fmtH(o.hours)} h)`)}
-                  {fact(
-                    "Auf der Maschine",
-                    it.scheduled
-                      ? `${it.pastStart != null ? "seit " : ""}${fmtShort(dateOf(it.pastStart ?? it.start))} bis ca. ${fmtShort(endDateOf(it.end))}`
-                      : "nicht eingeplant"
-                  )}
-                  {fact(
-                    "Liefertermin der Position",
-                    <input
-                      type="date"
-                      title="Liefertermin dieser Position (der Auftragstermin steht in der Auftragsübersicht)"
-                      value={o.due || ""}
-                      onChange={(ev) => patchOrder(o.id, { due: ev.target.value || null })}
-                      style={{ ...field, colorScheme: mode }}
-                    />
-                  )}
-                  {o.component_status && fact("Material (Odoo)", <MaterialBadge o={o} theme={theme} />)}
-                  {fact(
-                    "Start frühestens",
-                    <input
-                      type="date"
-                      title="Z. B. wenn Rohmaterial und Werkzeuge da sind. Ein Datum in der Vergangenheit gilt als tatsächlicher Start (der Balken beginnt dort). Leer = sobald die Maschine frei ist."
-                      value={o.earliest_start || ""}
-                      onChange={(ev) => patchOrder(o.id, { earliest_start: ev.target.value || null })}
-                      style={{ ...field, colorScheme: mode }}
-                    />
-                  )}
-                  {g && g.end != null && fact("Auftrag fertig ca.", `${fmtShort(endDateOf(g.end))} (${g.endMachine})`)}
-                  {tagsOf(o).length > 0 && fact("OBERFLÄCHE EXTERN danach", `${tagsOf(o).join(", ")} · ${fmtDuration(o.extern_days || 7)}`)}
-                </div>
-              </div>
-            );
-          })()}
-
-          {/* QS und andere Orte: Positionen des angeklickten Balkens mit ihren Aktionen */}
-          {laneDetail &&
-            (() => {
-              const list = laneDetail.map((id) => orders.find((x) => x.id === id)).filter((x) => x && !x.done);
-              if (list.length === 0) return null;
-              const lane = laneOf(list[0].machine);
-              if (!lane) return null;
-              return (
-                <div style={{ marginTop: 14, padding: 14, border: `1px solid ${theme.line}`, borderRadius: 8, background: theme.bg }}>
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-                    <b style={{ fontSize: 14, color: lane.colorKey ? theme[lane.colorKey] : undefined }}>{lane.name}</b>
-                    <button onClick={() => setLaneDetail(null)} title="Schließen" style={smallBtn(false)}>
-                      ✕
-                    </button>
-                  </div>
-                  {list.map((o) => {
-                    const start = o.extern_start ? daysBetween(monday0, o.extern_start) : null;
-                    return (
-                      <div key={o.id} style={{ borderTop: `1px solid ${theme.line}`, marginTop: 10, paddingTop: 10 }}>
-                        <div style={{ display: "flex", gap: 8, alignItems: "baseline", flexWrap: "wrap" }}>
-                          <b style={{ ...mono, fontSize: 13 }}>{posNo(o)}</b>
-                          <OdooLink o={o} />
-                          <span style={{ fontSize: 12, color: theme.steel }}>
-                            {o.source ? `Auftrag ${o.source} · ` : ""}
-                            {start != null
-                              ? `seit ${fmtShort(o.extern_start)}, ${fmtDuration(daysIn(o))} (bis ca. ${fmtShort(endDateOf(start + daysIn(o)))})`
-                              : "ohne Beginn"}
-                          </span>
-                        </div>
-                        {metaLine(o, false) && <div style={{ fontSize: 12, marginTop: 4 }}>{metaLine(o, false)}</div>}
-                        <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", marginTop: 8 }}>
-                          {laneButtons(o)}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              );
-            })()}
+          {!wide && detailNode}
+          {!wide && laneNode}
 
           <div style={{ display: "flex", flexWrap: "wrap", gap: 16, marginTop: 14, fontSize: 11, color: theme.steel }}>
             <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
@@ -2470,6 +2602,14 @@ export default function Planning({ theme, mode, shift, weekCap, onSaveShift, onD
           </div>
         </div>
       </div>
+      </div>
+      {wide && hasSide && (
+        <aside style={{ flex: "0 0 400px", position: "sticky", top: 12, maxHeight: "calc(100vh - 24px)", overflowY: "auto" }}>
+          {detailNode}
+          {laneNode}
+        </aside>
+      )}
+      </div>
 
       {/* Schichtmodell für künftige Wochen, mit Vorschau "Was wäre wenn" */}
       {(() => {
@@ -2480,7 +2620,7 @@ export default function Planning({ theme, mode, shift, weekCap, onSaveShift, onD
         const formDate = newShift.date ? mondayOf(newShift.date) : "";
         const formOk = /^\d{4}-\d{2}-\d{2}$/.test(newShift.date) && formDate > today;
         return (
-          <div style={{ background: theme.panel, border: `1px solid ${theme.line}`, borderRadius: 10, padding: 18, marginBottom: 20 }}>
+          <div style={{ background: theme.panel, border: `1px solid ${theme.line}`, borderRadius: 8, padding: 18, marginBottom: 20 }}>
             <div style={eyebrow}>Schichtmodell der Planung</div>
             <div style={{ fontSize: 12, color: theme.steel, marginTop: 4 }}>
               Jetzt: {shift.label} {fmtH(shift.hours)} h pro Woche (das Modell vom letzten Montag). Hier kannst du ein anderes Modell
@@ -2549,7 +2689,7 @@ export default function Planning({ theme, mode, shift, weekCap, onSaveShift, onD
         const WD = ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"];
         const wd = (date) => WD[new Date(date + "T00:00:00Z").getUTCDay()];
         return (
-          <div style={{ background: theme.panel, border: `1px solid ${theme.line}`, borderRadius: 10, padding: 18, marginBottom: 20 }}>
+          <div style={{ background: theme.panel, border: `1px solid ${theme.line}`, borderRadius: 8, padding: 18, marginBottom: 20 }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
               <div>
                 <div style={eyebrow}>Freie Tage</div>
@@ -2641,7 +2781,7 @@ export default function Planning({ theme, mode, shift, weekCap, onSaveShift, onD
           style={{
             background: theme.panel,
             border: `1px solid ${theme.line}`,
-            borderRadius: 10,
+            borderRadius: 8,
             padding: 18,
             marginBottom: 16,
             overflowX: "auto",
@@ -2855,7 +2995,7 @@ export default function Planning({ theme, mode, shift, weekCap, onSaveShift, onD
           return (
             <div
               key={p.m.id}
-              style={{ background: theme.panel, border: `1px solid ${theme.line}`, borderRadius: 10, padding: 18 }}
+              style={{ background: theme.panel, border: `1px solid ${theme.line}`, borderRadius: 8, padding: 18 }}
             >
               <div style={{ fontWeight: 700, fontSize: 15, color: theme[p.m.colorKey] }}>{p.m.name}</div>
               <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", margin: "8px 0 12px" }}>
@@ -2876,164 +3016,7 @@ export default function Planning({ theme, mode, shift, weekCap, onSaveShift, onD
                 </span>
               </div>
 
-              {p.items.map(({ o, scheduled, end, status, lateDays, diff, remaining, percent, estimated, effDone, stale }, idx) => (
-                <div key={o.id} style={{ borderTop: `1px solid ${theme.line}`, padding: "10px 0" }}>
-                  <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
-                    <button
-                      disabled={idx === 0}
-                      onClick={() => move(p.m.id, o.id, -1)}
-                      aria-label="Nach oben"
-                      style={smallBtn(idx === 0)}
-                    >
-                      ↑
-                    </button>
-                    <button
-                      disabled={idx === p.items.length - 1}
-                      onClick={() => move(p.m.id, o.id, 1)}
-                      aria-label="Nach unten"
-                      style={smallBtn(idx === p.items.length - 1)}
-                    >
-                      ↓
-                    </button>
-                    <input
-                      type="text"
-                      placeholder="Auftrag"
-                      maxLength={40}
-                      value={o.order_no}
-                      onChange={(ev) => patchOrder(o.id, { order_no: ev.target.value })}
-                      style={{ ...field, width: 90 }}
-                    />
-                    <OdooLink o={o} />
-                    <MaterialBadge o={o} theme={theme} />
-                    {o.part_label && (
-                      <span style={{ fontSize: 10, fontWeight: 700, color: theme.steel, border: `1px solid ${theme.line}`, borderRadius: 10, padding: "1px 7px", whiteSpace: "nowrap" }}>
-                        {o.part_label}
-                      </span>
-                    )}
-                    <input
-                      type="number"
-                      min={0}
-                      step="any"
-                      placeholder="Gesamt"
-                      title="Gesamtstunden der Position"
-                      value={o.hours || ""}
-                      onChange={(ev) =>
-                        patchOrder(o.id, (() => {
-                          const h = ev.target.value === "" ? 0 : Math.max(0, Number(ev.target.value));
-                          return { hours: h, hours_plan: h };
-                        })())
-                      }
-                      style={{ ...field, width: 72 }}
-                    />
-                    <span style={{ ...eyebrow, fontSize: 11 }}>h</span>
-                    <RestInput
-                      value={o.hours > 0 ? round1(remaining) : ""}
-                      title="Wie viele Stunden braucht die Position noch? (Stand heute). Mehr als geplant verlängert den Balken."
-                      onCommit={(n) => setRest(o, effDone, n)}
-                      style={{ ...field, width: 98 }}
-                    />
-                    <span style={{ ...eyebrow, fontSize: 11 }}>h</span>
-                    <input
-                      type="date"
-                      title="Liefertermin"
-                      value={o.due || ""}
-                      onChange={(ev) => patchOrder(o.id, { due: ev.target.value || null })}
-                      style={{ ...field, colorScheme: mode }}
-                    />
-                    <span style={{ ...eyebrow, fontSize: 10 }}>Start frühestens</span>
-                    <input
-                      type="date"
-                      title="Start frühestens, z. B. wenn Rohmaterial und Werkzeuge da sind. Ein Datum in der Vergangenheit gilt als tatsächlicher Start: Der Balken beginnt dann dort. Leer = sobald die Maschine frei ist."
-                      value={o.earliest_start || ""}
-                      onChange={(ev) => patchOrder(o.id, { earliest_start: ev.target.value || null })}
-                      style={{ ...field, colorScheme: mode }}
-                    />
-                  </div>
-                  <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", marginTop: 8 }}>
-                    <button
-                      onClick={() => finishProduced(o)}
-                      title="Fertig produziert: die Position geht in die QS (ohne QS-Prüfung ist sie damit erledigt)"
-                      style={smallBtn(false)}
-                    >
-                      Fertig produziert
-                    </button>
-                    <label
-                      title="Muss die Position durch die QS-Prüfung?"
-                      style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, color: theme.steel }}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={o.qs_required !== false}
-                        onChange={(ev) => patchOrder(o.id, { qs_required: ev.target.checked })}
-                        style={{ accentColor: theme.ink }}
-                      />
-                      QS-Prüfung
-                    </label>
-                    {!o.part_label && (
-                      <button
-                        onClick={() => startOps(o)}
-                        title="Auf Arbeitsgänge aufteilen: z. B. Seite 1 auf einer Maschine, Seite 2 und 3 auf einer anderen"
-                        style={smallBtn(false)}
-                      >
-                        Arbeitsgänge
-                      </button>
-                    )}
-                    {o.quantity > 1 && !isOp(o) && (
-                      <button
-                        onClick={() => setSplitFor({ id: o.id, qty: "", due: "", error: null })}
-                        title="Teillieferung: einen Teil der Stückzahl vorab liefern"
-                        style={smallBtn(false)}
-                      >
-                        Teillieferung
-                      </button>
-                    )}
-                    {deleteButton(o)}
-                    <span
-                      style={{
-                        fontSize: 12,
-                        marginLeft: 4,
-                        color: status === "late" ? theme.red : theme.steel,
-                        fontWeight: status === "late" ? 600 : 400,
-                      }}
-                    >
-                      {(percent != null ? `${estimated ? "~" : ""}${percent} % ${estimated ? "geschätzt" : "erledigt"} · Rest ${fmtH(remaining)} h · ` : "") +
-                        (stale ? "Fortschritt prüfen · " : "") +
-                        (o.hours_plan != null && o.hours > o.hours_plan + 0.05
-                          ? `Mehraufwand +${fmtH(o.hours - o.hours_plan)} h (Plan ${fmtH(o.hours_plan)} h) · `
-                          : "") +
-                        (scheduled
-                          ? `Ende ca. ${fmtShort(endDateOf(end))}` +
-                            (status === "late"
-                              ? ` · ${days(lateDays)} nach Liefertermin`
-                              : diff != null
-                              ? ` · Puffer ${fmtH(-diff)} Tage`
-                              : "")
-                          : !(o.hours > 0)
-                          ? "Stunden eintragen"
-                          : remaining === 0
-                          ? "Stunden erreicht, bitte als erledigt markieren"
-                          : "Wochenleistung fehlt")}
-                    </span>
-                  </div>
-                  {splitFor && splitFor.id === o.id && splitForm(o)}
-                  {opsFor && opsFor.id === o.id && opsForm(o)}
-                  {(() => {
-                    const pred = o.after_id ? orders.find((x) => x.id === o.after_id && !x.done) : null;
-                    if (!pred) return null;
-                    const pm = MACHINES.find((m) => m.id === pred.machine);
-                    return (
-                      <div style={{ fontSize: 11, color: theme.steel, marginTop: 6 }}>
-                        ↳ folgt auf {posNo(pred)}
-                        {pm ? ` (${pm.short})` : ""}: startet, wenn dieser Arbeitsgang fertig ist
-                      </div>
-                    );
-                  })()}
-                  {externEditor(o)}
-                  {metaLine(o) && (
-                    <div style={{ fontSize: 11, color: theme.steel, marginTop: 6 }}>{metaLine(o)}</div>
-                  )}
-                </div>
-              ))}
+              {p.items.map((item, idx) => renderPosition(p, item, idx))}
 
               <button onClick={() => addOrder(p.m.id)} style={{ ...smallBtn(false), marginTop: 6 }}>
                 + Auftrag hinzufügen
@@ -3048,7 +3031,7 @@ export default function Planning({ theme, mode, shift, weekCap, onSaveShift, onD
           return (
             <div
               key={lane.id}
-              style={{ background: theme.panel, border: `1px solid ${theme.line}`, borderRadius: 10, padding: 18 }}
+              style={{ background: theme.panel, border: `1px solid ${theme.line}`, borderRadius: 8, padding: 18 }}
             >
               <div style={{ fontWeight: 700, fontSize: 15, color: lane.colorKey ? theme[lane.colorKey] : undefined }}>{lane.name}</div>
               <div style={{ height: 8 }} />
@@ -3071,7 +3054,7 @@ export default function Planning({ theme, mode, shift, weekCap, onSaveShift, onD
                         />
                       )}
                       <OdooLink o={o} />
-                      <span style={{ ...eyebrow, fontSize: 10 }}>Beginn</span>
+                      <span style={{ ...eyebrow, fontSize: 12 }}>Beginn</span>
                       <input
                         type="date"
                         title={`Beginn in ${lane.name}`}
@@ -3081,7 +3064,7 @@ export default function Planning({ theme, mode, shift, weekCap, onSaveShift, onD
                       />
                       {lane.id !== "qs" && end != null && (
                         <>
-                          <span style={{ ...eyebrow, fontSize: 10 }}>Rückkehr</span>
+                          <span style={{ ...eyebrow, fontSize: 12 }}>Rückkehr</span>
                           <input
                             type="date"
                             title="Wann kommt das Teil zurück? Ersetzt die Dauer."
@@ -3126,7 +3109,7 @@ export default function Planning({ theme, mode, shift, weekCap, onSaveShift, onD
                           }
                           style={{ ...field, width: 70 }}
                         />
-                        <span style={{ ...eyebrow, fontSize: 10 }}>Liefertermin</span>
+                        <span style={{ ...eyebrow, fontSize: 12 }}>Liefertermin</span>
                         <input
                           type="date"
                           title="Liefertermin des Auftrags an den Kunden"
@@ -3177,7 +3160,7 @@ export default function Planning({ theme, mode, shift, weekCap, onSaveShift, onD
               style={{
                 background: theme.panel,
                 border: `1px solid ${theme.line}`,
-                borderRadius: 10,
+                borderRadius: 8,
                 padding: "6px 18px",
                 marginTop: 10,
               }}

@@ -55,12 +55,11 @@ export function weekInfo(monday) {
 export function makeStyles(theme) {
   return {
     eyebrow: {
-      fontSize: 10,
-      letterSpacing: "0.14em",
-      textTransform: "uppercase",
+      fontSize: 12,
+      letterSpacing: 0,
       color: theme.steel,
       fontWeight: 600,
     },
-    mono: { fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" },
+    mono: { fontFamily: "inherit", fontVariantNumeric: "tabular-nums" },
   };
 }

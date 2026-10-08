@@ -497,7 +497,6 @@ export default function Dashboard() {
       style={{
         background: theme.bg,
         minHeight: "100%",
-        padding: "28px 24px 48px",
         color: theme.ink,
         fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
         transition: "background-color 0.25s ease, color 0.25s ease",
@@ -506,55 +505,60 @@ export default function Dashboard() {
       <style>{`
         * { transition: background-color 0.25s ease, border-color 0.25s ease, color 0.25s ease; }
       `}</style>
-      <div style={{ maxWidth: 1120, margin: "0 auto" }}>
-        {/* Kopf */}
-        <div
+{/* Kopfzeile wie bei QS CHECK */}
+      <header
+        style={{
+          minHeight: 52,
+          background: theme.panel,
+          borderBottom: `1px solid ${theme.line}`,
+          display: "flex",
+          alignItems: "center",
+          flexWrap: "wrap",
+          gap: 14,
+          padding: "6px 24px",
+        }}
+      >
+        <img src={mode === "dark" ? logoDark : logoLight} alt="Kratos" style={{ height: 22, width: "auto", display: "block" }} />
+        <span
           style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            flexWrap: "wrap",
-            gap: 12,
-            borderBottom: `2px solid ${theme.ink}`,
-            paddingBottom: 16,
-            marginBottom: 28,
+            fontWeight: 700,
+            letterSpacing: "0.14em",
+            fontSize: 13,
+            color: theme.ink,
+            borderLeft: `1px solid ${theme.lineStrong}`,
+            paddingLeft: 14,
           }}
         >
-          <div style={{ display: "flex", alignItems: "center", gap: 28, flexWrap: "wrap" }}>
-            <img
-              src={mode === "dark" ? logoDark : logoLight}
-              alt="Kratos"
-              style={{ height: 22, width: "auto", display: "block" }}
-            />
-            <nav style={{ display: "flex", gap: 20 }}>
-              {PAGES.map((p) => {
-                const active = page === p.id;
-                return (
-                  <button
-                    key={p.id}
-                    onClick={() => goTo(p.id)}
-                    style={{
-                      ...eyebrow,
-                      fontSize: 11,
-                      color: active ? theme.ink : theme.steel,
-                      background: "none",
-                      border: "none",
-                      borderBottom: `2px solid ${active ? theme.red : "transparent"}`,
-                      padding: "6px 0",
-                      cursor: "pointer",
-                    }}
-                  >
-                    {p.label}
-                  </button>
-                );
-              })}
-            </nav>
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+          PRODUKTION
+        </span>
+        <nav style={{ display: "flex", gap: 6 }}>
+          {PAGES.map((p) => {
+            const active = page === p.id;
+            return (
+              <button
+                key={p.id}
+                onClick={() => goTo(p.id)}
+                style={{
+                  border: 0,
+                  background: active ? theme.greenSoft : "transparent",
+                  color: active ? theme.greenDark : theme.steel,
+                  fontWeight: 600,
+                  fontSize: 14,
+                  padding: "6px 12px",
+                  borderRadius: 6,
+                  cursor: "pointer",
+                }}
+              >
+                {p.label}
+              </button>
+            );
+          })}
+        </nav>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", marginLeft: "auto" }}>
             {page === "dashboard" && (
               <>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <span style={{ ...eyebrow, fontSize: 11 }}>Auswertung</span>
+              <span style={{ ...eyebrow, fontSize: 12 }}>Auswertung</span>
               <select
                 value={selectedKey || ""}
                 onChange={(ev) => setPickedWeek(ev.target.value)}
@@ -563,7 +567,7 @@ export default function Dashboard() {
                   ...mono,
                   fontSize: 13,
                   fontWeight: 600,
-                  color: theme.red,
+                  color: theme.ink,
                   background: theme.panel,
                   border: `1px solid ${theme.line}`,
                   borderRadius: 6,
@@ -583,13 +587,13 @@ export default function Dashboard() {
             <button
               onClick={() => setShowEntry((v) => !v)}
               style={{
-                ...eyebrow,
-                fontSize: 11,
-                padding: "7px 12px",
+                fontSize: 13,
+                fontWeight: 600,
+                padding: "7px 14px",
                 borderRadius: 6,
-                border: `1px solid ${theme.ink}`,
-                background: showEntry ? theme.ink : theme.panel,
-                color: showEntry ? theme.bg : theme.ink,
+                border: `1px solid ${showEntry ? theme.lineStrong : theme.green}`,
+                background: showEntry ? theme.panel : theme.green,
+                color: showEntry ? theme.ink : "#fff",
                 cursor: "pointer",
               }}
             >
@@ -616,7 +620,8 @@ export default function Dashboard() {
               <ThemeIcon mode={mode} />
             </button>
           </div>
-        </div>
+      </header>
+      <div style={{ maxWidth: 1680, margin: "0 auto", padding: "24px 24px 48px" }}>
 
         {page === "planung" && <Planning theme={theme} mode={mode} shift={shiftNow} weekCap={weekCap} onSaveShift={saveCapacity} onDeleteShift={deleteCapacity} />}
 
@@ -628,7 +633,7 @@ export default function Dashboard() {
             style={{
               background: theme.panel,
               border: `1px solid ${theme.line}`,
-              borderRadius: 10,
+              borderRadius: 8,
               padding: 20,
               marginBottom: 28,
             }}
@@ -775,7 +780,7 @@ export default function Dashboard() {
             style={{
               background: theme.panel,
               border: `1px solid ${theme.line}`,
-              borderRadius: 10,
+              borderRadius: 8,
               padding: 16,
               marginBottom: 20,
               fontSize: 13,
@@ -825,7 +830,7 @@ export default function Dashboard() {
             return (
               <div
                 key={m.id}
-                style={{ background: theme.panel, border: `1px solid ${theme.line}`, borderRadius: 10, padding: 20 }}
+                style={{ background: theme.panel, border: `1px solid ${theme.line}`, borderRadius: 8, padding: 20 }}
               >
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
                   <div>
@@ -859,13 +864,13 @@ export default function Dashboard() {
                   <div>
                     <span style={eyebrow}>Maschine an</span>
                     <div style={{ ...mono, fontSize: 18, fontWeight: 600, marginTop: 4 }}>
-                      {fmtH(e.on)} <span style={{ ...eyebrow, fontSize: 11 }}>h</span>
+                      {fmtH(e.on)} <span style={{ ...eyebrow, fontSize: 12 }}>h</span>
                     </div>
                   </div>
                   <div>
                     <span style={eyebrow}>Spindelstunden</span>
                     <div style={{ ...mono, fontSize: 18, fontWeight: 600, marginTop: 4 }}>
-                      {fmtH(e.spindle)} <span style={{ ...eyebrow, fontSize: 11 }}>h</span>
+                      {fmtH(e.spindle)} <span style={{ ...eyebrow, fontSize: 12 }}>h</span>
                     </div>
                   </div>
                 </div>
@@ -882,7 +887,7 @@ export default function Dashboard() {
         </div>
 
         {/* Legende Spindelauslastung */}
-        <div style={{ background: theme.panel, border: `1px solid ${theme.line}`, borderRadius: 10, padding: 18, marginTop: -12, marginBottom: 12 }}>
+        <div style={{ background: theme.panel, border: `1px solid ${theme.line}`, borderRadius: 8, padding: 18, marginTop: -12, marginBottom: 12 }}>
           <div style={eyebrow}>Spindelauslastung: Bewertung</div>
           <div style={{ fontSize: 12, color: theme.steel, margin: "6px 0 12px" }}>
             Spindelstunden im Verhältnis zur Zeit „Maschine an“
@@ -913,7 +918,7 @@ export default function Dashboard() {
         </div>
 
         {/* Legende Kapazitätsauslastung */}
-        <div style={{ background: theme.panel, border: `1px solid ${theme.line}`, borderRadius: 10, padding: 18, marginBottom: 20 }}>
+        <div style={{ background: theme.panel, border: `1px solid ${theme.line}`, borderRadius: 8, padding: 18, marginBottom: 20 }}>
           <div style={eyebrow}>Kapazitätsauslastung: Bewertung</div>
           <div style={{ fontSize: 12, color: theme.steel, margin: "6px 0 12px" }}>
             Zeit „Maschine an“ im Verhältnis zur Kapazität der Woche (Schichtmodell)
@@ -938,7 +943,7 @@ export default function Dashboard() {
         </div>
 
         {/* Trend */}
-        <div style={{ background: theme.panel, border: `1px solid ${theme.line}`, borderRadius: 10, padding: 20, marginBottom: 20 }}>
+        <div style={{ background: theme.panel, border: `1px solid ${theme.line}`, borderRadius: 8, padding: 20, marginBottom: 20 }}>
           <div
             style={{
               display: "flex",
@@ -1072,7 +1077,7 @@ export default function Dashboard() {
               color: theme.ink,
             },
           ].map((t) => (
-            <div key={t.label} style={{ background: theme.panel, border: `1px solid ${theme.line}`, borderRadius: 10, padding: 18 }}>
+            <div key={t.label} style={{ background: theme.panel, border: `1px solid ${theme.line}`, borderRadius: 8, padding: 18 }}>
               <div style={eyebrow}>{t.label}</div>
               <div style={{ ...mono, fontSize: 26, fontWeight: 700, color: t.color, margin: "8px 0 4px" }}>{t.value}</div>
               <div style={{ fontSize: 12, color: theme.steel }}>{t.sub}</div>
