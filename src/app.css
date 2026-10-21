@@ -694,3 +694,13 @@ a.btn { text-decoration: none; }
 .v3d-dims { position: absolute; right: 10px; bottom: 12px; background: color-mix(in srgb, var(--surface) 88%, transparent); border: 1px solid var(--line); border-radius: 8px; padding: 3px 10px; font: 600 12.5px var(--f-mono); }
 .v3d-hint { position: absolute; right: 10px; top: 8px; font-size: 11px; color: var(--muted); pointer-events: none; }
 @media (max-width: 1100px) { .pdocs { grid-template-columns: minmax(0, 1fr); } }
+
+/* Auftrag auf einen Blick: Nummer groß in der Auftragsfarbe, FA-Nummer klein, farbiger Streifen links */
+.ochip { display: inline-flex; align-items: baseline; gap: 8px; border-radius: 9px; padding: 2px 10px 3px; margin-bottom: 3px; background: color-mix(in srgb, var(--oc) 18%, var(--surface)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--oc) 45%, transparent); }
+.ochip b { font: 700 18px/1.15 var(--f-mono); letter-spacing: .01em; color: var(--ink); }
+.ochip small { font-size: 11.5px; color: var(--muted); font-weight: 500; }
+.fano { font: 500 12.5px var(--f-mono); color: var(--muted); }
+.fano.plain { font: 600 13px var(--f-mono); color: var(--ink); }
+.tbl tbody tr.row.oc td:first-child { box-shadow: inset 5px 0 0 var(--oc); }
+.tbl tbody tr.row.dimrow td { opacity: .42; }
+.tbl tbody tr.row td { transition: opacity .18s ease; }

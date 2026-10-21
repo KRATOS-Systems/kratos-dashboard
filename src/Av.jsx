@@ -14,6 +14,13 @@ const FILTERS = [
   ["bald", "Startet in 7 Tagen"],
   ["alle", "Alle offenen"],
 ];
+// Jeder Auftrag bekommt eine feste Farbe, damit man seine Positionen auf einen Blick erkennt (ohne Rot, Gelb und Grün, die für den Zustand reserviert sind)
+const HUES = [210, 188, 255, 300, 330, 25, 275, 200];
+const orderColor = (key) => {
+  let h = 0;
+  for (const ch of String(key)) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return `hsl(${HUES[h % HUES.length]} 72% 60%)`;
+};
 const CLS = { bereit: "bereit", in_arbeit: "arbeit", offen: "offen", entfaellt: "nein" };
 const store = (k, v) => {
   try {
@@ -32,6 +39,7 @@ const store = (k, v) => {
 export default function AvView({ orders, checks, planStart, today, onSet, selectedId, onOpen, filter, setFilter, leadDays, repeatOf, people }) {
   const [query, setQuery] = useState("");
   const [popKey, setPopKey] = useState(null);
+  const [hoverOrder, setHoverOrder] = useState(null); // Auftrag, über dessen Zeile die Maus steht
   const [open, setOpen] = useState(() => new Set()); // aufgeklappte Zeilen (Zeichnung und 3D-Modell)
   const toggleOpen = (id) =>
     setOpen((prev) => {
@@ -64,6 +72,11 @@ export default function AvView({ orders, checks, planStart, today, onSet, select
       })
       .filter(({ o }) => !q || `${o.order_no} ${o.source || ""} ${o.product || ""}`.toLowerCase().includes(q));
   }, [orders, checks, planStart, query, leadDays, today]);
+  const perOrder = useMemo(() => {
+    const m = new Map();
+    all.forEach((r) => m.set(groupKey(r.o), (m.get(groupKey(r.o)) || 0) + 1));
+    return m;
+  }, [all]);
   const mine = (r) => {
     if (!person) return true;
     return AV_ITEMS.some((it) => {
@@ -150,8 +163,13 @@ export default function AvView({ orders, checks, planStart, today, onSet, select
       <div style={{ display: "flex", gap: 11, alignItems: "center" }}>
         <Thumb src={partImg(o)} size={64} />
         <div style={{ minWidth: 0 }}>
-          {showOrder && <div className="posord">{o.source || o.order_no || "ohne Auftrag"}</div>}
-          <b className="mono">{posNo(o)}</b>
+          {showOrder && (
+            <span className="ochip" title={"Auftrag " + (o.source || o.order_no || "ohne Auftrag") + ": " + perOrder.get(groupKey(o)) + " offene Positionen in der Arbeitsvorbereitung"}>
+              <b>{o.source || o.order_no || "ohne Auftrag"}</b>
+              <small>{perOrder.get(groupKey(o))} Pos.</small>
+            </span>
+          )}
+          <div className={showOrder ? "fano" : "fano plain"}>{posNo(o)}</div>
           <div style={{ color: "var(--muted)", fontSize: 12, maxWidth: 210, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={o.product || ""}>
             {[o.quantity != null ? `${o.quantity} Stück` : null, o.product].filter(Boolean).join(" · ")}
           </div>
@@ -186,7 +204,13 @@ export default function AvView({ orders, checks, planStart, today, onSet, select
       .join(" · ");
     return (
       <React.Fragment key={o.id}>
-      <tr className={`row${selectedId === o.id ? " sel" : ""}${r.late ? " ovd" : ""}${isOpen ? " xopen" : ""}`} onClick={() => onOpen(o.id)}>
+      <tr
+        className={`row${selectedId === o.id ? " sel" : ""}${r.late && !showOrder ? " ovd" : ""}${showOrder ? " oc" : ""}${isOpen ? " xopen" : ""}${showOrder && hoverOrder && hoverOrder !== groupKey(o) ? " dimrow" : ""}`}
+        style={showOrder ? { "--oc": orderColor(groupKey(o)) } : undefined}
+        onMouseEnter={showOrder ? () => setHoverOrder(groupKey(o)) : undefined}
+        onMouseLeave={showOrder ? () => setHoverOrder(null) : undefined}
+        onClick={() => onOpen(o.id)}
+      >
         <td className="xcell">
           <button
             type="button"
