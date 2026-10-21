@@ -25,13 +25,6 @@ const SOON = [
   ["Laufkarte drucken", "Laufkarte mit Zeichnung, Arbeitsgängen und QR-Code"],
   ["Terminverlauf", "Wann sich Liefer- und Muss-bis-Termin geändert haben"],
 ];
-// Jeder Auftrag bekommt eine feste Farbe, damit man seine Positionen auf einen Blick erkennt (ohne Rot, Gelb und Grün, die für den Zustand reserviert sind)
-const HUES = [210, 188, 255, 300, 330, 25, 275, 200];
-const orderColor = (key) => {
-  let h = 0;
-  for (const ch of String(key)) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
-  return `hsl(${HUES[h % HUES.length]} 72% 60%)`;
-};
 const CLS = { bereit: "bereit", in_arbeit: "arbeit", offen: "offen", entfaellt: "nein" };
 const store = (k, v) => {
   try {
@@ -61,29 +54,9 @@ function AvPanel({ r, checks, orders, onSet, onBulk, people, repeatSrc, onApplyR
       </div>
       <div className="avp-main">
         <div className="avp-top">
-          <div className="avp-facts">
-            <div>
-              <small>Auftrag</small>
-              <b>{o.source || o.order_no || "–"}</b>
-            </div>
-            <div>
-              <small>Position</small>
-              <b>{posNo(o)}</b>
-            </div>
-            <div>
-              <small>Planung</small>
-              <b>{plan ? plan.machine + " · ab " + fmtShort(plan.start) : "nicht eingeplant"}</b>
-            </div>
-            <div>
-              <small>Muss bis</small>
-              <b style={{ color: sum.ready ? "var(--ok)" : late ? "var(--bad)" : undefined }}>
-                {sum.ready ? "bereit" : muss ? fmtShort(muss) + (late ? " (überfällig)" : "") : "–"}
-              </b>
-            </div>
-            <div>
-              <small>Liefertermin</small>
-              <b style={{ color: o.due && o.due < today ? "var(--bad)" : undefined }}>{o.due ? fmtShort(o.due) : "–"}</b>
-            </div>
+          <div className="avp-title">
+            <b>{o.product || posNo(o)}</b>
+            {o.quantity != null && <span>{o.quantity} Stück</span>}
           </div>
           <div className="actions">
             {o.odoo_id && (
@@ -96,7 +69,30 @@ function AvPanel({ r, checks, orders, onSet, onBulk, people, repeatSrc, onApplyR
             </button>
           </div>
         </div>
-        {o.product && <div className="avp-prod">{[o.quantity != null ? o.quantity + " Stück" : null, o.product].filter(Boolean).join(" · ")}</div>}
+        <div className="avp-facts">
+          <div>
+            <small>Auftrag</small>
+            <b>{o.source || o.order_no || "–"}</b>
+          </div>
+          <div>
+            <small>Position</small>
+            <b>{posNo(o)}</b>
+          </div>
+          <div>
+            <small>Planung</small>
+            <b>{plan ? plan.machine + " · ab " + fmtShort(plan.start) : "nicht eingeplant"}</b>
+          </div>
+          <div>
+            <small>Muss bis</small>
+            <b style={{ color: sum.ready ? "var(--ok)" : late ? "var(--bad)" : undefined }}>
+              {sum.ready ? "bereit" : muss ? fmtShort(muss) + (late ? " · überfällig" : "") : "–"}
+            </b>
+          </div>
+          <div>
+            <small>Liefertermin</small>
+            <b style={{ color: o.due && o.due < today ? "var(--bad)" : undefined }}>{o.due ? fmtShort(o.due) : "–"}</b>
+          </div>
+        </div>
         {repeatSrc && (
           <div className="note" style={{ margin: "10px 0 0" }}>
             <b>Wiederholteil:</b> Das gleiche Teil wurde schon als {posNo(repeatSrc)} vorbereitet. Programm, Werkzeuge, Spannmittel, Prüfplan und EMPB samt Zuständigem können übernommen werden.
@@ -301,6 +297,14 @@ export default function AvView({ orders, checks, planStart, today, onSet, onBulk
     );
   };
 
+  // Zwei Grautöne im Wechsel: Folgen Positionen desselben Auftrags aufeinander, behalten sie den Ton
+  const bands = useMemo(() => {
+    let t = 1;
+    return sorted.map((r, ix) => {
+      if (ix > 0 && groupKey(sorted[ix - 1].o) !== groupKey(r.o)) t = 1 - t;
+      return t;
+    });
+  }, [sorted]);
   const posCell = (r, showOrder) => {
     const { o } = r;
     const rep = repeatOf && repeatOf.get(o.id);
@@ -315,7 +319,7 @@ export default function AvView({ orders, checks, planStart, today, onSet, onBulk
             </span>
           )}
           <div className={showOrder ? "fano" : "fano plain"}>{posNo(o)}</div>
-          <div style={{ color: "var(--muted)", fontSize: 12, maxWidth: 210, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={o.product || ""}>
+          <div style={{ color: "var(--muted)", fontSize: 12, maxWidth: 240, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={o.product || ""}>
             {[o.quantity != null ? `${o.quantity} Stück` : null, o.product].filter(Boolean).join(" · ")}
           </div>
           {rep && (
@@ -334,7 +338,7 @@ export default function AvView({ orders, checks, planStart, today, onSet, onBulk
     );
   };
 
-  const dataRow = (r, showOrder) => {
+  const dataRow = (r, showOrder, tone = 0) => {
     const { o, sum, plan } = r;
     const dueLate = o.due && o.due < today;
     const isOpen = open.has(o.id);
@@ -350,28 +354,12 @@ export default function AvView({ orders, checks, planStart, today, onSet, onBulk
     return (
       <React.Fragment key={o.id}>
       <tr
-        className={`row${r.late && !showOrder ? " ovd" : ""}${showOrder ? " oc" : ""}${isOpen ? " xopen sel" : ""}${showOrder && hoverOrder && hoverOrder !== groupKey(o) ? " dimrow" : ""}`}
-        style={showOrder ? { "--oc": orderColor(groupKey(o)) } : undefined}
+        className={`row${r.late && !showOrder ? " ovd" : ""}${showOrder ? " oc t" + tone : ""}${isOpen ? " xopen sel" : ""}${showOrder && hoverOrder && hoverOrder !== groupKey(o) ? " dimrow" : ""}`}
         onMouseEnter={showOrder ? () => setHoverOrder(groupKey(o)) : undefined}
         onMouseLeave={showOrder ? () => setHoverOrder(null) : undefined}
         onClick={() => toggleOpen(o.id)}
         data-avrow={o.id}
       >
-        <td className="xcell">
-          <button
-            type="button"
-            className={"xbtn" + (isOpen ? " on" : "")}
-            aria-expanded={isOpen}
-            aria-label={isOpen ? "Einklappen" : "Aufklappen: Zeichnung, 3D-Modell und Checkliste"}
-            title={isOpen ? "Einklappen" : "Aufklappen: Zeichnung, 3D-Modell und Checkliste"}
-            onClick={(ev) => {
-              ev.stopPropagation();
-              toggleOpen(o.id);
-            }}
-          >
-            <Ico n="down" s={16} />
-          </button>
-        </td>
         <td>{posCell(r, showOrder)}</td>
         <td className="num" style={dueLate ? { color: "var(--bad)", fontWeight: 600 } : undefined}>
           {o.due ? fmtShort(o.due) : "–"}
@@ -415,7 +403,7 @@ export default function AvView({ orders, checks, planStart, today, onSet, onBulk
     );
   };
 
-  const COLS = 12;
+  const COLS = 11;
   return (
     <>
       <div className="page-head rise" style={{ "--i": 0 }}>
@@ -453,10 +441,9 @@ export default function AvView({ orders, checks, planStart, today, onSet, onBulk
 
       <div className="card rise" style={{ "--i": 1 }}>
         <div className="scroll">
-          <table className="tbl" style={{ minWidth: 1100 }}>
+          <table className="tbl avtbl" style={{ minWidth: 1100 }}>
             <thead>
               <tr>
-                <th className="avh" style={{ width: 40, padding: 0 }} />
                 <th className="avh">
                   <div className="avh-in">
                     <span style={{ height: 36 }} />
@@ -514,7 +501,7 @@ export default function AvView({ orders, checks, planStart, today, onSet, onBulk
                   </td>
                 </tr>
               )}
-              {view === "dring" && sorted.map((r) => dataRow(r, true))}
+              {view === "dring" && sorted.map((r, ix) => dataRow(r, true, bands[ix]))}
               {view === "auftrag" &&
                 groups.map((g) => {
                   const due = g.rows.map((r) => r.o.due).filter(Boolean).sort()[0];
