@@ -1,5 +1,8 @@
 // Arbeitsvorbereitung (AV): Punkte der Checkliste je Position und deren Auswertung.
 // Die Checkliste liegt in der Tabelle av_checks; ohne Zeile gilt der Standard (AV_DEFAULT).
+// Wer in der Arbeitsvorbereitung zuständig sein kann (Auswahlliste)
+export const AV_TEAM = ["Frank", "Nino", "Aurel", "Alex B.", "Alex M."];
+
 export const AV_ITEMS = [
   { id: "material", label: "Material", hint: "z. B. Werkstoff, Lieferant, bestellt am" },
   { id: "programm", label: "Programm", hint: "CAM-Programm erstellt und geprüft" },

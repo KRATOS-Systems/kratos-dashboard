@@ -3,7 +3,7 @@ import { DEFAULT_WEEK_CAPACITY, MACHINES, SHIFT_MODELS, addDays, daysBetween, fm
 import { parseOdooExport } from "./odooImport.js";
 import { holidaysBavaria } from "./holidays.js";
 import AvView, { avUrgentCount } from "./Av.jsx";
-import { AV_ITEMS, AV_STATUS, avKey, avState, avSummary } from "./avLib.js";
+import { AV_ITEMS, AV_STATUS, AV_TEAM, avKey, avState, avSummary } from "./avLib.js";
 import { AppTile, Ico, LaneTile, MTile, Thumb, useToast, partImg } from "./ui.jsx";
 import {
   DEFAULT_TIGHT_DAYS,
@@ -1033,7 +1033,7 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
     });
     return m;
   }, [orders, checks]); // eslint-disable-line react-hooks/exhaustive-deps
-  const people = useMemo(() => [...new Set([...checks.values()].map((c) => c.assignee).filter(Boolean))].sort((a, b) => a.localeCompare(b)), [checks]);
+  const people = useMemo(() => [...AV_TEAM, ...[...new Set([...checks.values()].map((c) => c.assignee).filter((n) => n && !AV_TEAM.includes(n)))].sort((a, b) => a.localeCompare(b))], [checks]);
   const urgentIds = useMemo(() => new Set(positions.filter((p) => p.urgent).map((p) => p.id)), [positions]);
   const lateIds = useMemo(() => new Set(positions.filter((p) => p.status === "late").map((p) => p.id)), [positions]);
 
@@ -1433,11 +1433,6 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
 
           <div className="dsec">
             <h4>Arbeitsvorbereitung</h4>
-            <datalist id="av-people">
-              {people.map((n) => (
-                <option key={n} value={n} />
-              ))}
-            </datalist>
             {repeatOf.get(o.id) && (
               <div className="note" style={{ marginBottom: 12 }}>
                 <b>Wiederholteil:</b> Das gleiche Teil wurde schon als {posNo(repeatOf.get(o.id))} vorbereitet. Programm, Werkzeuge, Spannmittel, Prüfplan und EMPB samt Zuständigem können übernommen werden.
@@ -1468,7 +1463,14 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
                   {st.status !== "entfaellt" && (
                     <div className="sub">
                       <input type="date" value={st.due || ""} onChange={(ev) => setAv(o.id, item.id, { due: ev.target.value || null })} aria-label={`${item.label} ${st.status === "bereit" ? "bereit seit" : "bereit am"}`} title={st.status === "bereit" ? "bereit seit" : "bereit am"} />
-                      <input type="text" list="av-people" maxLength={40} placeholder="Zuständig" title="Wer kümmert sich darum?" value={st.assignee || ""} onChange={(ev) => setAv(o.id, item.id, { assignee: ev.target.value || null })} style={{ flex: "0 1 130px" }} />
+                      <select title="Wer kümmert sich darum?" aria-label={item.label + " zuständig"} value={st.assignee || ""} onChange={(ev) => setAv(o.id, item.id, { assignee: ev.target.value || null })} style={{ flex: "0 1 130px" }}>
+                        <option value="">Zuständig: –</option>
+                        {people.concat(st.assignee && !people.includes(st.assignee) ? [st.assignee] : []).map((n) => (
+                          <option key={n} value={n}>
+                            {n}
+                          </option>
+                        ))}
+                      </select>
                       <input type="text" maxLength={500} placeholder={item.hint} value={st.note} onChange={(ev) => setAv(o.id, item.id, { note: ev.target.value })} />
                       {ids.length > 1 && (
                         <button type="button" className="btn sm" title="Status und Termin dieses Punkts für alle Positionen des Auftrags übernehmen" onClick={() => bulkAv(ids, item.id, { status: st.status, due: st.due, assignee: st.assignee || null })}>
