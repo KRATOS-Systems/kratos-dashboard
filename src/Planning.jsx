@@ -122,6 +122,7 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
   const [odooStatus, setOdooStatus] = useState(null); // { enabled, baselineDone, lastSync, lastChange, pendingClosing }
   const [syncDlg, setSyncDlg] = useState(null); // { loading, error, result, closeSel }
   const lastChangeSeen = useRef(null);
+  const [avFocus, setAvFocus] = useState(null); // Position, die in der Arbeitsvorbereitung aufgeklappt werden soll
   const pendingOpen = useRef(null); // Position, die nach dem Seitenwechsel in der Planung geöffnet werden soll
   const [hlSel, setHlSel] = useState(null); // aus der Kennzahlen-Liste gewählt: { ids, anchor }
   const [hoverStrip, setHoverStrip] = useState(null); // Positionen der Terminlinie, über der die Maus steht
@@ -1352,9 +1353,21 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
             <span className={`pill ${sum.ready ? "ok" : "mute"}`}>AV {avDone}/{sum.states.length}</span>
             <MaterialBadge o={o} />
           </div>
-          {o.odoo_id && (
-            <div style={{ marginTop: 12 }}>
-              <OdooLink o={o} btn />
+          {(o.odoo_id || goTo) && (
+            <div style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {o.odoo_id && <OdooLink o={o} btn />}
+              {goTo && (
+                <button
+                  type="button"
+                  className="btn odoo"
+                  onClick={() => {
+                    setAvFocus(o.id);
+                    goTo("av");
+                  }}
+                >
+                  In Arbeitsvorbereitung öffnen <Ico n="muss" s={15} />
+                </button>
+              )}
             </div>
           )}
 
@@ -1926,6 +1939,8 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
           people={people}
           onBulk={bulkAv}
           onApplyRepeat={applyRepeat}
+          focusId={avFocus}
+          onFocusDone={() => setAvFocus(null)}
           openPlanning={(id) => {
             pendingOpen.current = id;
             goTo("planung");

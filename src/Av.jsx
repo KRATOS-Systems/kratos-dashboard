@@ -1,4 +1,4 @@
-import React, { Suspense, lazy, useMemo, useState } from "react";
+import React, { Suspense, lazy, useEffect, useMemo, useState } from "react";
 import { addDays, daysBetween, fmtShort } from "./lib.js";
 import { AV_ITEMS, AV_STATUS, avCycle, avDone, avState, avSummary } from "./avLib.js";
 import { AppTile, Ico, Thumb, partImg } from "./ui.jsx";
@@ -148,7 +148,7 @@ function AvPanel({ r, checks, orders, onSet, onBulk, people, repeatSrc, onApplyR
 // orders = alle Positionen, checks = Map (Position|Punkt -> { status, due, note, assignee }),
 // planStart = Map (Position -> { machine, start }) für eingeplante Positionen,
 // leadDays = Vorlauf: So viele Tage vor dem Start auf der Maschine muss alles bereit sein ("Muss bis").
-export default function AvView({ orders, checks, planStart, today, onSet, onBulk, selectedId, onOpen, filter, setFilter, leadDays, repeatOf, people, onApplyRepeat, openPlanning }) {
+export default function AvView({ orders, checks, planStart, today, onSet, onBulk, selectedId, onOpen, filter, setFilter, leadDays, repeatOf, people, onApplyRepeat, openPlanning, focusId, onFocusDone }) {
   const [query, setQuery] = useState("");
   const [popKey, setPopKey] = useState(null);
   const [hoverOrder, setHoverOrder] = useState(null); // Auftrag, über dessen Zeile die Maus steht
@@ -162,6 +162,21 @@ export default function AvView({ orders, checks, planStart, today, onSet, onBulk
     });
   const [view, setViewState] = useState(() => (store("kratos-av-view") === "auftrag" ? "auftrag" : "dring"));
   const [person, setPersonState] = useState(() => store("kratos-av-person") || "");
+  // Von der Planung hierher gesprungen: Filter lösen, Position aufklappen und ins Bild holen
+  useEffect(() => {
+    if (focusId == null) return;
+    setQuery("");
+    setPersonState("");
+    setFilter("alle");
+    setOpen((prev) => new Set(prev).add(focusId));
+    const t = setTimeout(() => {
+      const el = document.querySelector(`[data-avrow="${focusId}"]`);
+      if (el) el.scrollIntoView({ block: "center", behavior: "smooth" });
+      if (onFocusDone) onFocusDone();
+    }, 120);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusId]);
   const setView = (v) => {
     setViewState(v);
     store("kratos-av-view", v);
@@ -322,6 +337,7 @@ export default function AvView({ orders, checks, planStart, today, onSet, onBulk
         onMouseEnter={showOrder ? () => setHoverOrder(groupKey(o)) : undefined}
         onMouseLeave={showOrder ? () => setHoverOrder(null) : undefined}
         onClick={() => toggleOpen(o.id)}
+        data-avrow={o.id}
       >
         <td className="xcell">
           <button
