@@ -1334,7 +1334,7 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
     const wt = waitText(it);
     return (
       <>
-        <div className="scrim" onClick={closeDrawer} />
+        <div className={`scrim${section === "planung" && tab === "zeit" ? " lite" : ""}`} onClick={closeDrawer} />
         <aside className="drawer" role="dialog" aria-label={`Position ${posNo(o)}`}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
             <div style={{ display: "flex", gap: 14, alignItems: "flex-start", minWidth: 0 }}>

@@ -747,5 +747,7 @@ a.btn { text-decoration: none; }
 
 /* Gewählte Position im Zeitstrahl: höher als die anderen (die Länge bleibt, sonst stimmt das Datum nicht), Schatten, Nachbarn leicht gedämpft */
 .bar { transition: transform .15s ease, box-shadow .15s ease, background .15s ease, opacity .2s ease, top .2s ease, height .2s ease, filter .2s ease; }
-.bar.sel { top: 2px; height: 58px; outline: 2px solid var(--ink); outline-offset: 1px; filter: drop-shadow(0 6px 12px rgba(0,0,0,.45)); z-index: 6; }
-.tl.has-sel .bar:not(.sel):not(.wait):not(.hl):not(.linked) { opacity: .62; }
+.bar.sel { top: 2px; height: 58px; z-index: 6; outline: none; }
+/* Im Zeitstrahl dunkelt nur die Auswahl die anderen Balken ab, die Seite bleibt hell, damit der gewählte genau so aussieht wie sonst */
+.scrim.lite { background: transparent; }
+.tl.has-sel .bar:not(.sel):not(.wait):not(.hl):not(.linked) { opacity: .4; }
