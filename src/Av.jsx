@@ -1,7 +1,10 @@
-import React, { useMemo, useState } from "react";
+import React, { Suspense, lazy, useMemo, useState } from "react";
 import { addDays, daysBetween, fmtShort } from "./lib.js";
 import { AV_ITEMS, AV_STATUS, avCycle, avDone, avState, avSummary } from "./avLib.js";
-import { AppTile, Thumb, partImg } from "./ui.jsx";
+import { AppTile, Ico, Thumb, partImg } from "./ui.jsx";
+
+// Zeichnung und 3D-Modell werden erst geladen, wenn eine Zeile aufgeklappt wird (three.js ist groß)
+const PartDocs = lazy(() => import("./PartDocs.jsx"));
 
 const LANE_IDS = ["qs", "extern_fert", "extern"];
 const groupKey = (o) => o.source || o.order_no || `#${o.id}`;
@@ -29,6 +32,14 @@ const store = (k, v) => {
 export default function AvView({ orders, checks, planStart, today, onSet, selectedId, onOpen, filter, setFilter, leadDays, repeatOf, people }) {
   const [query, setQuery] = useState("");
   const [popKey, setPopKey] = useState(null);
+  const [open, setOpen] = useState(() => new Set()); // aufgeklappte Zeilen (Zeichnung und 3D-Modell)
+  const toggleOpen = (id) =>
+    setOpen((prev) => {
+      const n = new Set(prev);
+      if (n.has(id)) n.delete(id);
+      else n.add(id);
+      return n;
+    });
   const [view, setViewState] = useState(() => (store("kratos-av-view") === "auftrag" ? "auftrag" : "dring"));
   const [person, setPersonState] = useState(() => store("kratos-av-person") || "");
   const setView = (v) => {
@@ -163,8 +174,34 @@ export default function AvView({ orders, checks, planStart, today, onSet, select
   const dataRow = (r, showOrder) => {
     const { o, sum, plan } = r;
     const dueLate = o.due && o.due < today;
+    const isOpen = open.has(o.id);
+    const mat = avState(checks, o.id, "material");
+    const matText = [
+      "Material: " + AV_STATUS.find((s) => s.id === mat.status).label,
+      mat.due ? "bereit am " + fmtShort(mat.due) : "",
+      mat.note || "",
+      o.component_status ? "laut Odoo: " + o.component_status : "",
+    ]
+      .filter(Boolean)
+      .join(" · ");
     return (
-      <tr key={o.id} className={`row${selectedId === o.id ? " sel" : ""}${r.late ? " ovd" : ""}`} onClick={() => onOpen(o.id)}>
+      <React.Fragment key={o.id}>
+      <tr className={`row${selectedId === o.id ? " sel" : ""}${r.late ? " ovd" : ""}${isOpen ? " xopen" : ""}`} onClick={() => onOpen(o.id)}>
+        <td className="xcell">
+          <button
+            type="button"
+            className={"xbtn" + (isOpen ? " on" : "")}
+            aria-expanded={isOpen}
+            aria-label={isOpen ? "Zeichnung und 3D-Modell einklappen" : "Zeichnung und 3D-Modell zeigen"}
+            title={isOpen ? "Einklappen" : "Zeichnung und 3D-Modell zeigen"}
+            onClick={(ev) => {
+              ev.stopPropagation();
+              toggleOpen(o.id);
+            }}
+          >
+            <Ico n="down" s={16} />
+          </button>
+        </td>
         <td>{posCell(r, showOrder)}</td>
         <td className="num" style={dueLate ? { color: "var(--bad)", fontWeight: 600 } : undefined}>
           {o.due ? fmtShort(o.due) : "–"}
@@ -184,10 +221,24 @@ export default function AvView({ orders, checks, planStart, today, onSet, select
           {sum.ready ? "bereit" : sum.readyDate ? fmtShort(sum.readyDate) : "offen"}
         </td>
       </tr>
+      {isOpen && (
+        <tr className="xrow">
+          <td colSpan={COLS}>
+            {o.odoo_id ? (
+              <Suspense fallback={<div className="pdocs-empty">Wird geladen …</div>}>
+                <PartDocs o={o} material={matText} />
+              </Suspense>
+            ) : (
+              <div className="pdocs-empty">Diese Position hat keine Verbindung zu Odoo, daher gibt es keine Zeichnung und kein Modell.</div>
+            )}
+          </td>
+        </tr>
+      )}
+      </React.Fragment>
     );
   };
 
-  const COLS = 11;
+  const COLS = 12;
   return (
     <>
       <div className="page-head rise" style={{ "--i": 0 }}>
@@ -228,6 +279,7 @@ export default function AvView({ orders, checks, planStart, today, onSet, select
           <table className="tbl" style={{ minWidth: 1100 }}>
             <thead>
               <tr>
+                <th className="avh" style={{ width: 40, padding: 0 }} />
                 <th className="avh">
                   <div className="avh-in">
                     <span style={{ height: 36 }} />

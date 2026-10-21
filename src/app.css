@@ -667,3 +667,30 @@ a.btn { text-decoration: none; }
 .avcell small.who { color: var(--ink); font-weight: 600; font-size: 11.5px; background: var(--sunken); border: 1px solid var(--line); border-radius: 999px; padding: 0 7px; max-width: 110px; }
 .repeat { font-size: 11.5px; color: var(--iris); font-weight: 600; margin-top: 2px; }
 .avrow .sub input[list] { min-width: 0; }
+
+/* Aufklappbare Zeile: Zeichnung und 3D-Modell */
+.xcell { width: 40px; padding-left: 8px !important; padding-right: 0 !important; }
+.xbtn { width: 30px; height: 30px; border-radius: 9px; border: 1px solid var(--line-strong); background: var(--surface); color: var(--muted); display: grid; place-items: center; transition: transform .2s ease, background .2s ease; }
+.xbtn:hover { background: var(--sunken); color: var(--ink); }
+.xbtn.on { transform: rotate(180deg); background: var(--sunken); color: var(--ink); }
+.tbl tbody tr.xopen td { border-bottom: 0; }
+.tbl tr.xrow td { padding: 0; background: var(--sunken); border-top: 0; cursor: default; }
+.pdocs { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; padding: 14px 18px 18px; }
+.pdocs-col { min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+.pdocs-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-height: 32px; }
+.pdocs-head b { font: 600 13px var(--f-display); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.pdocs-name { color: var(--muted); font-size: 12.5px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+.pdocs-head select { max-width: 220px; font-size: 12.5px; padding: 3px 6px; }
+.pdocs-pdf { width: 100%; height: 560px; border: 1px solid var(--line-strong); border-radius: 10px; background: #fff; }
+.pdocs-none, .pdocs-empty { padding: 28px 16px; color: var(--muted); text-align: center; border: 1px dashed var(--line-strong); border-radius: 10px; font-size: 13.5px; }
+.pdocs-empty { margin: 14px 18px; }
+.pdocs-mat { grid-column: 1 / -1; border-top: 1px solid var(--line); padding-top: 10px; color: var(--muted); font-size: 13px; }
+.v3d { position: relative; height: 560px; border: 1px solid var(--line-strong); border-radius: 10px; overflow: hidden; background: linear-gradient(180deg, color-mix(in srgb, var(--surface) 70%, #fff), var(--sunken)); }
+.v3d-host { position: absolute; inset: 0; }
+.v3d-host canvas { display: block; }
+.v3d-msg { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; padding: 20px; color: var(--muted); font-size: 13.5px; }
+.v3d-tools { position: absolute; left: 10px; bottom: 10px; display: flex; gap: 6px; align-items: center; }
+.v3d-tools select { font-size: 12.5px; padding: 3px 6px; }
+.v3d-dims { position: absolute; right: 10px; bottom: 12px; background: color-mix(in srgb, var(--surface) 88%, transparent); border: 1px solid var(--line); border-radius: 8px; padding: 3px 10px; font: 600 12.5px var(--f-mono); }
+.v3d-hint { position: absolute; right: 10px; top: 8px; font-size: 11px; color: var(--muted); pointer-events: none; }
+@media (max-width: 1100px) { .pdocs { grid-template-columns: minmax(0, 1fr); } }
