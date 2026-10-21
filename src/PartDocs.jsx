@@ -37,7 +37,7 @@ function occtBrowser() {
   return occtP;
 }
 const meshes = new Map();
-function loadMesh(file) {
+export function loadMesh(file) {
   if (!meshes.has(file.id)) {
     meshes.set(
       file.id,
@@ -69,7 +69,7 @@ function loadMesh(file) {
   return meshes.get(file.id);
 }
 
-function Viewer3D({ file }) {
+export function Viewer3D({ file }) {
   const host = useRef(null);
   const st = useRef(null);
   const [state, setState] = useState("loading");
@@ -245,93 +245,234 @@ function Viewer3D({ file }) {
   );
 }
 
-export default function PartDocs({ o, material }) {
-  const [data, setData] = useState(null);
-  const [error, setError] = useState("");
-  const [pdfId, setPdfId] = useState(null);
-  const [stepId, setStepId] = useState(null);
 
+// ---- Dateien eines Artikels aus Odoo (Liste je Fertigungsauftrag)
+const lists = new Map();
+export function useFiles(odooId) {
+  const [st, setSt] = useState({ loading: true, files: [], error: "" });
   useEffect(() => {
     let alive = true;
-    setData(null);
-    setError("");
-    fetch(`/api/product-files/${o.odoo_id}`)
-      .then(async (r) => {
-        const j = await r.json().catch(() => ({}));
-        if (!r.ok) throw new Error(j.error || `Fehler ${r.status}`);
-        return j;
-      })
-      .then((j) => {
-        if (!alive) return;
-        setData(j);
-        setPdfId((j.files.find((f) => f.kind === "pdf") || {}).id || null);
-        setStepId((j.files.find((f) => f.kind === "step") || {}).id || null);
-      })
-      .catch((e) => alive && setError(e.message));
+    setSt({ loading: true, files: [], error: "" });
+    if (!lists.has(odooId)) {
+      lists.set(
+        odooId,
+        fetch("/api/product-files/" + odooId)
+          .then(async (r) => {
+            const j = await r.json().catch(() => ({}));
+            if (!r.ok) throw new Error(j.error || "Fehler " + r.status);
+            return j;
+          })
+          .catch((e) => {
+            lists.delete(odooId);
+            throw e;
+          })
+      );
+    }
+    lists.get(odooId).then(
+      (j) => alive && setSt({ loading: false, files: j.files, product: j.product, enabled: j.enabled, error: "" }),
+      (e) => alive && setSt({ loading: false, files: [], error: e.message })
+    );
     return () => {
       alive = false;
     };
-  }, [o.odoo_id]);
+  }, [odooId]);
+  return st;
+}
 
-  if (error) return <div className="pdocs-empty">Dateien konnten nicht geladen werden: {error}</div>;
-  if (!data) return <div className="pdocs-empty">Dateien aus Odoo werden geladen …</div>;
-  if (!data.enabled && !data.files.length) return <div className="pdocs-empty">Odoo ist nicht verbunden.</div>;
-  const pdfs = data.files.filter((f) => f.kind === "pdf");
-  const steps = data.files.filter((f) => f.kind === "step");
-  const pdf = pdfs.find((f) => f.id === pdfId) || null;
-  const step = steps.find((f) => f.id === stepId) || null;
-  const pick = (list, id, set, label) =>
-    list.length > 1 ? (
-      <select value={id || ""} onChange={(e) => set(Number(e.target.value))} aria-label={label} title="Es gibt mehrere Dateien am Artikel. Die neueste steht oben.">
-        {list.map((f, i) => (
-          <option key={f.id} value={f.id}>
-            {f.name}
-            {i === 0 ? " (neueste)" : ""}
-          </option>
-        ))}
-      </select>
-    ) : null;
-
+// ---- Vorschaubilder: erste Seite der Zeichnung und das Modell isometrisch (im Browser gezeichnet, nur einmal je Datei)
+const thumbs = new Map();
+function pdfThumb(file) {
+  const k = "pdf" + file.id;
+  if (!thumbs.has(k)) {
+    thumbs.set(
+      k,
+      (async () => {
+        const pdfjs = await import("pdfjs-dist");
+        pdfjs.GlobalWorkerOptions.workerSrc = (await import("pdfjs-dist/build/pdf.worker.min.mjs?url")).default;
+        const doc = await pdfjs.getDocument({ url: "/api/product-file/" + file.id }).promise;
+        const page = await doc.getPage(1);
+        const v0 = page.getViewport({ scale: 1 });
+        const vp = page.getViewport({ scale: 640 / v0.width });
+        const c = document.createElement("canvas");
+        c.width = Math.round(vp.width);
+        c.height = Math.round(vp.height);
+        const ctx = c.getContext("2d");
+        ctx.fillStyle = "#fff";
+        ctx.fillRect(0, 0, c.width, c.height);
+        await page.render({ canvasContext: ctx, viewport: vp }).promise;
+        return c.toDataURL("image/png");
+      })().catch((e) => {
+        thumbs.delete(k);
+        throw e;
+      })
+    );
+  }
+  return thumbs.get(k);
+}
+function stepThumb(file) {
+  const k = "step" + file.id;
+  if (!thumbs.has(k)) {
+    thumbs.set(
+      k,
+      loadMesh(file)
+        .then((mesh) => {
+          const W = 420;
+          const H = 300;
+          const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+          renderer.setSize(W, H);
+          renderer.setPixelRatio(1);
+          const scene = new THREE.Scene();
+          const camera = new THREE.PerspectiveCamera(35, W / H, 0.1, 100000);
+          camera.up.set(0, 0, 1);
+          scene.add(new THREE.HemisphereLight(0xffffff, 0x8899aa, 1.6));
+          const dl = new THREE.DirectionalLight(0xffffff, 1.4);
+          scene.add(dl);
+          const g = new THREE.BufferGeometry();
+          g.setAttribute("position", new THREE.Float32BufferAttribute(mesh.positions, 3));
+          g.setIndex(mesh.indices);
+          g.computeVertexNormals();
+          const grp = new THREE.Group();
+          grp.add(
+            new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: 0xb9c0c9, metalness: 0.15, roughness: 0.6, side: THREE.DoubleSide })),
+            new THREE.LineSegments(new THREE.EdgesGeometry(g, 25), new THREE.LineBasicMaterial({ color: 0x4a5563 }))
+          );
+          scene.add(grp);
+          const box = new THREE.Box3().setFromObject(grp);
+          const c = box.getCenter(new THREE.Vector3());
+          const r = box.getSize(new THREE.Vector3()).length() / 2;
+          const dist = (r / Math.sin((camera.fov * Math.PI) / 360)) * 1.15;
+          camera.position.copy(c).add(new THREE.Vector3(1, -1.3, 0.9).normalize().multiplyScalar(dist));
+          camera.near = dist / 100;
+          camera.far = dist * 100;
+          camera.updateProjectionMatrix();
+          camera.lookAt(c);
+          dl.position.copy(camera.position);
+          renderer.render(scene, camera);
+          const url = renderer.domElement.toDataURL("image/png");
+          renderer.dispose();
+          g.dispose();
+          return url;
+        })
+        .catch((e) => {
+          thumbs.delete(k);
+          throw e;
+        })
+    );
+  }
+  return thumbs.get(k);
+}
+function Thumbnail({ make, file, label, kind, onOpen }) {
+  const [src, setSrc] = useState(null);
+  const [err, setErr] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    setSrc(null);
+    setErr(false);
+    if (file) make(file).then((u) => alive && setSrc(u), () => alive && setErr(true));
+    return () => {
+      alive = false;
+    };
+  }, [file && file.id]);
+  if (!file) return <div className="fthumb none"><span>Kein{kind === "3D" ? "" : "e"} {label} in Odoo</span></div>;
   return (
-    <div className="pdocs">
-      <div className="pdocs-col">
-        <div className="pdocs-head">
-          <b>Zeichnung</b>
-          {pdf ? (
-            <>
-              <span className="pdocs-name" title={pdf.name}>
-                {list1(pdf)}
-              </span>
-              {pick(pdfs, pdfId, setPdfId, "Zeichnung wählen")}
-              <a className="btn sm" href={`/api/product-file/${pdf.id}`} target="_blank" rel="noopener noreferrer">
-                Öffnen <Ico n="ext" s={13} />
-              </a>
-            </>
-          ) : null}
-        </div>
-        {pdf ? <iframe className="pdocs-pdf" title={`Zeichnung ${pdf.name}`} src={`/api/product-file/${pdf.id}`} /> : <div className="pdocs-none">Keine Zeichnung (PDF) am Artikel in Odoo.</div>}
-      </div>
-      <div className="pdocs-col">
-        <div className="pdocs-head">
-          <b>3D-Modell</b>
-          {step ? (
-            <>
-              <span className="pdocs-name" title={step.name}>
-                {list1(step)}
-              </span>
-              {pick(steps, stepId, setStepId, "Modell wählen")}
-              <a className="btn sm" href={`/api/product-file/${step.id}`} download={step.name}>
-                Herunterladen
-              </a>
-            </>
-          ) : null}
-        </div>
-        {step ? <Viewer3D file={step} /> : <div className="pdocs-none">Kein 3D-Modell (STEP) am Artikel in Odoo.</div>}
-      </div>
-      {material && <div className="pdocs-mat">{material}</div>}
+    <button type="button" className="fthumb" onClick={onOpen} title={label + " groß ansehen"}>
+      {src ? <img src={src} alt={label} /> : <span className="fthumb-msg">{err ? "Vorschau nicht möglich, Klick zum Öffnen" : "Wird geladen …"}</span>}
+      <i className="fthumb-tag">{kind}</i>
+    </button>
+  );
+}
+
+// Die beiden Vorschaubilder (Zeichnung oben, 3D darunter). Ein Klick öffnet das große Fenster.
+export function FileThumbs({ o }) {
+  const { loading, files, error, enabled } = useFiles(o.odoo_id);
+  const [dlg, setDlg] = useState(null); // "pdf" | "step"
+  if (error) return <div className="fthumbs-msg">Dateien konnten nicht geladen werden: {error}</div>;
+  if (loading) return <div className="fthumbs-msg">Dateien aus Odoo werden geladen …</div>;
+  if (!enabled && !files.length) return <div className="fthumbs-msg">Odoo ist nicht verbunden.</div>;
+  const pdf = files.find((f) => f.kind === "pdf") || null;
+  const step = files.find((f) => f.kind === "step") || null;
+  return (
+    <div className="fthumbs">
+      <Thumbnail make={pdfThumb} file={pdf} label="Zeichnung" kind="PDF" onOpen={() => setDlg("pdf")} />
+      <Thumbnail make={stepThumb} file={step} label="3D-Modell" kind="3D" onOpen={() => setDlg("step")} />
+      {dlg && <FilesDialog o={o} files={files} start={dlg} onClose={() => setDlg(null)} />}
     </div>
   );
 }
-function list1(f) {
-  return `${f.name} · ${kb(f.size)}${f.date ? " · " + f.date.slice(8, 10) + "." + f.date.slice(5, 7) + "." + f.date.slice(0, 4) : ""}`;
+
+// Großes Fenster: Zeichnung oder 3D-Modell, Herunterladen, alle herunterladen
+export function FilesDialog({ o, files, start, onClose }) {
+  const pdfs = files.filter((f) => f.kind === "pdf");
+  const steps = files.filter((f) => f.kind === "step");
+  const [tab, setTab] = useState(start === "step" && steps.length ? "step" : pdfs.length ? "pdf" : "step");
+  const [pdfId, setPdfId] = useState((pdfs[0] || {}).id);
+  const [stepId, setStepId] = useState((steps[0] || {}).id);
+  useEffect(() => {
+    const onKey = (e) => e.key === "Escape" && onClose();
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
+  const pdf = pdfs.find((f) => f.id === pdfId) || pdfs[0];
+  const step = steps.find((f) => f.id === stepId) || steps[0];
+  const cur = tab === "pdf" ? pdf : step;
+  const list = tab === "pdf" ? pdfs : steps;
+  const all = () =>
+    files.forEach((f, i) =>
+      setTimeout(() => {
+        const a = document.createElement("a");
+        a.href = "/api/product-file/" + f.id;
+        a.download = f.name;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+      }, i * 400)
+    );
+  return (
+    <div className="modal fdlg-bg" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="fdlg" role="dialog" aria-modal="true" aria-label="Dateien">
+        <div className="fdlg-head">
+          <div style={{ minWidth: 0 }}>
+            <h3>{(o.product || "").replace(/^\[[^\]]*\]\s*/, "") || o.order_no} · Dateien</h3>
+            <small>{cur ? cur.name : ""}</small>
+          </div>
+          <div className="actions">
+            {list.length > 1 && (
+              <select value={cur ? cur.id : ""} onChange={(e) => (tab === "pdf" ? setPdfId(Number(e.target.value)) : setStepId(Number(e.target.value)))} aria-label="Datei wählen" title="Mehrere Dateien am Artikel, die neueste steht oben">
+                {list.map((f, i) => (
+                  <option key={f.id} value={f.id}>
+                    {f.name}
+                    {i === 0 ? " (neueste)" : ""}
+                  </option>
+                ))}
+              </select>
+            )}
+            <div className="seg" role="group" aria-label="Zeichnung oder 3D">
+              <button type="button" className={tab === "pdf" ? "on" : ""} disabled={!pdfs.length} onClick={() => setTab("pdf")}>
+                Zeichnung
+              </button>
+              <button type="button" className={tab === "step" ? "on" : ""} disabled={!steps.length} onClick={() => setTab("step")}>
+                3D
+              </button>
+            </div>
+            {cur && (
+              <a className="btn" href={"/api/product-file/" + cur.id} download={cur.name}>
+                <Ico n="down" s={15} />
+                Herunterladen
+              </a>
+            )}
+            <button type="button" className="btn" onClick={all}>
+              Alle herunterladen ({files.length})
+            </button>
+            <button type="button" className="btn icon quiet" aria-label="Schließen" onClick={onClose}>
+              <Ico n="x" />
+            </button>
+          </div>
+        </div>
+        <div className="fdlg-body">
+          {tab === "pdf" && pdf && <iframe title={"Zeichnung " + pdf.name} src={"/api/product-file/" + pdf.id} />}
+          {tab === "step" && step && <Viewer3D file={step} big />}
+        </div>
+      </div>
+    </div>
+  );
 }

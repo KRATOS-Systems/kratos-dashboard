@@ -2,9 +2,10 @@ import React, { Suspense, lazy, useMemo, useState } from "react";
 import { addDays, daysBetween, fmtShort } from "./lib.js";
 import { AV_ITEMS, AV_STATUS, avCycle, avDone, avState, avSummary } from "./avLib.js";
 import { AppTile, Ico, Thumb, partImg } from "./ui.jsx";
+import { ODOO_URL } from "./planLogic.js";
 
 // Zeichnung und 3D-Modell werden erst geladen, wenn eine Zeile aufgeklappt wird (three.js ist groß)
-const PartDocs = lazy(() => import("./PartDocs.jsx"));
+const FileThumbs = lazy(() => import("./PartDocs.jsx").then((m) => ({ default: m.FileThumbs })));
 
 const LANE_IDS = ["qs", "extern_fert", "extern"];
 const groupKey = (o) => o.source || o.order_no || `#${o.id}`;
@@ -32,11 +33,122 @@ const store = (k, v) => {
   return null;
 };
 
+// Aufgeklapptes Fenster einer Position: links Zeichnung und 3D-Modell als Vorschau (Klick = groß), rechts Plan und Checkliste
+function AvPanel({ r, checks, orders, onSet, onBulk, people, repeatSrc, onApplyRepeat, leadDays, today, openPlanning, matText }) {
+  const { o, sum, plan, muss } = r;
+  const ids = orders.filter((x) => !x.done && !LANE_IDS.includes(x.machine) && groupKey(x) === groupKey(o)).map((x) => x.id);
+  const late = !sum.ready && muss && muss < today;
+  return (
+    <div className="avp">
+      <div className="avp-files">
+        {o.odoo_id ? (
+          <Suspense fallback={<div className="fthumbs-msg">Wird geladen …</div>}>
+            <FileThumbs o={o} />
+          </Suspense>
+        ) : (
+          <div className="fthumbs-msg">Keine Verbindung zu Odoo: keine Zeichnung und kein Modell.</div>
+        )}
+      </div>
+      <div className="avp-main">
+        <div className="avp-top">
+          <div className="avp-facts">
+            <div>
+              <small>Auftrag</small>
+              <b>{o.source || o.order_no || "–"}</b>
+            </div>
+            <div>
+              <small>Position</small>
+              <b>{posNo(o)}</b>
+            </div>
+            <div>
+              <small>Planung</small>
+              <b>{plan ? plan.machine + " · ab " + fmtShort(plan.start) : "nicht eingeplant"}</b>
+            </div>
+            <div>
+              <small>Muss bis</small>
+              <b style={{ color: sum.ready ? "var(--ok)" : late ? "var(--bad)" : undefined }}>
+                {sum.ready ? "bereit" : muss ? fmtShort(muss) + (late ? " (überfällig)" : "") : "–"}
+              </b>
+            </div>
+            <div>
+              <small>Liefertermin</small>
+              <b style={{ color: o.due && o.due < today ? "var(--bad)" : undefined }}>{o.due ? fmtShort(o.due) : "–"}</b>
+            </div>
+          </div>
+          <div className="actions">
+            {o.odoo_id && (
+              <a className="btn odoo" href={ODOO_URL + "/" + o.odoo_id} target="_blank" rel="noopener noreferrer">
+                In Odoo öffnen <Ico n="ext" s={15} />
+              </a>
+            )}
+            <button type="button" className="btn" onClick={() => openPlanning(o.id)} title="Stunden, Liefertermin und Start frühestens bearbeitest du in der Planung">
+              In der Planung öffnen
+            </button>
+          </div>
+        </div>
+        {o.product && <div className="avp-prod">{[o.quantity != null ? o.quantity + " Stück" : null, o.product].filter(Boolean).join(" · ")}</div>}
+        {repeatSrc && (
+          <div className="note" style={{ margin: "10px 0 0" }}>
+            <b>Wiederholteil:</b> Das gleiche Teil wurde schon als {posNo(repeatSrc)} vorbereitet. Programm, Werkzeuge, Spannmittel, Prüfplan und EMPB samt Zuständigem können übernommen werden.
+            <div className="actions" style={{ marginTop: 8 }}>
+              <button type="button" className="btn sm primary" onClick={() => onApplyRepeat(o, repeatSrc)}>
+                AV-Stand übernehmen
+              </button>
+            </div>
+          </div>
+        )}
+        <div className="avp-list">
+          {AV_ITEMS.map((item) => {
+            const st = avState(checks, o.id, item.id);
+            return (
+              <div className="avrow" key={item.id}>
+                <div className="top">
+                  <b style={{ fontWeight: 600 }}>
+                    <AppTile id={item.id} size={30} />
+                    {item.label}
+                  </b>
+                  <div className="seg" role="group" aria-label={item.label}>
+                    {AV_STATUS.map((s) => (
+                      <button key={s.id} type="button" className={st.status === s.id ? "on" : ""} onClick={() => onSet(o.id, item.id, { status: s.id })}>
+                        {s.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                {st.status !== "entfaellt" && (
+                  <div className="sub">
+                    <input type="date" value={st.due || ""} onChange={(ev) => onSet(o.id, item.id, { due: ev.target.value || null })} aria-label={item.label + (st.status === "bereit" ? " bereit seit" : " bereit am")} title={st.status === "bereit" ? "bereit seit" : "bereit am"} />
+                    <select title="Wer kümmert sich darum?" aria-label={item.label + " zuständig"} value={st.assignee || ""} onChange={(ev) => onSet(o.id, item.id, { assignee: ev.target.value || null })} style={{ flex: "0 1 130px" }}>
+                      <option value="">Zuständig: –</option>
+                      {people.concat(st.assignee && !people.includes(st.assignee) ? [st.assignee] : []).map((n) => (
+                        <option key={n} value={n}>
+                          {n}
+                        </option>
+                      ))}
+                    </select>
+                    <input type="text" maxLength={500} placeholder={item.hint} value={st.note} onChange={(ev) => onSet(o.id, item.id, { note: ev.target.value })} />
+                    {ids.length > 1 && (
+                      <button type="button" className="btn sm" title="Status und Termin dieses Punkts für alle Positionen des Auftrags übernehmen" onClick={() => onBulk(ids, item.id, { status: st.status, due: st.due, assignee: st.assignee || null })}>
+                        Für alle {ids.length}
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+          {o.component_status && <div className="avp-odoo">Materialstatus laut Odoo: {o.component_status}</div>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // Arbeitsvorbereitung: Welche Positionen sind bereit für die Fertigung und was fehlt noch?
 // orders = alle Positionen, checks = Map (Position|Punkt -> { status, due, note, assignee }),
 // planStart = Map (Position -> { machine, start }) für eingeplante Positionen,
 // leadDays = Vorlauf: So viele Tage vor dem Start auf der Maschine muss alles bereit sein ("Muss bis").
-export default function AvView({ orders, checks, planStart, today, onSet, selectedId, onOpen, filter, setFilter, leadDays, repeatOf, people }) {
+export default function AvView({ orders, checks, planStart, today, onSet, onBulk, selectedId, onOpen, filter, setFilter, leadDays, repeatOf, people, onApplyRepeat, openPlanning }) {
   const [query, setQuery] = useState("");
   const [popKey, setPopKey] = useState(null);
   const [hoverOrder, setHoverOrder] = useState(null); // Auftrag, über dessen Zeile die Maus steht
@@ -205,19 +317,19 @@ export default function AvView({ orders, checks, planStart, today, onSet, select
     return (
       <React.Fragment key={o.id}>
       <tr
-        className={`row${selectedId === o.id ? " sel" : ""}${r.late && !showOrder ? " ovd" : ""}${showOrder ? " oc" : ""}${isOpen ? " xopen" : ""}${showOrder && hoverOrder && hoverOrder !== groupKey(o) ? " dimrow" : ""}`}
+        className={`row${r.late && !showOrder ? " ovd" : ""}${showOrder ? " oc" : ""}${isOpen ? " xopen sel" : ""}${showOrder && hoverOrder && hoverOrder !== groupKey(o) ? " dimrow" : ""}`}
         style={showOrder ? { "--oc": orderColor(groupKey(o)) } : undefined}
         onMouseEnter={showOrder ? () => setHoverOrder(groupKey(o)) : undefined}
         onMouseLeave={showOrder ? () => setHoverOrder(null) : undefined}
-        onClick={() => onOpen(o.id)}
+        onClick={() => toggleOpen(o.id)}
       >
         <td className="xcell">
           <button
             type="button"
             className={"xbtn" + (isOpen ? " on" : "")}
             aria-expanded={isOpen}
-            aria-label={isOpen ? "Zeichnung und 3D-Modell einklappen" : "Zeichnung und 3D-Modell zeigen"}
-            title={isOpen ? "Einklappen" : "Zeichnung und 3D-Modell zeigen"}
+            aria-label={isOpen ? "Einklappen" : "Aufklappen: Zeichnung, 3D-Modell und Checkliste"}
+            title={isOpen ? "Einklappen" : "Aufklappen: Zeichnung, 3D-Modell und Checkliste"}
             onClick={(ev) => {
               ev.stopPropagation();
               toggleOpen(o.id);
@@ -248,13 +360,20 @@ export default function AvView({ orders, checks, planStart, today, onSet, select
       {isOpen && (
         <tr className="xrow">
           <td colSpan={COLS}>
-            {o.odoo_id ? (
-              <Suspense fallback={<div className="pdocs-empty">Wird geladen …</div>}>
-                <PartDocs o={o} material={matText} />
-              </Suspense>
-            ) : (
-              <div className="pdocs-empty">Diese Position hat keine Verbindung zu Odoo, daher gibt es keine Zeichnung und kein Modell.</div>
-            )}
+            <AvPanel
+              r={r}
+              checks={checks}
+              orders={orders}
+              onSet={onSet}
+              onBulk={onBulk}
+              people={people}
+              repeatSrc={repeatOf && repeatOf.get(o.id)}
+              onApplyRepeat={onApplyRepeat}
+              leadDays={leadDays}
+              today={today}
+              openPlanning={openPlanning}
+              matText={matText}
+            />
           </td>
         </tr>
       )}

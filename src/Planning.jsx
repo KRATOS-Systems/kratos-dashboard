@@ -122,6 +122,7 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
   const [odooStatus, setOdooStatus] = useState(null); // { enabled, baselineDone, lastSync, lastChange, pendingClosing }
   const [syncDlg, setSyncDlg] = useState(null); // { loading, error, result, closeSel }
   const lastChangeSeen = useRef(null);
+  const pendingOpen = useRef(null); // Position, die nach dem Seitenwechsel in der Planung geöffnet werden soll
   const [hlSel, setHlSel] = useState(null); // aus der Kennzahlen-Liste gewählt: { ids, anchor }
   const [hoverStrip, setHoverStrip] = useState(null); // Positionen der Terminlinie, über der die Maus steht
   const [fresh, setFresh] = useState(null);
@@ -854,6 +855,12 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
   useEffect(() => {
     setDetailId(null);
     setLaneDetail(null);
+    if (pendingOpen.current != null && section === "planung") {
+      const id = pendingOpen.current;
+      pendingOpen.current = null;
+      setTimeout(() => openDetail(id), 0);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [section]);
   useEffect(() => {
     if (openReq && orders.length) {
@@ -1368,7 +1375,7 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
             {wt && <div style={{ fontSize: 12.5, color: "var(--warn)", marginBottom: 10 }}>{wt}</div>}
             {planStart.get(o.id) && (
               <div style={{ fontSize: 12.5, marginBottom: 10, color: sum.ready ? "var(--ok)" : addDays(planStart.get(o.id).start, -avLead) < today ? "var(--bad)" : "var(--muted)", fontWeight: sum.ready ? 600 : addDays(planStart.get(o.id).start, -avLead) < today ? 600 : 400 }}>
-                {sum.ready ? "Arbeitsvorbereitung ist bereit." : "Arbeitsvorbereitung muss bis " + fmtShort(addDays(planStart.get(o.id).start, -avLead)) + " fertig sein" + (addDays(planStart.get(o.id).start, -avLead) < today ? " (überfällig)" : "") + " (" + avLead + " Tage vor dem Start)."}
+                {sum.ready ? "Arbeitsvorbereitung ist bereit." : "Arbeitsvorbereitung muss bis " + fmtShort(addDays(planStart.get(o.id).start, -avLead)) + " fertig sein" + (addDays(planStart.get(o.id).start, -avLead) < today ? " und ist überfällig" : "") + " (" + avLead + " Tage vor dem Start)."}
               </div>
             )}
             {pred && (
@@ -1917,6 +1924,12 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
           leadDays={avLead}
           repeatOf={repeatOf}
           people={people}
+          onBulk={bulkAv}
+          onApplyRepeat={applyRepeat}
+          openPlanning={(id) => {
+            pendingOpen.current = id;
+            goTo("planung");
+          }}
           orderGroup={groupKeyOf}
         />
         {layer}
