@@ -54,10 +54,10 @@ function OdooLink({ o, btn }) {
       target="_blank"
       rel="noopener noreferrer"
       title={`${o.order_no} in Odoo öffnen`}
-      className={btn ? "btn sm" : "olink"}
+      className={btn ? "btn odoo" : "olink"}
       onClick={(ev) => ev.stopPropagation()}
     >
-      {btn ? "In Odoo öffnen" : "Odoo"} <Ico n="ext" s={12} />
+      {btn ? "In Odoo öffnen" : "Odoo"} <Ico n="ext" s={btn ? 15 : 12} />
     </a>
   );
 }
@@ -117,6 +117,9 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
   const [tab, setTab] = useState("zeit"); // zeit | auf | einst
   const [hl, setHl] = useState(null); // late | pool | soon: Hervorhebung über die Kennzahlen
   const [hoverGroup, setHoverGroup] = useState(null);
+  const [odooStatus, setOdooStatus] = useState(null); // { enabled, baselineDone, lastSync, lastChange, pendingClosing }
+  const [syncDlg, setSyncDlg] = useState(null); // { loading, error, result, closeSel }
+  const lastChangeSeen = useRef(null);
   const [hlSel, setHlSel] = useState(null); // aus der Kennzahlen-Liste gewählt: { ids, anchor }
   const [hoverStrip, setHoverStrip] = useState(null); // Positionen der Terminlinie, über der die Maus steht
   const [fresh, setFresh] = useState(null);
@@ -179,6 +182,29 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
       }
       setFreeDays(data.days);
     })().catch((err) => console.error("Freie Tage laden fehlgeschlagen", err));
+  }, []);
+
+  // Odoo-Abgleich: Status regelmäßig holen; hat der Server (stündlich) neue Aufträge übernommen, die Liste neu laden
+  useEffect(() => {
+    let stop = false;
+    const load = () =>
+      fetch("/api/odoo/status")
+        .then((r) => r.json())
+        .then((s) => {
+          if (stop) return;
+          setOdooStatus(s);
+          if (lastChangeSeen.current !== null && s.lastChange && s.lastChange !== lastChangeSeen.current) {
+            fetch("/api/orders").then((r) => r.json()).then((d) => setOrders(d.orders));
+          }
+          lastChangeSeen.current = s.lastChange || "";
+        })
+        .catch(() => {});
+    load();
+    const t = setInterval(load, 5 * 60 * 1000);
+    return () => {
+      stop = true;
+      clearInterval(t);
+    };
   }, []);
 
   // Der Zeitstrahl beginnt am Montag der aktuellen Woche, gerechnet in Tagen
@@ -702,6 +728,35 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
     });
     send(`/api/orders/${o.id}`, "PUT", patch);
     setReworkId(null);
+  }
+
+  async function openSync() {
+    setSyncDlg({ loading: true });
+    try {
+      const res = await fetch("/api/odoo/sync", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ dryRun: true }) });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Der Abgleich hat nicht geklappt");
+      setSyncDlg({ result: data, closeSel: new Set((data.closing || []).map((c) => c.ref)) });
+    } catch (err) {
+      setSyncDlg({ error: err.message });
+    }
+  }
+  async function applySync() {
+    const sel = [...syncDlg.closeSel];
+    setSyncDlg({ ...syncDlg, saving: true });
+    try {
+      const res = await fetch("/api/odoo/sync", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ dryRun: false, close: sel }) });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Der Abgleich hat nicht geklappt");
+      const [d, s] = await Promise.all([fetch("/api/orders").then((r) => r.json()), fetch("/api/odoo/status").then((r) => r.json())]);
+      setOrders(d.orders);
+      setOdooStatus(s);
+      lastChangeSeen.current = s.lastChange || "";
+      setSyncDlg(null);
+      toast(data.baseline ? "Erster Abgleich fertig: Ab jetzt kommen neue Fertigungsaufträge von selbst." : "Abgleich fertig: " + data.created.length + " neu übernommen" + (sel.length ? ", " + sel.length + " geschlossen" : "") + ".");
+    } catch (err) {
+      setSyncDlg({ ...syncDlg, saving: false, error: err.message });
+    }
   }
 
   // Teillieferung: eine Position in zwei teilen (Stück und Stunden anteilig), einzeln oder für alle Positionen eines Auftrags
@@ -1238,8 +1293,12 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
             {wt && <span className="pill warn">{it.waitReason === "dep" ? "wartet auf Arbeitsgang" : it.waitReason === "av" ? "wartet auf AV" : "wartet auf Start"}</span>}
             <span className={`pill ${sum.ready ? "ok" : "mute"}`}>AV {avDone}/{sum.states.length}</span>
             <MaterialBadge o={o} />
-            <OdooLink o={o} />
           </div>
+          {o.odoo_id && (
+            <div style={{ marginTop: 12 }}>
+              <OdooLink o={o} btn />
+            </div>
+          )}
 
           <div className="dsec">
             <h4>Plan</h4>
@@ -1673,8 +1732,90 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
     );
   };
 
+  const syncDialog = () => {
+    if (!syncDlg) return null;
+    const close = () => setSyncDlg(null);
+    const r = syncDlg.result;
+    return (
+      <div className="modal" onMouseDown={(e) => e.target === e.currentTarget && close()}>
+        <div className="dialog" role="dialog" aria-modal="true" aria-label="Abgleich mit Odoo" style={{ width: "min(640px, 100%)" }}>
+          <h3>Abgleich mit Odoo</h3>
+          {syncDlg.loading && <p>Odoo wird gelesen…</p>}
+          {syncDlg.error && <div className="note" style={{ borderColor: "var(--bad)", color: "var(--bad)" }}>{syncDlg.error}</div>}
+          {r && r.baseline && (
+            <>
+              <p>
+                Erster Abgleich: Odoo hat <b>{r.openCount}</b> offene Fertigungsaufträge, davon kennt die App schon <b>{r.knownInApp}</b>. Die übrigen {r.openCount - r.knownInApp} (meist alte) werden nur als „bekannt“ gemerkt und
+                <b> nicht</b> importiert. Es wird nichts geändert. Ab jetzt kommen neu bestätigte Fertigungsaufträge von selbst in „Noch nicht eingeplant“.
+              </p>
+              <div className="actions" style={{ justifyContent: "flex-end" }}>
+                <button type="button" className="btn" onClick={close}>Abbrechen</button>
+                <button type="button" className="btn primary" disabled={syncDlg.saving} onClick={applySync}>Verstanden, starten</button>
+              </div>
+            </>
+          )}
+          {r && !r.baseline && (
+            <>
+              <p>Vorschau, bevor etwas geändert wird. Die Frist der Aufträge bleibt bei Ihnen unverändert.</p>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 10 }}>
+                {[[r.created.length, "neu in „Noch nicht eingeplant“"], [r.updated, "bekannte Aufträge aktualisiert (Menge, Produkt, Material)"], [r.closing.length, "zum Schließen vorgeschlagen"]].map(([n, t]) => (
+                  <div className="card" key={t} style={{ padding: 14, boxShadow: "none" }}>
+                    <b style={{ font: "600 26px var(--f-display)" }}>{n}</b>
+                    <div style={{ color: "var(--muted)", fontSize: 13 }}>{t}</div>
+                  </div>
+                ))}
+              </div>
+              {r.created.length > 0 && (
+                <div style={{ marginTop: 14 }}>
+                  <div style={{ font: "600 12px var(--f-display)", letterSpacing: ".1em", textTransform: "uppercase", color: "var(--muted)", marginBottom: 6 }}>Neu</div>
+                  {r.created.map((c) => (
+                    <div key={c.ref} style={{ fontSize: 13, padding: "3px 0" }}>
+                      <b className="mono">{c.ref}</b> · {c.source || "ohne Auftrag"} · {c.quantity != null ? fmtH(c.quantity) + " Stück · " : ""}{c.product}
+                    </div>
+                  ))}
+                </div>
+              )}
+              {r.closing.length > 0 && (
+                <div style={{ marginTop: 14 }}>
+                  <div style={{ font: "600 12px var(--f-display)", letterSpacing: ".1em", textTransform: "uppercase", color: "var(--muted)", marginBottom: 6 }}>In der App schließen? (angekreuzt = wird geschlossen)</div>
+                  {r.closing.map((c) => (
+                    <label key={c.ref} className="chk" style={{ display: "flex", alignItems: "flex-start", gap: 8, padding: "5px 0", fontSize: 13, color: "var(--ink)" }}>
+                      <input
+                        type="checkbox"
+                        checked={syncDlg.closeSel.has(c.ref)}
+                        onChange={() => {
+                          const next = new Set(syncDlg.closeSel);
+                          if (next.has(c.ref)) next.delete(c.ref);
+                          else next.add(c.ref);
+                          setSyncDlg({ ...syncDlg, closeSel: next });
+                        }}
+                      />
+                      <span>
+                        <b className="mono">{c.ref}</b> {c.source ? "· " + c.source : ""} <span style={{ color: "var(--muted)" }}>· {c.reason}</span>
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              )}
+              <div className="actions" style={{ marginTop: 18, justifyContent: "flex-end" }}>
+                <button type="button" className="btn" onClick={close}>Abbrechen</button>
+                <button type="button" className="btn primary" disabled={syncDlg.saving} onClick={applySync}>Übernehmen</button>
+              </div>
+            </>
+          )}
+          {!syncDlg.loading && !r && (
+            <div className="actions" style={{ justifyContent: "flex-end" }}>
+              <button type="button" className="btn" onClick={close}>Schließen</button>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   const layer = (
     <>
+      {syncDialog()}
       {section === "planung" && positionDrawer()}
       {section === "planung" && laneDrawer()}
       {section === "av" && positionDrawer()}
@@ -2772,10 +2913,18 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
           </p>
         </div>
         <div className="actions">
+          {odooStatus && odooStatus.enabled && (
+            <button className="sync" type="button" onClick={openSync} title="Jetzt mit Odoo abgleichen">
+              <span className={"ok" + (odooStatus.lastError ? " err" : "")} />
+              {odooStatus.lastSync ? "Odoo · vor " + (Math.max(0, Math.round((Date.now() - Date.parse(odooStatus.lastSync)) / 60000)) || "<1") + " Min." : "Odoo abgleichen"}
+              {odooStatus.pendingClosing && odooStatus.pendingClosing.length > 0 && <b className="tag warn" style={{ fontStyle: "normal" }}>{odooStatus.pendingClosing.length} zu schließen</b>}
+              <Ico n="refresh" s={15} />
+            </button>
+          )}
           <input ref={fileInput} type="file" accept=".xlsx" onChange={onImportFile} style={{ display: "none" }} />
-          <button className="btn" type="button" onClick={() => fileInput.current.click()}>
+          <button className="btn" type="button" onClick={() => fileInput.current.click()} title="Reserve: Fertigungsaufträge aus einer Excel-Datei aus Odoo importieren">
             <Ico n="down" s={16} />
-            Aus Odoo importieren
+            Aus Excel importieren
           </button>
         </div>
       </div>

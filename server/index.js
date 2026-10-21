@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { existsSync, mkdirSync } from "node:fs";
 import { createHash, timingSafeEqual } from "node:crypto";
 import registerPartImages from "./partImages.js";
+import registerOdooSync from "./odooSync.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PORT || 3001;
@@ -1051,6 +1052,7 @@ app.post("/api/restore", (req, res) => {
 });
 
 registerPartImages(app, db);
+registerOdooSync(app, db, { isDate, nextPosition });
 
 if (existsSync(DIST_PATH)) {
   app.use(express.static(DIST_PATH));

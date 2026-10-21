@@ -158,9 +158,23 @@ export default function AvView({ orders, checks, planStart, today, onSet, select
                   <React.Fragment key={g.key}>
                     <tr className="gh">
                       <td colSpan={10}>
-                        <b>{g.label}</b>
-                        {g.rows.length} {g.rows.length === 1 ? "Position" : "Positionen"}
-                        {due ? ` · Liefertermin ${fmtShort(due)}` : ""} · {readyN} bereit
+                        <div className="ghead">
+                          <span className="gnum">{g.label}</span>
+                          {due ? (
+                            <span className={"gdue" + (due < today ? " late" : daysBetween(today, due) <= 7 ? " soon" : "")} title={due < today ? "Liefertermin überschritten" : "Liefertermin"}>
+                              <svg width="15" height="15" viewBox="0 0 32 32" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                                <rect x="5" y="7" width="22" height="20" rx="3" />
+                                <path d="M5 13h22M11 4v5M21 4v5" />
+                              </svg>
+                              Liefertermin {fmtShort(due)}
+                            </span>
+                          ) : (
+                            <span className="gdue none">ohne Liefertermin</span>
+                          )}
+                          <span className="gmeta">
+                            {g.rows.length} {g.rows.length === 1 ? "Position" : "Positionen"} · {readyN} bereit
+                          </span>
+                        </div>
                       </td>
                     </tr>
                     {g.rows.map((r) => {

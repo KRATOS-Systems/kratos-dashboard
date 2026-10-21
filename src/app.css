@@ -638,3 +638,20 @@ a.btn { text-decoration: none; }
 .hrow.on { background: var(--sunken); box-shadow: inset 3px 0 0 var(--ink); }
 .hrow:hover { background: var(--sunken); }
 .pool-row.hlrow { background: color-mix(in srgb, var(--warn) 14%, transparent); }
+
+.sync .ok.err { background: var(--bad); }
+.sync b.tag { margin-left: 2px; }
+
+/* Auftragskopf in der Arbeitsvorbereitung: Nummer und Liefertermin gut lesbar */
+.ghead { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding: 3px 0; }
+.gnum { font: 700 20px/1.1 var(--f-mono); letter-spacing: .01em; color: var(--ink); }
+.gdue { display: inline-flex; align-items: center; gap: 7px; border-radius: 999px; padding: 3px 12px 3px 10px; font: 600 14px var(--f-body); background: var(--surface); border: 1px solid var(--line-strong); color: var(--ink); }
+.gdue.soon { background: var(--warn-soft); border-color: transparent; color: var(--warn); }
+.gdue.late { background: var(--bad-soft); border-color: transparent; color: var(--bad); }
+.gdue.none { font-weight: 500; color: var(--muted); border-style: dashed; }
+.gmeta { color: var(--muted); font-size: 13px; }
+.tbl tr.gh td { padding-top: 10px; padding-bottom: 10px; }
+
+/* "In Odoo öffnen": deutlich erkennbarer Knopf */
+.btn.odoo { gap: 8px; padding: 8px 16px; font-weight: 600; color: var(--iris); border-color: color-mix(in srgb, var(--iris) 55%, var(--line-strong)); background: color-mix(in srgb, var(--iris) 12%, var(--surface)); text-decoration: none; }
+.btn.odoo:hover { background: color-mix(in srgb, var(--iris) 22%, var(--surface)); }

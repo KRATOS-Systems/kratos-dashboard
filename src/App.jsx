@@ -5,8 +5,6 @@ import Dashboard from "./Dashboard.jsx";
 import { Palette, Alerts, alertsList } from "./Overlays.jsx";
 import { BrandMark, WordMark, Ico, SvgDefs, ToastProvider } from "./ui.jsx";
 
-const THEME_STORAGE_KEY = "kratos-dashboard-theme";
-
 // Die Planung ist die erste Seite und öffnet beim Start
 const PAGES = [
   { id: "planung", label: "Produktionsplanung", icon: "plan" },
@@ -15,14 +13,16 @@ const PAGES = [
 ];
 const readPage = () => (window.location.hash === "#dashboard" ? "dashboard" : window.location.hash === "#av" ? "av" : "planung");
 
+// Die App merkt sich die zuletzt gewählte Darstellung; ohne gespeicherte Wahl startet sie im dunklen Modus
+const THEME_STORAGE_KEY = "kratos-dashboard-theme";
 function initialMode() {
   try {
     const stored = window.localStorage.getItem(THEME_STORAGE_KEY);
     if (stored === "light" || stored === "dark") return stored;
   } catch {
-    /* ohne Speicher gilt die Systemeinstellung */
+    /* ohne Speicher gilt dunkel */
   }
-  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  return "dark";
 }
 
 export default function App() {
