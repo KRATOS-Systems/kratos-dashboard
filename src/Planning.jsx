@@ -1359,7 +1359,7 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
               {goTo && (
                 <button
                   type="button"
-                  className="btn odoo"
+                  className="btn"
                   onClick={() => {
                     setAvFocus(o.id);
                     goTo("av");
