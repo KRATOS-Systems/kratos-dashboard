@@ -958,6 +958,16 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
     return best;
   }, [plan, todayOff]);
 
+  // Zum gewählten Eintrag der Kennzahlen-Liste scrollen (Hooks stehen vor dem frühen Return der AV-Seite)
+  useEffect(() => {
+    if (!hlSel) return undefined;
+    const t = setTimeout(() => {
+      const el = hl === "pool" ? document.querySelector(`[data-pid="${hlSel.anchor}"]`) : document.querySelector(`.bar[data-ids~="i${hlSel.anchor}"]:not(.wait)`);
+      if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 150);
+    return () => clearTimeout(t);
+  }, [hlSel, viewOffset, viewMode]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // ---------- Verbindungslinien zwischen Arbeitsgängen und Erklärungen zur Hervorhebung ----------
   const layoutKey = `${tab}|${viewMode}|${viewOffset}|${viewWeeks}|${hl}|${hlSel ? hlSel.anchor : ""}|${Object.keys(expanded).join(",")}|${section}`;
   useLayoutEffect(() => {
@@ -2101,14 +2111,6 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
       setViewOffset(Math.floor(startDay / 7));
     }
   };
-  useEffect(() => {
-    if (!hlSel) return undefined;
-    const t = setTimeout(() => {
-      const el = hl === "pool" ? document.querySelector(`[data-pid="${hlSel.anchor}"]`) : document.querySelector(`.bar[data-ids~="i${hlSel.anchor}"]:not(.wait)`);
-      if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
-    }, 150);
-    return () => clearTimeout(t);
-  }, [hlSel, viewOffset, viewMode]); // eslint-disable-line react-hooks/exhaustive-deps
   const hlBanner = () => {
     if (!hl) return null;
     const rows = hlRows();
