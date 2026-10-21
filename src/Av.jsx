@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from "react";
-import { daysBetween, fmtShort } from "./lib.js";
-import { AV_ITEMS, AV_STATUS, avCycle, avState, avSummary } from "./avLib.js";
+import { addDays, daysBetween, fmtShort } from "./lib.js";
+import { AV_ITEMS, AV_STATUS, avCycle, avDone, avState, avSummary } from "./avLib.js";
 import { AppTile, Thumb, partImg } from "./ui.jsx";
 
 const LANE_IDS = ["qs", "extern_fert", "extern"];
@@ -12,32 +12,72 @@ const FILTERS = [
   ["alle", "Alle offenen"],
 ];
 const CLS = { bereit: "bereit", in_arbeit: "arbeit", offen: "offen", entfaellt: "nein" };
+const store = (k, v) => {
+  try {
+    if (v === undefined) return window.localStorage.getItem(k);
+    window.localStorage.setItem(k, v);
+  } catch {
+    /* ohne Speicher gilt die Standardansicht */
+  }
+  return null;
+};
 
 // Arbeitsvorbereitung: Welche Positionen sind bereit für die Fertigung und was fehlt noch?
-// orders = alle Positionen, checks = Map (Position|Punkt -> { status, due, note }),
-// planStart = Map (Position -> { machine, start }) für eingeplante Positionen.
-export default function AvView({ orders, checks, planStart, today, onSet, selectedId, onOpen, filter, setFilter }) {
+// orders = alle Positionen, checks = Map (Position|Punkt -> { status, due, note, assignee }),
+// planStart = Map (Position -> { machine, start }) für eingeplante Positionen,
+// leadDays = Vorlauf: So viele Tage vor dem Start auf der Maschine muss alles bereit sein ("Muss bis").
+export default function AvView({ orders, checks, planStart, today, onSet, selectedId, onOpen, filter, setFilter, leadDays, repeatOf, people }) {
   const [query, setQuery] = useState("");
   const [popKey, setPopKey] = useState(null);
+  const [view, setViewState] = useState(() => (store("kratos-av-view") === "auftrag" ? "auftrag" : "dring"));
+  const [person, setPersonState] = useState(() => store("kratos-av-person") || "");
+  const setView = (v) => {
+    setViewState(v);
+    store("kratos-av-view", v);
+  };
+  const setPerson = (v) => {
+    setPersonState(v);
+    store("kratos-av-person", v);
+  };
 
   // Positionen, die offen und nicht an einem Ort (QS, Extern) liegen
   const all = useMemo(() => {
     const q = query.trim().toLowerCase();
     return orders
       .filter((o) => !o.done && !LANE_IDS.includes(o.machine))
-      .map((o) => ({ o, sum: avSummary(checks, o.id), plan: planStart.get(o.id) || null }))
+      .map((o) => {
+        const sum = avSummary(checks, o.id);
+        const plan = planStart.get(o.id) || null;
+        const muss = plan ? addDays(plan.start, -leadDays) : null;
+        return { o, sum, plan, muss, late: !sum.ready && muss && muss < today ? daysBetween(muss, today) : 0 };
+      })
       .filter(({ o }) => !q || `${o.order_no} ${o.source || ""} ${o.product || ""}`.toLowerCase().includes(q));
-  }, [orders, checks, planStart, query]);
+  }, [orders, checks, planStart, query, leadDays, today]);
+  const mine = (r) => {
+    if (!person) return true;
+    return AV_ITEMS.some((it) => {
+      const st = avState(checks, r.o.id, it.id);
+      if (avDone(st.status)) return false;
+      return person === "__none" ? !st.assignee : st.assignee === person;
+    });
+  };
   const isUrgent = (r) => !r.sum.ready && r.plan && daysBetween(today, r.plan.start) <= 7;
-  const cnt = { offen: all.filter((r) => !r.sum.ready).length, bald: all.filter(isUrgent).length, alle: all.length };
-  const rows = all.filter((r) => (filter === "alle" ? true : filter === "bald" ? isUrgent(r) : !r.sum.ready));
+  const base = all.filter(mine);
+  const cnt = { offen: base.filter((r) => !r.sum.ready).length, bald: base.filter(isUrgent).length, alle: base.length };
+  const rows = base.filter((r) => (filter === "alle" ? true : filter === "bald" ? isUrgent(r) : !r.sum.ready));
+
+  const sorted = useMemo(() => {
+    const key = (r) => (r.muss ? `0${r.muss}` : `1${r.o.due || "9999"}`);
+    return [...rows].sort((a, b) => key(a).localeCompare(key(b)) || String(a.o.source).localeCompare(String(b.o.source)) || a.o.id - b.o.id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rows.map((r) => r.o.id + "|" + r.muss + "|" + r.sum.ready).join(",")]);
 
   const groups = (() => {
     const map = new Map();
     rows.forEach((r) => {
-      const key = groupKey(r.o);
-      if (!map.has(key)) map.set(key, { key, label: r.o.source || r.o.order_no || "ohne Nummer", rows: [] });
-      map.get(key).rows.push(r);
+      const k = groupKey(r.o);
+      if (!map.has(k)) map.set(k, { key: k, label: r.o.source || r.o.order_no || "ohne Nummer", rows: [] });
+      map.get(k).rows.push(r);
     });
     const sortKey = (g) => {
       const starts = g.rows.map((r) => r.plan?.start).filter(Boolean).sort();
@@ -50,7 +90,7 @@ export default function AvView({ orders, checks, planStart, today, onSet, select
   const cell = (r, item) => {
     const st = avState(checks, r.o.id, item.id);
     const label = AV_STATUS.find((s) => s.id === st.status).short;
-    const urgent = st.status === "offen" && isUrgent(r);
+    const urgent = st.status === "offen" && (isUrgent(r) || r.late > 0);
     const late = st.due && st.status !== "bereit" && st.status !== "entfaellt" && st.due < today;
     const key = `${r.o.id}|${item.id}`;
     return (
@@ -59,7 +99,7 @@ export default function AvView({ orders, checks, planStart, today, onSet, select
           <button
             type="button"
             className={`av ${urgent ? "urgent" : CLS[st.status]}${popKey === key ? " pop" : ""}`}
-            title={`${item.label}: ${AV_STATUS.find((s) => s.id === st.status).label}. Klick = nächster Status${st.note ? `\n${st.note}` : ""}`}
+            title={`${item.label}: ${AV_STATUS.find((s) => s.id === st.status).label}. Klick = nächster Status${st.assignee ? `\nZuständig: ${st.assignee}` : ""}${st.note ? `\n${st.note}` : ""}`}
             onClick={(ev) => {
               ev.stopPropagation();
               setPopKey(key);
@@ -68,6 +108,7 @@ export default function AvView({ orders, checks, planStart, today, onSet, select
           >
             {label}
           </button>
+          {st.assignee && st.status !== "entfaellt" && <small className="who">{st.assignee}</small>}
           {st.due && st.status !== "entfaellt" && st.status !== "bereit" && (
             <small className="num" style={late ? { color: "var(--bad)", fontWeight: 600 } : undefined}>
               {fmtShort(st.due)}
@@ -79,6 +120,74 @@ export default function AvView({ orders, checks, planStart, today, onSet, select
     );
   };
 
+  const mussCell = (r) => {
+    if (r.sum.ready) return <span style={{ color: "var(--ok)", fontWeight: 600 }}>bereit</span>;
+    if (!r.muss) return <span style={{ color: "var(--faint)" }}>nicht eingeplant</span>;
+    const days = daysBetween(today, r.muss);
+    return (
+      <div className={`muss ${r.late ? "late" : days <= 2 ? "soon" : ""}`} title={`Start auf ${r.plan.machine} am ${fmtShort(r.plan.start)}, ${leadDays} Tage Vorlauf`}>
+        <b>{fmtShort(r.muss)}</b>
+        <small>{r.late ? `${r.late} ${r.late === 1 ? "Tag" : "Tage"} überfällig` : days === 0 ? "heute" : days === 1 ? "morgen" : `in ${days} Tagen`}</small>
+      </div>
+    );
+  };
+
+  const posCell = (r, showOrder) => {
+    const { o } = r;
+    const rep = repeatOf && repeatOf.get(o.id);
+    return (
+      <div style={{ display: "flex", gap: 11, alignItems: "center" }}>
+        <Thumb src={partImg(o)} size={64} />
+        <div style={{ minWidth: 0 }}>
+          {showOrder && <div className="posord">{o.source || o.order_no || "ohne Auftrag"}</div>}
+          <b className="mono">{posNo(o)}</b>
+          <div style={{ color: "var(--muted)", fontSize: 12, maxWidth: 210, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={o.product || ""}>
+            {[o.quantity != null ? `${o.quantity} Stück` : null, o.product].filter(Boolean).join(" · ")}
+          </div>
+          {rep && (
+            <div className="repeat" title={`Gleiches Teil wie ${posNo(rep)}: AV-Stand kann übernommen werden`}>
+              ↻ Wiederholteil von {posNo(rep)}
+            </div>
+          )}
+          <div className="segs" title="AV-Fortschritt">
+            {AV_ITEMS.map((it) => {
+              const s = avState(checks, o.id, it.id).status;
+              return <i key={it.id} className={s === "offen" && (isUrgent(r) || r.late > 0) ? "urgent" : CLS[s]} />;
+            })}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const dataRow = (r, showOrder) => {
+    const { o, sum, plan } = r;
+    const dueLate = o.due && o.due < today;
+    return (
+      <tr key={o.id} className={`row${selectedId === o.id ? " sel" : ""}${r.late ? " ovd" : ""}`} onClick={() => onOpen(o.id)}>
+        <td>{posCell(r, showOrder)}</td>
+        <td className="num" style={dueLate ? { color: "var(--bad)", fontWeight: 600 } : undefined}>
+          {o.due ? fmtShort(o.due) : "–"}
+        </td>
+        <td>
+          {plan ? (
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 7 }}>
+              {plan.machine} · ab {fmtShort(plan.start)}
+            </span>
+          ) : (
+            <span style={{ color: "var(--faint)" }}>nicht eingeplant</span>
+          )}
+        </td>
+        <td>{mussCell(r)}</td>
+        {AV_ITEMS.map((it) => cell(r, it))}
+        <td className="num" style={{ fontWeight: 600, color: sum.ready ? "var(--ok)" : "var(--ink)" }}>
+          {sum.ready ? "bereit" : sum.readyDate ? fmtShort(sum.readyDate) : "offen"}
+        </td>
+      </tr>
+    );
+  };
+
+  const COLS = 11;
   return (
     <>
       <div className="page-head rise" style={{ "--i": 0 }}>
@@ -93,13 +202,30 @@ export default function AvView({ orders, checks, planStart, today, onSet, select
               <b>{cnt[id]}</b>
             </button>
           ))}
-          <input type="search" placeholder="Suchen" value={query} onChange={(e) => setQuery(e.target.value)} style={{ width: 190 }} aria-label="Suchen" />
+          <select value={person} onChange={(e) => setPerson(e.target.value)} aria-label="Zuständig" title="Nur Aufgaben dieser Person zeigen">
+            <option value="">Zuständig: alle</option>
+            {people.map((n) => (
+              <option key={n} value={n}>
+                Zuständig: {n}
+              </option>
+            ))}
+            <option value="__none">Ohne Zuständigen</option>
+          </select>
+          <div className="seg" role="group" aria-label="Sortierung">
+            <button type="button" className={view === "dring" ? "on" : ""} onClick={() => setView("dring")} title="Nach Muss-bis-Termin: Das Dringendste steht oben">
+              Dringlichkeit
+            </button>
+            <button type="button" className={view === "auftrag" ? "on" : ""} onClick={() => setView("auftrag")} title="Nach Aufträgen gruppiert">
+              Aufträge
+            </button>
+          </div>
+          <input type="search" placeholder="Suchen" value={query} onChange={(e) => setQuery(e.target.value)} style={{ width: 170 }} aria-label="Suchen" />
         </div>
       </div>
 
       <div className="card rise" style={{ "--i": 1 }}>
         <div className="scroll">
-          <table className="tbl" style={{ minWidth: 980 }}>
+          <table className="tbl" style={{ minWidth: 1100 }}>
             <thead>
               <tr>
                 <th className="avh">
@@ -120,10 +246,16 @@ export default function AvView({ orders, checks, planStart, today, onSet, select
                     <span>Planung</span>
                   </div>
                 </th>
+                <th className="avh">
+                  <div className="avh-in">
+                    <AppTile id="muss" size={36} i={2} />
+                    <span>Muss bis</span>
+                  </div>
+                </th>
                 {AV_ITEMS.map((it, ix) => (
                   <th className="avh" key={it.id}>
                     <div className="avh-in">
-                      <AppTile id={it.id} size={36} i={ix} />
+                      <AppTile id={it.id} size={36} i={ix + 3} />
                       <span>{it.label}</span>
                     </div>
                   </th>
@@ -132,16 +264,18 @@ export default function AvView({ orders, checks, planStart, today, onSet, select
               </tr>
             </thead>
             <tbody>
-              {groups.length === 0 && (
+              {rows.length === 0 && (
                 <tr>
-                  <td colSpan={10}>
+                  <td colSpan={COLS}>
                     <div className="empty">
                       <div className="ring">
                         <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5" /></svg>
                       </div>
-                      <b style={{ color: "var(--ink)", font: "600 18px var(--f-display)" }}>{filter === "alle" ? "Keine Positionen" : filter === "bald" ? "Nichts startet unvorbereitet" : "Alles bereit"}</b>
+                      <b style={{ color: "var(--ink)", font: "600 18px var(--f-display)" }}>{person ? "Nichts für diese Auswahl" : filter === "alle" ? "Keine Positionen" : filter === "bald" ? "Nichts startet unvorbereitet" : "Alles bereit"}</b>
                       <span>
-                        {filter === "alle"
+                        {person
+                          ? "Für diese Person ist nichts offen. Wähle oben „Zuständig: alle“."
+                          : filter === "alle"
                           ? "Es gibt keine offenen Positionen."
                           : filter === "bald"
                           ? "In den nächsten 7 Tagen startet nichts, was nicht bereit ist."
@@ -151,83 +285,44 @@ export default function AvView({ orders, checks, planStart, today, onSet, select
                   </td>
                 </tr>
               )}
-              {groups.map((g) => {
-                const due = g.rows.map((r) => r.o.due).filter(Boolean).sort()[0];
-                const readyN = g.rows.filter((r) => r.sum.ready).length;
-                return (
-                  <React.Fragment key={g.key}>
-                    <tr className="gh">
-                      <td colSpan={10}>
-                        <div className="ghead">
-                          <span className="gnum">{g.label}</span>
-                          {due ? (
-                            <span className={"gdue" + (due < today ? " late" : daysBetween(today, due) <= 7 ? " soon" : "")} title={due < today ? "Liefertermin überschritten" : "Liefertermin"}>
-                              <svg width="15" height="15" viewBox="0 0 32 32" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                                <rect x="5" y="7" width="22" height="20" rx="3" />
-                                <path d="M5 13h22M11 4v5M21 4v5" />
-                              </svg>
-                              Liefertermin {fmtShort(due)}
-                            </span>
-                          ) : (
-                            <span className="gdue none">ohne Liefertermin</span>
-                          )}
-                          <span className="gmeta">
-                            {g.rows.length} {g.rows.length === 1 ? "Position" : "Positionen"} · {readyN} bereit
-                          </span>
-                        </div>
-                      </td>
-                    </tr>
-                    {g.rows.map((r) => {
-                      const { o, sum, plan } = r;
-                      const u = isUrgent(r);
-                      const dueLate = o.due && o.due < today;
-                      return (
-                        <tr key={o.id} className={`row${selectedId === o.id ? " sel" : ""}`} onClick={() => onOpen(o.id)}>
-                          <td>
-                            <div style={{ display: "flex", gap: 11, alignItems: "center" }}>
-                              <Thumb src={partImg(o)} size={64} />
-                              <div style={{ minWidth: 0 }}>
-                                <b className="mono">{posNo(o)}</b>
-                                <div style={{ color: "var(--muted)", fontSize: 12, maxWidth: 210, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={o.product || ""}>
-                                  {[o.quantity != null ? `${o.quantity} Stück` : null, o.product].filter(Boolean).join(" · ")}
-                                </div>
-                                <div className="segs" title="AV-Fortschritt">
-                                  {AV_ITEMS.map((it) => {
-                                    const s = avState(checks, o.id, it.id).status;
-                                    return <i key={it.id} className={s === "offen" && u ? "urgent" : CLS[s]} />;
-                                  })}
-                                </div>
-                              </div>
-                            </div>
-                          </td>
-                          <td className="num" style={dueLate ? { color: "var(--bad)", fontWeight: 600 } : undefined}>
-                            {o.due ? fmtShort(o.due) : "–"}
-                          </td>
-                          <td>
-                            {plan ? (
-                              <span style={{ display: "inline-flex", alignItems: "center", gap: 7 }}>
-                                {plan.machine} · ab {fmtShort(plan.start)}
+              {view === "dring" && sorted.map((r) => dataRow(r, true))}
+              {view === "auftrag" &&
+                groups.map((g) => {
+                  const due = g.rows.map((r) => r.o.due).filter(Boolean).sort()[0];
+                  const readyN = g.rows.filter((r) => r.sum.ready).length;
+                  return (
+                    <React.Fragment key={g.key}>
+                      <tr className="gh">
+                        <td colSpan={COLS}>
+                          <div className="ghead">
+                            <span className="gnum">{g.label}</span>
+                            {due ? (
+                              <span className={"gdue" + (due < today ? " late" : daysBetween(today, due) <= 7 ? " soon" : "")} title={due < today ? "Liefertermin überschritten" : "Liefertermin"}>
+                                <svg width="15" height="15" viewBox="0 0 32 32" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                                  <rect x="5" y="7" width="22" height="20" rx="3" />
+                                  <path d="M5 13h22M11 4v5M21 4v5" />
+                                </svg>
+                                Liefertermin {fmtShort(due)}
                               </span>
                             ) : (
-                              <span style={{ color: "var(--faint)" }}>nicht eingeplant</span>
+                              <span className="gdue none">ohne Liefertermin</span>
                             )}
-                          </td>
-                          {AV_ITEMS.map((it) => cell(r, it))}
-                          <td className="num" style={{ fontWeight: 600, color: sum.ready ? "var(--ok)" : "var(--ink)" }}>
-                            {sum.ready ? "bereit" : sum.readyDate ? fmtShort(sum.readyDate) : "offen"}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </React.Fragment>
-                );
-              })}
+                            <span className="gmeta">
+                              {g.rows.length} {g.rows.length === 1 ? "Position" : "Positionen"} · {readyN} bereit
+                            </span>
+                          </div>
+                        </td>
+                      </tr>
+                      {g.rows.map((r) => dataRow(r, false))}
+                    </React.Fragment>
+                  );
+                })}
             </tbody>
           </table>
         </div>
       </div>
       <div className="rise" style={{ "--i": 2, marginTop: 12, fontSize: 12.5, color: "var(--muted)", lineHeight: 1.6 }}>
-        Ein Klick auf einen Status schaltet ihn weiter (offen, in Arbeit, bereit). Ein Klick auf die Zeile öffnet die Details mit Termin und Notiz. Der späteste Termin der offenen Punkte ist das „Bereit ab“: Bis dahin wartet die Position in der Planung. Fehlt etwas, ist das nur eine Warnung, eingeplant werden kann die Position trotzdem.
+        „Muss bis“ ist der Tag, bis zu dem alles bereit sein muss: Start auf der Maschine minus {leadDays} {leadDays === 1 ? "Tag" : "Tage"} Vorlauf (einstellbar unter Planung, Einstellungen). Ein Klick auf einen Status schaltet ihn weiter (offen, in Arbeit, bereit). Ein Klick auf die Zeile öffnet die Details mit Termin, Zuständigem und Notiz. Der späteste Termin der offenen Punkte ist das „Bereit ab“: Bis dahin wartet die Position in der Planung. Fehlt etwas, ist das nur eine Warnung.
       </div>
     </>
   );

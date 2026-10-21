@@ -26,7 +26,7 @@ export const AV_STATUS = [
 ];
 
 export const avKey = (id, item) => `${id}|${item}`;
-export const avState = (checks, id, item) => checks.get(avKey(id, item)) || { status: AV_DEFAULT[item], due: null, note: "" };
+export const avState = (checks, id, item) => checks.get(avKey(id, item)) || { status: AV_DEFAULT[item], due: null, note: "", assignee: null };
 export const avDone = (status) => status === "bereit" || status === "entfaellt";
 
 // offen -> in Arbeit -> bereit -> offen (ein nicht nötiger Punkt wird mit einem Klick offen)

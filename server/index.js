@@ -108,13 +108,14 @@ db.exec(`
     PRIMARY KEY (order_id, item)
   );
 `);
+if (!db.prepare("PRAGMA table_info(av_checks)").all().some((c) => c.name === "assignee")) db.exec("ALTER TABLE av_checks ADD COLUMN assignee TEXT");
 const AV_ITEMS = ["material", "programm", "werkzeuge", "spannmittel", "pruefplan", "empb"];
 const AV_STATUS = ["offen", "in_arbeit", "bereit", "entfaellt"];
 const AV_DEFAULT = { material: "offen", programm: "offen", werkzeuge: "offen", spannmittel: "offen", pruefplan: "entfaellt", empb: "entfaellt" };
 const copyAv = (fromId, toId) =>
   db
     .prepare(
-      "INSERT OR REPLACE INTO av_checks (order_id, item, status, due, note, updated_at) SELECT ?, item, status, due, note, updated_at FROM av_checks WHERE order_id = ?"
+      "INSERT OR REPLACE INTO av_checks (order_id, item, status, due, note, assignee, updated_at) SELECT ?, item, status, due, note, assignee, updated_at FROM av_checks WHERE order_id = ?"
     )
     .run(toId, fromId);
 
@@ -700,23 +701,27 @@ const DEFAULT_TIGHT_DAYS = 3;
 // Nutzung der Betriebszeit in %: Die Planung rechnet mit Schichtmodell (Stunden pro Woche) x Nutzung
 const DEFAULT_UTILIZATION = 80;
 
+// Vorlauf der Arbeitsvorbereitung in Tagen: So lange vor dem Start auf der Maschine muss alles bereit sein
+const DEFAULT_AV_LEAD = 2;
+
 const planSettingsOut = () => {
   const get = (key, fallback) => {
     const row = db.prepare("SELECT value FROM plan_settings WHERE key = ?").get(key);
     return row ? row.value : fallback;
   };
-  return { tight_days: get("tight_days", DEFAULT_TIGHT_DAYS), utilization: get("utilization", DEFAULT_UTILIZATION) };
+  return { tight_days: get("tight_days", DEFAULT_TIGHT_DAYS), utilization: get("utilization", DEFAULT_UTILIZATION), av_lead_days: get("av_lead_days", DEFAULT_AV_LEAD) };
 };
 
 app.get("/api/plan-settings", (req, res) => res.json(planSettingsOut()));
 
 app.put("/api/plan-settings", (req, res) => {
-  const { tight_days, utilization } = req.body || {};
+  const { tight_days, utilization, av_lead_days } = req.body || {};
   const num = (v, min, max) => typeof v === "number" && Number.isFinite(v) && v >= min && v <= max;
   if (
-    (tight_days === undefined && utilization === undefined) ||
+    (tight_days === undefined && utilization === undefined && av_lead_days === undefined) ||
     (tight_days !== undefined && !num(tight_days, 0, 60)) ||
-    (utilization !== undefined && !num(utilization, 1, 100))
+    (utilization !== undefined && !num(utilization, 1, 100)) ||
+    (av_lead_days !== undefined && !num(av_lead_days, 0, 60))
   ) {
     return res.status(400).json({ error: "invalid payload" });
   }
@@ -725,6 +730,7 @@ app.put("/api/plan-settings", (req, res) => {
   );
   if (tight_days !== undefined) save.run("tight_days", tight_days);
   if (utilization !== undefined) save.run("utilization", utilization);
+  if (av_lead_days !== undefined) save.run("av_lead_days", av_lead_days);
   res.json(planSettingsOut());
 });
 
@@ -924,24 +930,26 @@ app.post("/api/orders/split-many", (req, res) => {
 
 // Arbeitsvorbereitung lesen und ändern
 app.get("/api/av", (req, res) => {
-  res.json({ checks: db.prepare("SELECT order_id, item, status, due, note FROM av_checks").all() });
+  res.json({ checks: db.prepare("SELECT order_id, item, status, due, note, assignee FROM av_checks").all() });
 });
 
 function saveAv(orderId, item, patch) {
-  const cur = db.prepare("SELECT status, due, note FROM av_checks WHERE order_id = ? AND item = ?").get(orderId, item) || {
+  const cur = db.prepare("SELECT status, due, note, assignee FROM av_checks WHERE order_id = ? AND item = ?").get(orderId, item) || {
     status: AV_DEFAULT[item],
     due: null,
     note: "",
+    assignee: null,
   };
   const next = {
     status: patch.status !== undefined ? patch.status : cur.status,
     due: patch.due !== undefined ? patch.due : cur.due,
     note: patch.note !== undefined ? patch.note : cur.note,
+    assignee: patch.assignee !== undefined ? (patch.assignee === null || patch.assignee === "" ? null : patch.assignee) : cur.assignee,
   };
   db.prepare(
-    `INSERT INTO av_checks (order_id, item, status, due, note, updated_at) VALUES (?, ?, ?, ?, ?, datetime('now'))
-     ON CONFLICT (order_id, item) DO UPDATE SET status = excluded.status, due = excluded.due, note = excluded.note, updated_at = excluded.updated_at`
-  ).run(orderId, item, next.status, next.due, next.note);
+    `INSERT INTO av_checks (order_id, item, status, due, note, assignee, updated_at) VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
+     ON CONFLICT (order_id, item) DO UPDATE SET status = excluded.status, due = excluded.due, note = excluded.note, assignee = excluded.assignee, updated_at = excluded.updated_at`
+  ).run(orderId, item, next.status, next.due, next.note, next.assignee);
   return { order_id: orderId, item, ...next };
 }
 
@@ -949,7 +957,8 @@ const avPatchValid = (b) =>
   AV_ITEMS.includes(b.item) &&
   (b.status === undefined || AV_STATUS.includes(b.status)) &&
   (b.due === undefined || b.due === null || isDate(b.due)) &&
-  (b.note === undefined || (typeof b.note === "string" && b.note.length <= 500));
+  (b.note === undefined || (typeof b.note === "string" && b.note.length <= 500)) &&
+  (b.assignee === undefined || b.assignee === null || (typeof b.assignee === "string" && b.assignee.length <= 40));
 
 app.put("/api/av", (req, res) => {
   const b = req.body || {};

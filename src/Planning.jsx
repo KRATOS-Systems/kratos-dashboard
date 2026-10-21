@@ -39,6 +39,7 @@ import {
   buildGroups,
 } from "./planLogic.js";
 
+const REPEAT_ITEMS = ["programm", "werkzeuge", "spannmittel", "pruefplan", "empb"];
 const esc = (s) => String(s == null ? "" : s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 const isOp = (o) => /^AG /.test(o.part_label || "");
 const stat = (g) => (g ? g.status : "ok");
@@ -104,6 +105,7 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
   const [checks, setChecks] = useState(() => new Map()); // Arbeitsvorbereitung: Position|Punkt -> { status, due, note }
   const [rates, setRates] = useState({});
   const [tightDays, setTightDays] = useState(DEFAULT_TIGHT_DAYS);
+  const [avLead, setAvLead] = useState(2); // Vorlauf der Arbeitsvorbereitung in Tagen
   const [preview, setPreview] = useState(null); // ungespeichertes Schichtmodell "Was wäre wenn": { date, hours }
   const [newShift, setNewShift] = useState({ date: "", hours: 100 });
   const [pendingDue, setPendingDue] = useState(null); // { key, value }: neuer Auftragstermin wartet auf Rückfrage
@@ -165,9 +167,10 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
       fetch("/api/av").then((r) => r.json()),
     ]).then(([o, r, s, a]) => {
       setOrders(o.orders);
-      setChecks(new Map(a.checks.map((c) => [avKey(c.order_id, c.item), { status: c.status, due: c.due, note: c.note }])));
+      setChecks(new Map(a.checks.map((c) => [avKey(c.order_id, c.item), { status: c.status, due: c.due, note: c.note, assignee: c.assignee || null }])));
       setRates(r.rates);
       setTightDays(s.tight_days);
+      if (typeof s.av_lead_days === "number") setAvLead(s.av_lead_days);
       if (s.utilization) setUtilization(s.utilization);
     });
 
@@ -521,17 +524,25 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
   function setAv(id, item, patch) {
     setChecks((prev) => {
       const next = new Map(prev);
-      const cur = prev.get(avKey(id, item)) || { status: item === "pruefplan" || item === "empb" ? "entfaellt" : "offen", due: null, note: "" };
+      const cur = prev.get(avKey(id, item)) || { status: item === "pruefplan" || item === "empb" ? "entfaellt" : "offen", due: null, note: "", assignee: null };
       next.set(avKey(id, item), { ...cur, ...patch });
       return next;
     });
     send("/api/av", "PUT", { order_id: id, item, ...patch });
   }
+  function applyRepeat(o, src) {
+    REPEAT_ITEMS.forEach((item) => {
+      const s = avState(checks, src.id, item);
+      if (s.status === "offen") return;
+      setAv(o.id, item, { status: s.status, due: null, note: s.note || "übernommen von " + posNo(src), assignee: s.assignee || null });
+    });
+    toast("AV-Stand von " + posNo(src) + " übernommen: Programm, Werkzeuge, Spannmittel, Prüfplan, EMPB");
+  }
   function bulkAv(ids, item, patch) {
     setChecks((prev) => {
       const next = new Map(prev);
       ids.forEach((id) => {
-        const cur = prev.get(avKey(id, item)) || { status: item === "pruefplan" || item === "empb" ? "entfaellt" : "offen", due: null, note: "" };
+        const cur = prev.get(avKey(id, item)) || { status: item === "pruefplan" || item === "empb" ? "entfaellt" : "offen", due: null, note: "", assignee: null };
         next.set(avKey(id, item), { ...cur, ...patch });
       });
       return next;
@@ -657,6 +668,13 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
     if (!Number.isFinite(value) || value < 0 || value > 60) return;
     setTightDays(value);
     send("/api/plan-settings", "PUT", { tight_days: value });
+  }
+
+  function changeAvLead(raw) {
+    const value = raw === "" ? 0 : Number(raw);
+    if (!Number.isFinite(value) || value < 0 || value > 60) return;
+    setAvLead(value);
+    send("/api/plan-settings", "PUT", { av_lead_days: value });
   }
 
   function changeUtilization(raw) {
@@ -983,6 +1001,39 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [positions]);
   const posRec = useMemo(() => new Map(positions.map((p) => [p.id, p])), [positions]);
+  // Wiederholteile: Gleicher Artikel (Code in eckigen Klammern oder gleiche Bezeichnung) wurde schon einmal gefertigt und hat einen AV-Stand
+  const productKey = (o) => {
+    if (!o.product) return null;
+    const m = o.product.match(/^\[([^\]]+)\]/);
+    return (m ? m[1] : o.product).trim().toLowerCase();
+  };
+  const repeatOf = useMemo(() => {
+    const byKey = new Map();
+    orders.forEach((o) => {
+      const k = productKey(o);
+      if (!k) return;
+      const hasAv = ["programm", "werkzeuge", "spannmittel"].some((it) => avState(checks, o.id, it).status === "bereit");
+      if (!hasAv) return;
+      const cur = byKey.get(k);
+      if (!cur || o.id > cur.id) byKey.set(k, o);
+    });
+    const m = new Map();
+    orders.forEach((o) => {
+      if (o.done) return;
+      const k = productKey(o);
+      const src = k ? byKey.get(k) : null;
+      if (!src || src.id === o.id) return;
+      // nur anzeigen, wenn es etwas zu übernehmen gibt
+      const differs = REPEAT_ITEMS.some((it) => {
+        const s = avState(checks, src.id, it);
+        const mine = avState(checks, o.id, it);
+        return s.status !== "offen" && (s.status !== mine.status || (s.assignee || null) !== (mine.assignee || null));
+      });
+      if (differs) m.set(o.id, src);
+    });
+    return m;
+  }, [orders, checks]); // eslint-disable-line react-hooks/exhaustive-deps
+  const people = useMemo(() => [...new Set([...checks.values()].map((c) => c.assignee).filter(Boolean))].sort((a, b) => a.localeCompare(b)), [checks]);
   const urgentIds = useMemo(() => new Set(positions.filter((p) => p.urgent).map((p) => p.id)), [positions]);
   const lateIds = useMemo(() => new Set(positions.filter((p) => p.status === "late").map((p) => p.id)), [positions]);
 
@@ -1315,6 +1366,11 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
               {g && g.end != null && ` · Auftrag fertig ca. ${fmtShort(endDateOf(g.end))} (${g.endMachine})`}
             </div>
             {wt && <div style={{ fontSize: 12.5, color: "var(--warn)", marginBottom: 10 }}>{wt}</div>}
+            {planStart.get(o.id) && (
+              <div style={{ fontSize: 12.5, marginBottom: 10, color: sum.ready ? "var(--ok)" : addDays(planStart.get(o.id).start, -avLead) < today ? "var(--bad)" : "var(--muted)", fontWeight: sum.ready ? 600 : addDays(planStart.get(o.id).start, -avLead) < today ? 600 : 400 }}>
+                {sum.ready ? "Arbeitsvorbereitung ist bereit." : "Arbeitsvorbereitung muss bis " + fmtShort(addDays(planStart.get(o.id).start, -avLead)) + " fertig sein" + (addDays(planStart.get(o.id).start, -avLead) < today ? " (überfällig)" : "") + " (" + avLead + " Tage vor dem Start)."}
+              </div>
+            )}
             {pred && (
               <div style={{ fontSize: 12.5, color: "var(--muted)", marginBottom: 10 }}>
                 ↳ folgt auf {posNo(pred)}
@@ -1377,6 +1433,21 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
 
           <div className="dsec">
             <h4>Arbeitsvorbereitung</h4>
+            <datalist id="av-people">
+              {people.map((n) => (
+                <option key={n} value={n} />
+              ))}
+            </datalist>
+            {repeatOf.get(o.id) && (
+              <div className="note" style={{ marginBottom: 12 }}>
+                <b>Wiederholteil:</b> Das gleiche Teil wurde schon als {posNo(repeatOf.get(o.id))} vorbereitet. Programm, Werkzeuge, Spannmittel, Prüfplan und EMPB samt Zuständigem können übernommen werden.
+                <div className="actions" style={{ marginTop: 8 }}>
+                  <button type="button" className="btn sm primary" onClick={() => applyRepeat(o, repeatOf.get(o.id))}>
+                    AV-Stand übernehmen
+                  </button>
+                </div>
+              </div>
+            )}
             {AV_ITEMS.map((item) => {
               const st = avState(checks, o.id, item.id);
               return (
@@ -1397,9 +1468,10 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
                   {st.status !== "entfaellt" && (
                     <div className="sub">
                       <input type="date" value={st.due || ""} onChange={(ev) => setAv(o.id, item.id, { due: ev.target.value || null })} aria-label={`${item.label} ${st.status === "bereit" ? "bereit seit" : "bereit am"}`} title={st.status === "bereit" ? "bereit seit" : "bereit am"} />
+                      <input type="text" list="av-people" maxLength={40} placeholder="Zuständig" title="Wer kümmert sich darum?" value={st.assignee || ""} onChange={(ev) => setAv(o.id, item.id, { assignee: ev.target.value || null })} style={{ flex: "0 1 130px" }} />
                       <input type="text" maxLength={500} placeholder={item.hint} value={st.note} onChange={(ev) => setAv(o.id, item.id, { note: ev.target.value })} />
                       {ids.length > 1 && (
-                        <button type="button" className="btn sm" title="Status und Termin dieses Punkts für alle Positionen des Auftrags übernehmen" onClick={() => bulkAv(ids, item.id, { status: st.status, due: st.due })}>
+                        <button type="button" className="btn sm" title="Status und Termin dieses Punkts für alle Positionen des Auftrags übernehmen" onClick={() => bulkAv(ids, item.id, { status: st.status, due: st.due, assignee: st.assignee || null })}>
                           Für alle {ids.length}
                         </button>
                       )}
@@ -1840,6 +1912,9 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
           onOpen={(id) => openDetail(id)}
           filter={avFilter}
           setFilter={setAvFilter}
+          leadDays={avLead}
+          repeatOf={repeatOf}
+          people={people}
           orderGroup={groupKeyOf}
         />
         {layer}
@@ -2775,6 +2850,13 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
             <span style={{ display: "flex", gap: 8, alignItems: "center", color: "var(--ink)", fontWeight: 400 }}>
               <input type="number" min={1} max={100} step={1} value={utilization || ""} onChange={(ev) => changeUtilization(ev.target.value)} style={{ width: 90 }} />
               Planung: {shift.label} {fmtH(shift.hours)} h × {utilization} %
+            </span>
+          </label>
+          <label className="f" title="So viele Tage vor dem Start auf der Maschine muss die Arbeitsvorbereitung fertig sein (Spalte Muss bis)">
+            Vorlauf der Arbeitsvorbereitung (Tage)
+            <span style={{ display: "flex", gap: 8, alignItems: "center", color: "var(--ink)", fontWeight: 400 }}>
+              <input type="number" min={0} max={60} step={1} value={avLead} onChange={(ev) => changeAvLead(ev.target.value)} style={{ width: 90 }} />
+              Muss bis = Start auf der Maschine minus {avLead} {avLead === 1 ? "Tag" : "Tage"}
             </span>
           </label>
           <label className="f" title="Mindestpuffer in Tagen: darunter wird ein Auftrag gelb markiert">

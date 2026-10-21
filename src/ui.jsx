@@ -144,6 +144,7 @@ const AIC = {
   pruefplan: ["var(--qs)", '<rect x="7" y="5.5" width="18" height="22" rx="3"/><path d="M12 5.5V4h8v1.5M11 13h10M11 18h10M11 23h6"/>'],
   liefertermin: ["var(--brand)", '<rect x="5" y="7" width="22" height="20" rx="3"/><path d="M5 13h22M11 4v5M21 4v5M11 20l3.2 3L21 17"/>'],
   planung: ["var(--slate)", '<rect x="5" y="7" width="12" height="4.6" rx="2.3"/><rect x="11" y="14" width="16" height="4.6" rx="2.3"/><rect x="7" y="21" width="11" height="4.6" rx="2.3"/>'],
+  muss: ["var(--warn)", '<circle cx="16" cy="16" r="10.5"/><path d="M16 10v6.4l4.2 2.6"/>'],
   empb: ["var(--iris)", '<path d="M8 4h13l5 5v19H8z"/><path d="M21 4v5h5M12 15h10M12 20h6"/><circle cx="21.5" cy="24.5" r="3"/>'],
   search: ["var(--slate)", null],
   page_plan: ["var(--slate)", null],
