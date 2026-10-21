@@ -5,6 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { existsSync, mkdirSync } from "node:fs";
 import { createHash, timingSafeEqual } from "node:crypto";
+import registerPartImages from "./partImages.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PORT || 3001;
@@ -93,6 +94,29 @@ db.exec(`
   );
 `);
 
+// Arbeitsvorbereitung: Checkliste je Position (Material, Programm, Werkzeuge, Spannmittel, Prüfplan, Erstmusterprüfbericht).
+// Status offen / in_arbeit / bereit / entfaellt, dazu ein Termin (wann bereit) und eine Notiz. Ohne Zeile gilt der Standard der App.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS av_checks (
+    order_id INTEGER NOT NULL,
+    item TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'offen',
+    due TEXT,
+    note TEXT NOT NULL DEFAULT '',
+    updated_at TEXT,
+    PRIMARY KEY (order_id, item)
+  );
+`);
+const AV_ITEMS = ["material", "programm", "werkzeuge", "spannmittel", "pruefplan", "empb"];
+const AV_STATUS = ["offen", "in_arbeit", "bereit", "entfaellt"];
+const AV_DEFAULT = { material: "offen", programm: "offen", werkzeuge: "offen", spannmittel: "offen", pruefplan: "entfaellt", empb: "entfaellt" };
+const copyAv = (fromId, toId) =>
+  db
+    .prepare(
+      "INSERT OR REPLACE INTO av_checks (order_id, item, status, due, note, updated_at) SELECT ?, item, status, due, note, updated_at FROM av_checks WHERE order_id = ?"
+    )
+    .run(toId, fromId);
+
 // Die Dauer der externen Bearbeitung wird in Tagen gespeichert (früher in Wochen)
 const columnsOf = () => db.prepare("PRAGMA table_info(orders)").all().map((c) => c.name);
 if (columnsOf().includes("extern_weeks")) {
@@ -131,6 +155,23 @@ const orderColumns = columnsOf();
   if (!orderColumns.includes(name)) db.exec(`ALTER TABLE orders ADD COLUMN ${name} ${type}`);
 });
 db.exec("CREATE UNIQUE INDEX IF NOT EXISTS orders_odoo_ref ON orders (odoo_ref)");
+
+// Einmalig beim ersten Start mit der Arbeitsvorbereitung: Positionen, die schon laufen (Fortschritt eingetragen) oder in QS / Extern liegen,
+// stehen auf "bereit" (Material, Programm, Werkzeuge, Spannmittel). Es werden nur fehlende Zeilen ergänzt, bestehende bleiben unverändert.
+(() => {
+  const done = db.prepare("SELECT value FROM plan_settings WHERE key = ?").get("av_seed_done");
+  if (done) return;
+  const ids = db
+    .prepare("SELECT id FROM orders WHERE done = 0 AND (machine IN ('qs', 'extern_fert', 'extern') OR done_hours > 0 OR progress_date IS NOT NULL)")
+    .all()
+    .map((r) => r.id);
+  const ins = db.prepare("INSERT OR IGNORE INTO av_checks (order_id, item, status, due, note, updated_at) VALUES (?, ?, 'bereit', NULL, '', ?)");
+  const now = new Date().toISOString();
+  let n = 0;
+  for (const id of ids) for (const item of ["material", "programm", "werkzeuge", "spannmittel"]) n += Number(ins.run(id, item, now).changes);
+  db.prepare("INSERT INTO plan_settings (key, value) VALUES (?, 1) ON CONFLICT (key) DO UPDATE SET value = 1").run("av_seed_done");
+  console.log("Arbeitsvorbereitung: " + ids.length + " laufende Positionen auf bereit gesetzt (" + n + " Punkte)");
+})();
 
 // Kapazität mit Standardwert vorbelegen, falls noch nicht vorhanden
 const insertDefaultCapacity = db.prepare(
@@ -492,6 +533,7 @@ app.delete("/api/orders/:id", (req, res) => {
   // Arbeitsgänge: Der nächste Arbeitsgang folgt dann auf den davor
   const gone = db.prepare("SELECT after_id FROM orders WHERE id = ?").get(id);
   if (gone) db.prepare("UPDATE orders SET after_id = ? WHERE after_id = ?").run(gone.after_id ?? null, id);
+  db.prepare("DELETE FROM av_checks WHERE order_id = ?").run(id);
   db.prepare("DELETE FROM orders WHERE id = ?").run(id);
   res.json({ id });
 });
@@ -765,6 +807,7 @@ function splitOrder(row, n, due) {
     group,
     row.id
   );
+  copyAv(row.id, Number(info.lastInsertRowid));
   return Number(info.lastInsertRowid);
 }
 
@@ -829,6 +872,7 @@ app.post("/api/orders/ops", (req, res) => {
         nameOf(o, i), group, row.odoo_ref || row.parent_ref, prev
       );
       prev = Number(info.lastInsertRowid);
+      copyAv(row.id, prev);
     });
     const last = clean[clean.length - 1];
     const position = last.machine === row.machine ? row.position : nextPosition(last.machine);
@@ -877,6 +921,61 @@ app.post("/api/orders/split-many", (req, res) => {
   res.json({ split, whole, skipped });
 });
 
+// Arbeitsvorbereitung lesen und ändern
+app.get("/api/av", (req, res) => {
+  res.json({ checks: db.prepare("SELECT order_id, item, status, due, note FROM av_checks").all() });
+});
+
+function saveAv(orderId, item, patch) {
+  const cur = db.prepare("SELECT status, due, note FROM av_checks WHERE order_id = ? AND item = ?").get(orderId, item) || {
+    status: AV_DEFAULT[item],
+    due: null,
+    note: "",
+  };
+  const next = {
+    status: patch.status !== undefined ? patch.status : cur.status,
+    due: patch.due !== undefined ? patch.due : cur.due,
+    note: patch.note !== undefined ? patch.note : cur.note,
+  };
+  db.prepare(
+    `INSERT INTO av_checks (order_id, item, status, due, note, updated_at) VALUES (?, ?, ?, ?, ?, datetime('now'))
+     ON CONFLICT (order_id, item) DO UPDATE SET status = excluded.status, due = excluded.due, note = excluded.note, updated_at = excluded.updated_at`
+  ).run(orderId, item, next.status, next.due, next.note);
+  return { order_id: orderId, item, ...next };
+}
+
+const avPatchValid = (b) =>
+  AV_ITEMS.includes(b.item) &&
+  (b.status === undefined || AV_STATUS.includes(b.status)) &&
+  (b.due === undefined || b.due === null || isDate(b.due)) &&
+  (b.note === undefined || (typeof b.note === "string" && b.note.length <= 500));
+
+app.put("/api/av", (req, res) => {
+  const b = req.body || {};
+  if (!Number.isInteger(b.order_id) || !avPatchValid(b)) return res.status(400).json({ error: "invalid payload" });
+  if (!db.prepare("SELECT 1 FROM orders WHERE id = ?").get(b.order_id)) return res.status(404).json({ error: "not found" });
+  res.json(saveAv(b.order_id, b.item, b));
+});
+
+// Ein Punkt für mehrere Positionen auf einmal (zum Beispiel für einen ganzen Auftrag)
+app.post("/api/av/bulk", (req, res) => {
+  const b = req.body || {};
+  if (!Array.isArray(b.order_ids) || b.order_ids.length === 0 || b.order_ids.length > 500 || !b.order_ids.every(Number.isInteger) || !avPatchValid(b)) {
+    return res.status(400).json({ error: "invalid payload" });
+  }
+  db.exec("BEGIN");
+  try {
+    b.order_ids.forEach((id) => {
+      if (db.prepare("SELECT 1 FROM orders WHERE id = ?").get(id)) saveAv(id, b.item, b);
+    });
+    db.exec("COMMIT");
+  } catch (err) {
+    db.exec("ROLLBACK");
+    throw err;
+  }
+  res.json({ ok: true });
+});
+
 // Datensicherung: alle Daten als lesbare JSON-Datei zum Herunterladen
 app.get("/api/backup", (req, res) => {
   const all = (sql) => db.prepare(sql).all();
@@ -893,6 +992,7 @@ app.get("/api/backup", (req, res) => {
     free_days_seeded: all("SELECT * FROM free_days_seeded ORDER BY year"),
     plan_rates: all("SELECT * FROM plan_rates ORDER BY machine"),
     plan_settings: all("SELECT * FROM plan_settings ORDER BY key"),
+    av_checks: all("SELECT * FROM av_checks ORDER BY order_id, item"),
   };
   res.setHeader("Content-Disposition", `attachment; filename="kratos-backup-${created.slice(0, 10)}.json"`);
   res.type("json").send(JSON.stringify(backup, null, 2));
@@ -909,6 +1009,7 @@ const RESTORE_TABLES = [
   "week_capacity",
   "free_days",
   "free_days_seeded",
+  "av_checks",
 ];
 app.post("/api/restore", (req, res) => {
   const { backup, dryRun } = req.body || {};
@@ -948,6 +1049,8 @@ app.post("/api/restore", (req, res) => {
   }
   res.json({ counts });
 });
+
+registerPartImages(app, db);
 
 if (existsSync(DIST_PATH)) {
   app.use(express.static(DIST_PATH));

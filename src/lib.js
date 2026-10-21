@@ -1,7 +1,7 @@
 export const MACHINES = [
-  { id: "dmu40", name: "DMG DMU 40 eVo", short: "DMU 40", colorKey: "blue" },
-  { id: "m1", name: "DMG M1", short: "M1", colorKey: "yellow" },
-  { id: "h800u", name: "POS Mill H800U", short: "H800U", colorKey: "red" },
+  { id: "dmu40", name: "DMG DMU 40 eVo", short: "DMU 40", colorKey: "blue", c: "var(--dmu)" },
+  { id: "m1", name: "DMG M1", short: "M1", colorKey: "yellow", c: "var(--org)" },
+  { id: "h800u", name: "POS Mill H800U", short: "H800U", colorKey: "red", c: "var(--mag)" },
 ];
 
 export const DAY = 86400000;
@@ -50,16 +50,4 @@ export function isoWeekOf(s) {
 export function weekInfo(monday) {
   const { year, week } = isoWeekOf(monday);
   return { key: `${year}-${week}`, label: `KW ${week}`, monday };
-}
-
-export function makeStyles(theme) {
-  return {
-    eyebrow: {
-      fontSize: 12,
-      letterSpacing: 0,
-      color: theme.steel,
-      fontWeight: 600,
-    },
-    mono: { fontFamily: "inherit", fontVariantNumeric: "tabular-nums" },
-  };
 }
