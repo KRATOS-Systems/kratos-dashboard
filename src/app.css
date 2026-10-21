@@ -744,3 +744,8 @@ a.btn { text-decoration: none; }
 .avp-soon .btn em { font-style: normal; font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin-left: 6px; }
 .avp .avrow:first-of-type { border-top: 0; }
 @media (max-width: 900px) { .avp { grid-template-columns: minmax(0, 1fr); } .fthumbs { flex-direction: row; } .fthumbs .fthumb { flex: 1; } }
+
+/* Gewählte Position im Zeitstrahl: höher als die anderen (die Länge bleibt, sonst stimmt das Datum nicht), Schatten, Nachbarn leicht gedämpft */
+.bar { transition: transform .15s ease, box-shadow .15s ease, background .15s ease, opacity .2s ease, top .2s ease, height .2s ease, filter .2s ease; }
+.bar.sel { top: 2px; height: 58px; outline: 2px solid var(--ink); outline-offset: 1px; filter: drop-shadow(0 6px 12px rgba(0,0,0,.45)); z-index: 6; }
+.tl.has-sel .bar:not(.sel):not(.wait):not(.hl):not(.linked) { opacity: .62; }

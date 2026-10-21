@@ -1082,6 +1082,16 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
     return () => clearTimeout(t);
   }, [hlSel, viewOffset, viewMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Gewählte Position im Zeitstrahl ins Bild holen (auch beim Sprung aus der Arbeitsvorbereitung oder der Suche)
+  useEffect(() => {
+    if (detailId == null || section !== "planung" || tab !== "zeit") return undefined;
+    const t = setTimeout(() => {
+      const el = document.querySelector(`.bar.sel:not(.wait)`);
+      if (el) el.scrollIntoView({ behavior: "smooth", block: "center", inline: "nearest" });
+    }, 250);
+    return () => clearTimeout(t);
+  }, [detailId, section, tab]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // ---------- Verbindungslinien zwischen Arbeitsgängen und Erklärungen zur Hervorhebung ----------
   const layoutKey = `${tab}|${viewMode}|${viewOffset}|${viewWeeks}|${hl}|${hlSel ? hlSel.anchor : ""}|${Object.keys(expanded).join(",")}|${section}`;
   useLayoutEffect(() => {
@@ -2452,7 +2462,7 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
             )}
           </div>
         </div>
-        <div className={`tl${dense ? " dense" : ""}`} style={{ "--n": total }}>
+        <div className={`tl${dense ? " dense" : ""}${detailId != null ? " has-sel" : ""}`} style={{ "--n": total }}>
           <div className="tl-in" ref={tlRef}>
             <div className="tl-head">
               <div />
