@@ -737,5 +737,8 @@ a.btn { text-decoration: none; }
 .avp-prod { color: var(--muted); font-size: 13px; margin-top: 8px; }
 .avp-list { margin-top: 10px; }
 .avp-odoo { color: var(--muted); font-size: 12.5px; margin-top: 8px; }
+.avp-soon { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 4px; }
+.avp-soon .btn { opacity: .6; cursor: not-allowed; }
+.avp-soon .btn em { font-style: normal; font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin-left: 6px; }
 .avp .avrow:first-of-type { border-top: 0; }
 @media (max-width: 900px) { .avp { grid-template-columns: minmax(0, 1fr); } .fthumbs { flex-direction: row; } .fthumbs .fthumb { flex: 1; } }

@@ -15,6 +15,16 @@ const FILTERS = [
   ["bald", "Startet in 7 Tagen"],
   ["alle", "Alle offenen"],
 ];
+// Geplante Funktionen der Arbeitsvorbereitung, im Feld schon sichtbar, aber noch nicht verfügbar
+const SOON = [
+  ["In Mastercam öffnen", "Das 3D-Modell (STEP) direkt in Mastercam starten"],
+  ["Material aus Einkauf", "Bestellt, Ankunft und geliefert aus den Odoo-Einkäufen übernehmen"],
+  ["Werkzeugliste", "Werkzeuge aus dem NC-Programm auslesen und mit dem Lager abgleichen"],
+  ["NC-Programm ablegen", "Programm zur Position speichern und Stand nachverfolgen"],
+  ["Prüfplan aus QS CHECK", "Prüfplan zur Zeichnung anlegen oder übernehmen"],
+  ["Laufkarte drucken", "Laufkarte mit Zeichnung, Arbeitsgängen und QR-Code"],
+  ["Terminverlauf", "Wann sich Liefer- und Muss-bis-Termin geändert haben"],
+];
 // Jeder Auftrag bekommt eine feste Farbe, damit man seine Positionen auf einen Blick erkennt (ohne Rot, Gelb und Grün, die für den Zustand reserviert sind)
 const HUES = [210, 188, 255, 300, 330, 25, 275, 200];
 const orderColor = (key) => {
@@ -97,6 +107,14 @@ function AvPanel({ r, checks, orders, onSet, onBulk, people, repeatSrc, onApplyR
             </div>
           </div>
         )}
+        <div className="avp-soon" aria-label="Weitere Funktionen, noch nicht verfügbar">
+          {SOON.map(([label, hint]) => (
+            <button key={label} type="button" className="btn sm" disabled title={hint + " – noch nicht verfügbar"}>
+              {label}
+              <em>bald</em>
+            </button>
+          ))}
+        </div>
         <div className="avp-list">
           {AV_ITEMS.map((item) => {
             const st = avState(checks, o.id, item.id);
