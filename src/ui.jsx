@@ -65,6 +65,12 @@ const IC = {
   ext: '<path d="M14 5h5v5M19 5l-8 8M18 14v5H5V6h5"/>',
   cal: '<rect x="4" y="6" width="16" height="14" rx="2"/><path d="M4 11h16M9 3v4M15 3v4"/>',
   split: '<path d="M12 4v6M12 10l-6 6v4M12 10l6 6v4"/>',
+  team: '<circle cx="9" cy="8" r="3"/><path d="M3.5 19a5.5 5.5 0 0 1 11 0"/><circle cx="17" cy="9" r="2.5"/><path d="M15.5 14.2A4.5 4.5 0 0 1 21 18.5"/>',
+  user: '<circle cx="12" cy="8" r="3.5"/><path d="M5 20a7 7 0 0 1 14 0"/>',
+  full: '<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>',
+  warn: '<path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17v.5"/>',
+  pip: '<rect x="3" y="5" width="18" height="14" rx="2"/><rect x="12" y="11" width="7" height="6" rx="1"/>',
+  chip: '<rect x="4" y="6" width="16" height="12" rx="2"/><path d="M8 10h3v4H8z"/><path d="M14 10h3M14 14h3"/>',
 };
 
 export function Ico({ n, s = 18 }) {

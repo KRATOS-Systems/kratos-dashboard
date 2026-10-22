@@ -2,6 +2,9 @@ import React, { useState, useEffect, useLayoutEffect, useRef, useMemo, useCallba
 import { DEFAULT_WEEK_CAPACITY, SHIFT_MODELS, todayStr } from "./lib.js";
 import Planning from "./Planning.jsx";
 import Dashboard from "./Dashboard.jsx";
+import Team from "./Team.jsx";
+import Arbeitsplatz from "./Arbeitsplatz.jsx";
+import Kiosk from "./Kiosk.jsx";
 import { Palette, Alerts, alertsList } from "./Overlays.jsx";
 import { BrandMark, WordMark, Ico, SvgDefs, ToastProvider } from "./ui.jsx";
 
@@ -10,8 +13,17 @@ const PAGES = [
   { id: "planung", label: "Produktionsplanung", icon: "plan" },
   { id: "av", label: "Arbeitsvorbereitung", icon: "av" },
   { id: "dashboard", label: "Dashboard", icon: "dash" },
+  { id: "team", label: "Team", icon: "team" },
+  { id: "platz", label: "Mein Arbeitsplatz", icon: "user" },
 ];
-const readPage = () => (window.location.hash === "#dashboard" ? "dashboard" : window.location.hash === "#av" ? "av" : "planung");
+const PLAN_PAGES = ["planung", "av"];
+// "#team/vollbild" = Team-Tafel ohne Seitenleiste (Tablet an der Maschine), "#kiosk" = Terminal für Kommen und Gehen
+const readHash = () => window.location.hash.replace(/^#/, "");
+const readPage = () => {
+  const id = readHash().split("/")[0];
+  return id === "kiosk" || PAGES.some((p) => p.id === id) ? id : "planung";
+};
+const readKiosk = () => readHash() === "team/vollbild" || readHash() === "kiosk";
 
 // Die App merkt sich die zuletzt gewählte Darstellung; ohne gespeicherte Wahl startet sie im dunklen Modus
 const THEME_STORAGE_KEY = "kratos-dashboard-theme";
@@ -43,10 +55,12 @@ export default function App() {
   };
 
   const [page, setPage] = useState(readPage);
+  const [kiosk, setKiosk] = useState(readKiosk);
   const [anim, setAnim] = useState(true);
   useEffect(() => {
     const onHash = () => {
       setPage(readPage());
+      setKiosk(readKiosk());
       setAnim(true);
     };
     window.addEventListener("hashchange", onHash);
@@ -58,12 +72,13 @@ export default function App() {
     return () => clearTimeout(t);
   }, [anim, page]);
   useEffect(() => {
-    document.title = `Kratos ${PAGES.find((p) => p.id === page).label}`;
+    document.title = page === "kiosk" ? "Kratos Kiosk" : `Kratos ${PAGES.find((p) => p.id === page).label}`;
     window.scrollTo(0, 0);
   }, [page]);
   const goTo = useCallback((id) => {
     if (window.location.hash === `#${id}`) {
-      setPage(id);
+      setPage(readPage());
+      setKiosk(readKiosk());
       setAnim(true);
     } else window.location.hash = id;
   }, []);
@@ -152,8 +167,8 @@ export default function App() {
   return (
     <ToastProvider>
       <SvgDefs />
-      <div className="app">
-        <aside className="side">
+      <div className={`app${kiosk ? " kiosk" : ""}`}>
+        {!kiosk && <aside className="side">
           <div className="brand">
             <BrandMark size={34} />
             <div>
@@ -207,9 +222,9 @@ export default function App() {
               <span className="lbl">{mode === "dark" ? "Hell" : "Dunkel"}</span>
             </button>
           </div>
-        </aside>
-        <main className={`main${anim ? " anim" : ""}`} key={page === "dashboard" ? "dash" : "plan"}>
-          {page !== "dashboard" && (
+        </aside>}
+        <main className={`main${anim ? " anim" : ""}`} key={PLAN_PAGES.includes(page) ? "plan" : page}>
+          {PLAN_PAGES.includes(page) && (
             <Planning
               section={page}
               today={today}
@@ -228,6 +243,9 @@ export default function App() {
               }}
             />
           )}
+          {page === "team" && <Team kiosk={kiosk} goTo={goTo} />}
+          {page === "platz" && <Arbeitsplatz />}
+          {page === "kiosk" && <Kiosk />}
           {page === "dashboard" && capLoaded && <Dashboard weekCap={weekCap} saveCapacity={saveCapacity} today={today} shared={shared} openTalos={(q) => { setTalosQ(q); setShowSearch(true); }} />}
         </main>
       </div>
