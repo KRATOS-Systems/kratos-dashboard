@@ -33,7 +33,7 @@ function dueText(due, today) {
 export default function Teile({ viewId, today, canStart, onStart, goTo }) {
   const [data, setData] = useState(null);
   const [drawing, setDrawing] = useState(null);
-  const [showAv, setShowAv] = useState(false);
+  const [openInfo, setOpenInfo] = useState(null);
   const load = useCallback(() => {
     fetch(`/api/bde/teile${viewId ? `?id=${viewId}` : ""}`)
       .then((r) => (r.ok ? r.json() : null))
@@ -47,18 +47,19 @@ export default function Teile({ viewId, today, canStart, onStart, goTo }) {
   }, [load]);
   if (!data || !data.name) return null;
 
-  const row = (it, kind) => {
+  const row = (it, kind, infoFrom) => {
     const p = splitProduct(it.product);
     const due = dueText(it.due, today);
-    const next = kind === "teil" ? it.steps.find((st) => st.workorderId && st.state !== "blocked") || null : null;
+    const next = kind === "teil" && !infoFrom ? it.steps.find((st) => st.workorderId && st.state !== "blocked") || null : null;
     return (
-      <div className="card part" key={`${kind}-${it.orderId}`}>
+      <div className={`card part${infoFrom ? " info" : ""}`} key={`${kind}-${it.orderId}`}>
         <Thumb src={partImg({ odoo_id: it.odooId })} size={52} />
         <div className="part-main">
           <div className="part-top">
             <b className="mono">{it.fa}</b>
             <span className="part-name">{p.name || ""}</span>
             {it.quantity != null && <span className="part-qty">{String(it.quantity).replace(".", ",")} Stk.</span>}
+            {infoFrom && <span className="part-by">macht {infoFrom}</span>}
           </div>
           <div className="part-meta">
             {kind === "teil" &&
@@ -125,12 +126,23 @@ export default function Teile({ viewId, today, canStart, onStart, goTo }) {
           {data.avTotal > data.av.length && <div className="part-more">und {data.avTotal - data.av.length} weitere in der Arbeitsvorbereitung</div>}
         </section>
       )}
-      {data.avOverview && data.avOverview.items.length > 0 && (
+      {data.info && data.info.some((x) => x.total > 0) && (
         <section className="bsec quiet-sec">
-          <button type="button" className="btn quiet" onClick={() => setShowAv((v) => !v)}>
-            Arbeitsvorbereitung von {data.avOverview.person}: {data.avOverview.items.length} offen {showAv ? "▴" : "▾"}
-          </button>
-          {showAv && <div className="brecent">{data.avOverview.items.slice(0, 12).map((it) => row(it, "av"))}</div>}
+          <h2 className="info-h">Zur Info</h2>
+          {data.info
+            .filter((x) => x.total > 0)
+            .map((x) => {
+              const key = `${x.source}|${x.scope}`;
+              const open = openInfo === key;
+              return (
+                <div key={key} className="info-block">
+                  <button type="button" className="btn quiet info-toggle" onClick={() => setOpenInfo(open ? null : key)}>
+                    {x.scope === "av" ? "Arbeitsvorbereitung" : "Teile"} von {x.source}: {x.total} offen {open ? "▴" : "▾"}
+                  </button>
+                  {open && <div className="brecent">{x.items.map((it) => row(it, x.scope === "av" ? "av" : "teil", x.source))}</div>}
+                </div>
+              );
+            })}
         </section>
       )}
       {drawing && (

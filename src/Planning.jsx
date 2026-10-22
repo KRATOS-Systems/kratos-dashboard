@@ -106,7 +106,8 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
   const [orders, setOrders] = useState([]);
   const [checks, setChecks] = useState(() => new Map()); // Arbeitsvorbereitung: Position|Punkt -> { status, due, note }
   // Zuständigkeiten: Stammbediener je Maschine, Rollen, Abweichungen je Position und Tätigkeit ("id|tätigkeit" -> Name)
-  const [staff, setStaff] = useState(() => ({ defaults: { ...STAFF_DEFAULTS }, overrides: new Map() }));
+  const [staff, setStaff] = useState(() => ({ defaults: { ...STAFF_DEFAULTS }, overrides: new Map(), info: [] }));
+  const [newInfo, setNewInfo] = useState({ source: "Nino", scope: "av", target: "Frank" });
   const [rates, setRates] = useState({});
   const [tightDays, setTightDays] = useState(DEFAULT_TIGHT_DAYS);
   const [avLead, setAvLead] = useState(2); // Vorlauf der Arbeitsvorbereitung in Tagen
@@ -175,7 +176,7 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
         .then((r) => r.json())
         .catch(() => null),
     ]).then(([o, r, s, a, st]) => {
-      if (st && st.defaults) setStaff({ defaults: st.defaults, overrides: new Map(st.orders.map((x) => [`${x.order_id}|${x.activity}`, x.name])) });
+      if (st && st.defaults) setStaff({ defaults: st.defaults, overrides: new Map(st.orders.map((x) => [`${x.order_id}|${x.activity}`, x.name])), info: st.info || [] });
       setOrders(o.orders);
       setChecks(new Map(a.checks.map((c) => [avKey(c.order_id, c.item), { status: c.status, due: c.due, note: c.note, assignee: c.assignee || null }])));
       setRates(r.rates);
@@ -1060,6 +1061,12 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
       return { ...st, overrides };
     });
     fetch("/api/staff/order", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ order_id: orderId, activity, name: name || null }) }).catch((err) => console.error("Speichern fehlgeschlagen", err));
+  }
+  function changeInfo(rule, remove) {
+    fetch("/api/staff/info", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...rule, remove }) })
+      .then((r) => r.json())
+      .then((d) => d.info && setStaff((st) => ({ ...st, info: d.info })))
+      .catch((err) => console.error("Speichern fehlgeschlagen", err));
   }
   function setStaffDefault(key, name) {
     setStaff((st) => ({ ...st, defaults: { ...st.defaults, [key]: name } }));
@@ -2998,6 +3005,48 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
         </div>
         <div className="staffgrid" style={{ padding: "4px 18px 16px" }}>
           {AV_ITEMS.map((it) => staffRow(`av:${it.id}`, it.label, it.id === "programm" ? "Wie Programmierung" : false))}
+        </div>
+        <div className="sec-head" style={{ paddingTop: 0 }}>
+          <div>
+            <h2 style={{ fontSize: 16 }}>Zur Info</h2>
+            <p>Wer bei wem nur mitschaut, z. B. während der Einarbeitung. Er sieht die Punkte in „Mein Arbeitsplatz“ zugeklappt unter „Zur Info“, ohne Knöpfe. Zuständig bleibt der andere.</p>
+          </div>
+        </div>
+        <div className="infolist">
+          {staff.info.length === 0 && <div className="bsubtext">Niemand bekommt etwas zur Info.</div>}
+          {staff.info.map((x) => (
+            <div className="inforow" key={`${x.source}|${x.target}|${x.scope}`}>
+              <Avatar name={x.source} size={26} />
+              <span>
+                {x.scope === "av" ? "Arbeitsvorbereitung" : "Teile"} von <b>{x.source}</b> zur Info an <b>{x.target}</b>
+              </span>
+              <Avatar name={x.target} size={26} />
+              <button type="button" className="btn sm quiet" onClick={() => changeInfo(x, true)} aria-label="Entfernen" title="Entfernen">
+                <Ico n="x" s={14} />
+              </button>
+            </div>
+          ))}
+          <div className="inforow add">
+            <select value={newInfo.scope} onChange={(ev) => setNewInfo((n) => ({ ...n, scope: ev.target.value }))} aria-label="Was">
+              <option value="av">Arbeitsvorbereitung</option>
+              <option value="teile">Teile</option>
+            </select>
+            <span>von</span>
+            <select value={newInfo.source} onChange={(ev) => setNewInfo((n) => ({ ...n, source: ev.target.value }))} aria-label="Von wem">
+              {STAFF.map((p) => (
+                <option key={p.name}>{p.name}</option>
+              ))}
+            </select>
+            <span>zur Info an</span>
+            <select value={newInfo.target} onChange={(ev) => setNewInfo((n) => ({ ...n, target: ev.target.value }))} aria-label="An wen">
+              {STAFF.map((p) => (
+                <option key={p.name}>{p.name}</option>
+              ))}
+            </select>
+            <button type="button" className="btn sm" disabled={newInfo.source === newInfo.target} onClick={() => changeInfo(newInfo, false)}>
+              Hinzufügen
+            </button>
+          </div>
         </div>
       </div>
       <div className="card">

@@ -1015,6 +1015,7 @@ app.get("/api/backup", (req, res) => {
     av_checks: all("SELECT * FROM av_checks ORDER BY order_id, item"),
     staff_defaults: all("SELECT * FROM staff_defaults ORDER BY key"),
     order_staff: all("SELECT * FROM order_staff ORDER BY order_id, activity"),
+    staff_info: all("SELECT * FROM staff_info ORDER BY target, source, scope"),
   };
   res.setHeader("Content-Disposition", `attachment; filename="kratos-backup-${created.slice(0, 10)}.json"`);
   res.type("json").send(JSON.stringify(backup, null, 2));
@@ -1034,6 +1035,7 @@ const RESTORE_TABLES = [
   "av_checks",
   "staff_defaults",
   "order_staff",
+  "staff_info",
 ];
 app.post("/api/restore", (req, res) => {
   const { backup, dryRun } = req.body || {};

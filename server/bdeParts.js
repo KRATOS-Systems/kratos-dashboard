@@ -6,7 +6,8 @@
 // - Arbeitsvorbereitung: offene AV-Punkte, für die er zuständig ist (Zuständiger am Punkt, sonst die Rolle Arbeitsvorbereitung),
 //   auch für noch nicht eingeplante Positionen.
 // - Planung: wer die Rolle Produktionsplanung hat, sieht die Zahl der noch nicht eingeplanten Positionen.
-// - Leitung: dezente Übersicht der offenen Arbeitsvorbereitung (Frank arbeitet die AV ein).
+// - Zur Info: Arbeit anderer, die in den Einstellungen der Planung jemandem zur Information zugeordnet ist
+//   (z. B. "Arbeitsvorbereitung von Nino zur Info an Frank" während der Einarbeitung); nur ansehen, keine Knöpfe.
 
 import { ACTIVITIES, responsible, avResponsible, staffName } from "../src/staffLib.js";
 import { avKey, avSummary } from "../src/avLib.js";
@@ -94,53 +95,54 @@ export default function registerBdeParts(app, db, ctx, staff) {
       .map(({ o, mine, sum }) => ({ ...base(o), open: mine.map((s) => s.label), readyBy: sum.readyDate || null, planned: MACHINE_IDS.includes(o.machine) }));
   }
 
+  // Teile mit Tätigkeiten von "name": eingeplant auf einer Maschine (Reihenfolge des Zeitstrahls) oder in der QS;
+  // erledigte Arbeitsgänge (Odoo) fallen weg
+  async function itemsFor(data, name) {
+    const ownSet = (o, act) => data.overrides.has(`${o.id}|${act}`);
+    const raw = data.orders
+      .map((o) => {
+        const onMachine = MACHINE_IDS.includes(o.machine);
+        const acts = ACTIVITIES.filter((a) => {
+          if (responsible(o, a.id, data.defaults, data.overrides) !== name) return false;
+          if (a.id === "qs") return o.machine === "qs";
+          return onMachine || (!o.machine && ownSet(o, a.id));
+        }).map((a) => a.id);
+        return acts.length ? { o, acts, onMachine } : null;
+      })
+      .filter(Boolean)
+      .sort((x, y) => (x.o.machine === "qs" ? 0 : 1) - (y.o.machine === "qs" ? 0 : 1) || String(x.o.extern_start || "").localeCompare(String(y.o.extern_start || "")) || queueOrder(x.o, y.o));
+    const ids = [...new Set(raw.slice(0, LIMIT * 3).map((x) => x.o.odoo_id).filter(Boolean))];
+    let wos = new Map();
+    try {
+      wos = ids.length ? await workorders(ids) : new Map();
+    } catch (err) {
+      if (!err.busy && !err.offline) throw err; // Odoo gerade nicht erreichbar: ohne Arbeitsgang-Status weiter
+    }
+    return raw
+      .map(({ o, acts, onMachine }) => {
+        const list = wos.get(o.odoo_id) || [];
+        const steps = acts
+          .map((act) => {
+            const w = list.find((x) => x.act === act);
+            return { id: act, label: ACTIVITIES.find((a) => a.id === act).label, workorderId: w ? w.id : null, state: w ? w.state : null };
+          })
+          .filter((st) => st.state !== "done" && st.state !== "cancel");
+        const { sum } = avFor(o, data, name);
+        return steps.length ? { ...base(o), noMachine: !onMachine && o.machine !== "qs", steps, avReady: sum.ready, avOpen: sum.open.map((x) => x.label) } : null;
+      })
+      .filter(Boolean);
+  }
+
   app.get("/api/bde/teile", async (req, res) => {
     const s = ctx.readSession(req);
     if (!s) return res.status(401).json({ error: "Bitte anmelden" });
     const target = req.query.id != null ? Number(req.query.id) : s.e;
     if (target !== s.e && !(s.leitung && ctx.PEOPLE.includes(target))) return res.status(403).json({ error: "Nur die eigenen Teile" });
     const name = staffName(target);
-    if (!name) return res.json({ name: null, items: [], av: [], avTotal: 0, planning: null, avOverview: null });
+    if (!name) return res.json({ name: null, items: [], av: [], avTotal: 0, planning: null, info: [] });
     try {
       const data = load();
-      const ownSet = (o, act) => data.overrides.has(`${o.id}|${act}`);
-
-      // Teile mit eigenen Tätigkeiten
-      let items = data.orders
-        .map((o) => {
-          const onMachine = MACHINE_IDS.includes(o.machine);
-          const acts = ACTIVITIES.filter((a) => {
-            if (responsible(o, a.id, data.defaults, data.overrides) !== name) return false;
-            if (a.id === "qs") return o.machine === "qs";
-            return onMachine || (!o.machine && ownSet(o, a.id));
-          }).map((a) => a.id);
-          return acts.length ? { o, acts, onMachine } : null;
-        })
-        .filter(Boolean)
-        .sort((x, y) => (x.o.machine === "qs" ? 0 : 1) - (y.o.machine === "qs" ? 0 : 1) || String(x.o.extern_start || "").localeCompare(String(y.o.extern_start || "")) || queueOrder(x.o, y.o));
-
-      // Odoo: erledigte Arbeitsgänge ausblenden
-      const ids = [...new Set(items.slice(0, LIMIT * 3).map((x) => x.o.odoo_id).filter(Boolean))];
-      let wos = new Map();
-      try {
-        wos = ids.length ? await workorders(ids) : new Map();
-      } catch (err) {
-        if (!err.busy && !err.offline) throw err; // Odoo gerade nicht erreichbar: ohne Arbeitsgang-Status weiter
-      }
-      items = items
-        .map(({ o, acts, onMachine }) => {
-          const list = wos.get(o.odoo_id) || [];
-          const steps = acts
-            .map((act) => {
-              const w = list.find((x) => x.act === act);
-              return { id: act, label: ACTIVITIES.find((a) => a.id === act).label, workorderId: w ? w.id : null, state: w ? w.state : null };
-            })
-            .filter((st) => st.state !== "done" && st.state !== "cancel");
-          const { sum } = avFor(o, data, name);
-          return steps.length ? { ...base(o), noMachine: !onMachine && o.machine !== "qs", steps, avReady: sum.ready, avOpen: sum.open.map((x) => x.label) } : null;
-        })
-        .filter(Boolean);
-
+      const items = await itemsFor(data, name);
       const av = avList(data, name);
       const planning =
         data.defaults["role:planung"] === name
@@ -149,11 +151,14 @@ export default function registerBdeParts(app, db, ctx, staff) {
               return { unplanned: unplanned.length, ready: unplanned.filter((o) => avSummary(data.checks, o.id).ready).length };
             })()
           : null;
-      // Leitung: dezente Übersicht der Arbeitsvorbereitung des AV-Zuständigen
-      const avPerson = data.defaults["role:av"];
-      const avOverview = s.leitung && target === s.e && avPerson && avPerson !== name ? { person: avPerson, items: avList(data, avPerson) } : null;
+      // Zur Info: Arbeit anderer, die dieser Person zur Information gezeigt wird (z. B. Arbeitsvorbereitung von Nino an Frank)
+      const info = [];
+      for (const rule of staff.info().filter((x) => x.target === name)) {
+        const list = rule.scope === "av" ? avList(data, rule.source) : await itemsFor(data, rule.source);
+        info.push({ source: rule.source, scope: rule.scope, total: list.length, items: list.slice(0, 12) });
+      }
 
-      res.json({ name, items: items.slice(0, LIMIT), more: Math.max(0, items.length - LIMIT), av: av.slice(0, AV_LIMIT), avTotal: av.length, planning, avOverview, odooUrl: ctx.odoo.url || null });
+      res.json({ name, items: items.slice(0, LIMIT), more: Math.max(0, items.length - LIMIT), av: av.slice(0, AV_LIMIT), avTotal: av.length, planning, info, odooUrl: ctx.odoo.url || null });
     } catch (err) {
       ctx.fail(res, err);
     }

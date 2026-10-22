@@ -1040,6 +1040,16 @@ a.btn { text-decoration: none; }
 .plan-hint:hover { background: var(--sunken); }
 .quiet-sec { opacity: .9; }
 .quiet-sec > .btn { padding-left: 0; }
+
+/* Zur Info: Arbeit anderer, nur ansehen */
+.info-h { font-size: 15px !important; color: var(--muted); }
+.info-block { margin-bottom: 6px; }
+.info-toggle { padding-left: 0; }
+.part.info { background: var(--sunken); box-shadow: none; }
+.part-by { font-size: 12px; color: var(--muted); border: 1px dashed var(--line-strong); border-radius: 999px; padding: 0 8px; flex: none; }
+.infolist { display: flex; flex-direction: column; gap: 8px; padding: 4px 18px 16px; }
+.inforow { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 13px; }
+.inforow.add { color: var(--muted); padding-top: 6px; border-top: 1px dashed var(--line); }
 @media (prefers-reduced-motion: reduce) {
   .gt-w, .greet-sub, .greet-mark { animation: none; opacity: 1; transform: none; filter: none; }
   .greet { animation: none; }
