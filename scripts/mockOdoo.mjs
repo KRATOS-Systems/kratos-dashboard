@@ -79,6 +79,7 @@ const T = {
     { id: 14, employee_id: 2, number_of_days: 30, leaves_taken: 23, state: "validate", date_from: "2026-01-01", date_to: "2027-03-31" },
     { id: 8, employee_id: 3, number_of_days: 30, leaves_taken: 24, state: "validate", date_from: "2026-01-01", date_to: "2026-12-31" },
   ],
+  "sale.order": [{ id: 1365, name: "A01365" }],
   "mail.activity.type": [{ id: 1, name: "To-do" }, { id: 2, name: "Anruf" }, { id: 4, name: "E-Mail" }],
   "mail.activity": [
     { id: 501, activity_type_id: 1, user_id: 30, summary: "Programm für Grundplatte prüfen", note: "<p>Bohrbild mit <b>Zeichnung</b> abgleichen</p>", date_deadline: day(-2), res_model: "mrp.production", res_id: 1307, res_name: "FA01307", date_done: false },
@@ -220,6 +221,12 @@ function call(model, method, p) {
       T["mrp.workcenter.productivity"].filter((x) => x.workorder_id === woId && !x.date_end && p.employee_ids.includes(x.employee_id)).forEach((x) => (x.date_end = fmt(now())));
       recomputeWo(woId);
       log.push({ at: fmt(now()), call: `mrp.workorder.stop_employee(${woId}, employees ${p.employee_ids})` });
+      return true;
+    }
+    case "activity_schedule": {
+      const rec = byId(model, p.ids[0]);
+      T["mail.activity"].push({ id: nextId("mail.activity"), activity_type_id: 1, user_id: p.user_id, summary: p.summary, note: p.note, date_deadline: p.date_deadline, res_model: model, res_id: rec.id, res_name: rec.name, date_done: false });
+      log.push({ at: fmt(now()), call: `${model}.activity_schedule(${rec.name}, user ${p.user_id}, "${p.summary}", ${p.date_deadline})` });
       return true;
     }
     case "action_feedback": {

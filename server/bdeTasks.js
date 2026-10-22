@@ -42,9 +42,14 @@ const plain = (html) =>
     .trim()
     .slice(0, 240);
 
+const MARK = "über Kratos BDE";
+const escHtml = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
 export default function registerBdeTasks(app, ctx) {
   const { odoo } = ctx;
   const cache = new Map();
+  // Wer Aufgaben vergeben und bekommen kann: Mitarbeiter der BDE mit Odoo-Benutzer (Aktivitäten gehören in Odoo einem Benutzer)
+  const withUser = () => ctx.PEOPLE.map((id) => ctx.employees().get(id)).filter((e) => e && e.userId);
 
   async function load(userId) {
     const rows = await odoo.read("mail.activity", "search_read", {
@@ -100,6 +105,96 @@ export default function registerBdeTasks(app, ctx) {
         canDone: t.id === t.s.e && odoo.writeEnabled && !isPhone(req),
         items: c.items.map((a) => ({ ...a, link: base && a.model && a.resId ? `${base}/odoo/${a.model}/${a.resId}` : null })),
       });
+    } catch (err) {
+      ctx.fail(res, err);
+    }
+  });
+
+  // Aufgabe vergeben: Odoo-Aktivität (To-do) beim Empfänger, am Fertigungsauftrag / Auftrag oder sonst am Mitarbeiter
+  app.get("/api/bde/aufgaben/empfaenger", async (req, res) => {
+    const s = ctx.readSession(req);
+    if (!s) return res.status(401).json({ error: "Bitte anmelden" });
+    try {
+      await ctx.ensureEmployees();
+      const list = withUser();
+      res.json({ canAssign: odoo.writeEnabled && !isPhone(req) && list.some((e) => e.id === s.e), people: list.map((e) => ({ id: e.id, name: e.name })) });
+    } catch (err) {
+      ctx.fail(res, err);
+    }
+  });
+
+  app.post("/api/bde/aufgaben/neu", async (req, res) => {
+    const s = ctx.readSession(req);
+    if (!s) return res.status(401).json({ error: "Bitte anmelden" });
+    if (isPhone(req)) return res.status(403).json({ error: "Am Handy gibt es nur die Anzeige." });
+    if (!odoo.writeEnabled) return res.status(403).json({ error: "Aufgaben vergeben ist noch nicht freigeschaltet (BDE_WRITE)" });
+    const { to, summary, deadline, ref } = req.body || {};
+    const text = String(summary || "").trim();
+    const today = berlinDate(Date.now());
+    try {
+      await ctx.ensureEmployees();
+      const list = withUser();
+      const from = list.find((e) => e.id === s.e);
+      const target = list.find((e) => e.id === Number(to));
+      if (!from) throw Object.assign(new Error("Ohne Odoo-Benutzer können keine Aufgaben vergeben werden"), { forbidden: true });
+      if (!target) throw userErr("Diese Person kann keine Aufgaben bekommen");
+      if (text.length < 2 || text.length > 160) throw userErr("Bitte kurz beschreiben, was zu tun ist");
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(String(deadline || "")) || deadline < today) throw userErr("Bitte eine Frist ab heute wählen");
+      // Bezug: Fertigungsauftrag (FA…) oder Auftrag (A…), sonst der Mitarbeiter selbst
+      let model = "hr.employee";
+      let recId = target.id;
+      const refText = String(ref || "").trim().toUpperCase();
+      if (refText) {
+        if (!/^[A-Z]{1,3}\d{3,}$/.test(refText)) throw userErr("Bezug bitte als Nummer, z. B. FA01212 oder A01365");
+        model = refText.startsWith("FA") ? "mrp.production" : "sale.order";
+        const [hit] = await odoo.read(model, "search_read", { domain: [["name", "=", refText]], fields: ["name"], limit: 1 });
+        if (!hit) throw userErr(`${refText} gibt es in Odoo nicht`);
+        recId = hit.id;
+      }
+      await odoo.write(model, "activity_schedule", {
+        ids: [recId],
+        act_type_xmlid: "mail.mail_activity_data_todo",
+        date_deadline: deadline,
+        summary: text,
+        note: `<p>Vergeben von ${escHtml(from.name)} ${MARK}</p>`,
+        user_id: target.userId,
+      });
+      cache.delete(target.userId);
+      sentCache.delete(from.id);
+      res.json({ ok: true });
+    } catch (err) {
+      ctx.fail(res, err);
+    }
+  });
+
+  // Von mir vergebene, noch offene Aufgaben (erkannt am Vermerk in der Notiz)
+  const sentCache = new Map();
+  app.get("/api/bde/aufgaben/vergeben", async (req, res) => {
+    const s = ctx.readSession(req);
+    if (!s) return res.status(401).json({ error: "Bitte anmelden" });
+    try {
+      await ctx.ensureEmployees();
+      const me = ctx.employees().get(s.e);
+      let c = sentCache.get(s.e);
+      if (!c || Date.now() - c.at > CACHE_MS) {
+        const rows = await odoo.read("mail.activity", "search_read", {
+          domain: [["note", "ilike", `Vergeben von ${me ? me.name : "?"} ${MARK}`], ["date_done", "=", false]],
+          fields: ["summary", "date_deadline", "user_id", "res_model", "res_id", "res_name"],
+          order: "date_deadline asc, id asc",
+          limit: 100,
+        });
+        const byUser = new Map([...ctx.employees().values()].filter((e) => e.userId).map((e) => [e.userId, e]));
+        c = {
+          at: Date.now(),
+          items: rows.map((a) => {
+            const u = m2o(a.user_id);
+            const emp = u ? byUser.get(u.id) : null;
+            return { id: a.id, summary: a.summary || "", deadline: a.date_deadline || null, toId: emp ? emp.id : null, toName: emp ? emp.name : u ? u.name : "?", model: a.res_model, resName: a.res_model === "hr.employee" ? null : a.res_name || null };
+          }),
+        };
+        sentCache.set(s.e, c);
+      }
+      res.json({ today: berlinDate(Date.now()), items: c.items });
     } catch (err) {
       ctx.fail(res, err);
     }

@@ -1075,6 +1075,21 @@ a.btn { text-decoration: none; }
 .bmini-hint { font-size: 12px; color: var(--muted); }
 @media (prefers-reduced-motion: reduce) { .bhero-none::before, .bmini.st-idle .bmini-none::before { animation: none; } }
 
+/* Aufgabe vergeben */
+.task-new { margin-left: auto; font: 500 13px var(--f-body); }
+.task-sent { margin-top: 10px; }
+.task-sent .task { padding-left: 14px; }
+.task-sent .task::before { display: none; }
+.dialog.assign { display: flex; flex-direction: column; gap: 14px; }
+.dialog.assign .f { font-size: 13px; }
+.dialog.assign input[type=text] { min-height: 44px; font-size: 15px; }
+.assign-who { display: flex; gap: 10px; flex-wrap: wrap; }
+.assign-p { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 10px 12px; min-width: 84px; border-radius: 12px; border: 1px solid var(--line-strong); background: var(--surface); font-weight: 600; }
+.assign-p:hover { background: var(--sunken); }
+.assign-p.on { border-color: var(--ok); box-shadow: 0 0 0 2px var(--ok); background: var(--ok-soft); }
+.assign-due { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-top: 4px; }
+.assign-due .chipf { min-height: 36px; }
+
 /* Zur Info: Arbeit anderer, nur ansehen */
 .info-h { font-size: 15px !important; color: var(--muted); }
 .info-block { margin-bottom: 6px; }

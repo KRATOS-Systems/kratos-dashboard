@@ -1,10 +1,12 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { Ico, useToast } from "./ui.jsx";
-import { daysBetween } from "./lib.js";
+import { daysBetween, addDays } from "./lib.js";
+import Avatar from "./Avatar.jsx";
 
 // Meine Aufgaben: offene Odoo-Aktivitäten des Mitarbeiters, nach Frist sortiert.
 // Farbe statt Text: rot = überfällig, gelb = heute, ohne Farbe = später.
 // "Erledigt" (nur mit BDE_WRITE, nur eigene) schließt die Aktivität in Odoo; "Stempeln" springt bei Fertigungsaufträgen in die Auswahl.
+// "Aufgabe vergeben" legt eine Odoo-Aktivität (To-do) beim Empfänger an, "Von mir vergeben" zeigt deren Stand.
 
 const SHOW = 5;
 // Belegnummern (FA01307, A01365, P00077, WH/OUT/00012) in Schreibmaschinenschrift, Namen normal
@@ -28,6 +30,24 @@ export default function Aufgaben({ viewId, canStamp, onStamp }) {
   const [all, setAll] = useState(false);
   const [confirm, setConfirm] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [assign, setAssign] = useState(null); // Empfänger-Liste und ob vergeben möglich ist
+  const [dlg, setDlg] = useState(false);
+  const [sent, setSent] = useState(null);
+  const [showSent, setShowSent] = useState(false);
+  const loadSent = useCallback(() => {
+    fetch("/api/bde/aufgaben/vergeben")
+      .then((r) => (r.ok ? r.json() : null))
+      .then(setSent)
+      .catch(() => setSent(null));
+  }, []);
+  useEffect(() => {
+    if (viewId) return;
+    fetch("/api/bde/aufgaben/empfaenger")
+      .then((r) => (r.ok ? r.json() : null))
+      .then(setAssign)
+      .catch(() => setAssign(null));
+    loadSent();
+  }, [viewId, loadSent]);
 
   const load = useCallback(() => {
     fetch(`/api/bde/aufgaben${viewId ? `?id=${viewId}` : ""}`)
@@ -72,6 +92,12 @@ export default function Aufgaben({ viewId, canStamp, onStamp }) {
       <h2>
         {data.own === false ? "Aufgaben" : "Meine Aufgaben"}
         {items.length > 0 && <span className={`cntb${overdue ? "" : " quiet"}`}>{items.length}</span>}
+        {data.own !== false && assign && assign.canAssign && (
+          <button type="button" className="btn sm task-new" onClick={() => setDlg(true)}>
+            <Ico n="plus" s={15} />
+            Aufgabe vergeben
+          </button>
+        )}
       </h2>
       {data.noUser && <div className="bnote quiet">Ohne Odoo-Benutzer gibt es keine Aufgaben. Aktivitäten werden in Odoo Benutzern zugewiesen.</div>}
       {!data.noUser && items.length === 0 && <div className="bnote quiet">Keine offenen Aufgaben.</div>}
@@ -133,7 +159,130 @@ export default function Aufgaben({ viewId, canStamp, onStamp }) {
           {all ? "Weniger anzeigen" : `Alle ${items.length} anzeigen`}
         </button>
       )}
+      {data.own !== false && sent && sent.items.length > 0 && (
+        <div className="task-sent">
+          <button type="button" className="btn quiet info-toggle" onClick={() => setShowSent((v) => !v)}>
+            Von mir vergeben: {sent.items.length} offen
+            {sent.items.some((x) => x.deadline && x.deadline < sent.today) ? ` · ${sent.items.filter((x) => x.deadline && x.deadline < sent.today).length} überfällig` : ""} {showSent ? "▴" : "▾"}
+          </button>
+          {showSent && (
+            <div className="brecent">
+              {sent.items.map((x) => {
+                const u = due(x.deadline, sent.today);
+                return (
+                  <div key={x.id} className={`card task due-${u.cls}`}>
+                    <Avatar id={x.toId} name={x.toName} size={30} />
+                    <div className="task-main">
+                      <div className="task-top">
+                        <b className="task-sum">{x.summary}</b>
+                      </div>
+                      <div className="task-meta">
+                        <span>an {x.toName}</span>
+                        {x.resName && <b className="mono">{x.resName}</b>}
+                        <span className="task-due">{u.text}</span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+      {dlg && assign && (
+        <AssignDialog
+          people={assign.people}
+          today={data.today}
+          onClose={() => setDlg(false)}
+          onDone={() => {
+            setDlg(false);
+            loadSent();
+            load();
+          }}
+        />
+      )}
     </section>
+  );
+}
+
+// Aufgabe vergeben: für wen, was, bis wann, freiwillig ein Bezug (FA oder Auftrag)
+function AssignDialog({ people, today, onClose, onDone }) {
+  const toast = useToast();
+  const [to, setTo] = useState(null);
+  const [text, setText] = useState("");
+  const [deadline, setDeadline] = useState(today);
+  const [ref, setRef] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState(null);
+  const dow = new Date(`${today}T12:00:00Z`).getUTCDay();
+  const quick = [
+    ["Heute", today],
+    ["Morgen", addDays(today, 1)],
+    ["Freitag", addDays(today, (5 - dow + 7) % 7)],
+    ["In 1 Woche", addDays(today, 7)],
+  ];
+  useEffect(() => {
+    const onKey = (e) => e.key === "Escape" && onClose();
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+  async function save() {
+    setBusy(true);
+    setErr(null);
+    try {
+      const r = await fetch("/api/bde/aufgaben/neu", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ to: to.id, summary: text, deadline, ref: ref || null }) });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d.error || "Das hat nicht geklappt");
+      toast(`Aufgabe an ${to.name} vergeben`);
+      onDone();
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <div className="modal" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="dialog assign" role="dialog" aria-modal="true" aria-label="Aufgabe vergeben">
+        <h3>Aufgabe vergeben</h3>
+        <div className="assign-who">
+          {people.map((p) => (
+            <button key={p.id} type="button" className={`assign-p${to && to.id === p.id ? " on" : ""}`} onClick={() => setTo(p)}>
+              <Avatar id={p.id} name={p.name} size={44} />
+              <span>{p.name.split(" ")[0]}</span>
+            </button>
+          ))}
+        </div>
+        <label className="f">
+          Was ist zu tun?
+          <input type="text" maxLength={160} autoFocus value={text} onChange={(e) => setText(e.target.value)} placeholder="z. B. Spannbacken für FA01212 bestellen" />
+        </label>
+        <div className="f">
+          Bis wann?
+          <div className="assign-due">
+            {quick.map(([l, d]) => (
+              <button key={l} type="button" className={`chipf${deadline === d ? " on" : ""}`} onClick={() => setDeadline(d)}>
+                {l}
+              </button>
+            ))}
+            <input type="date" min={today} value={deadline} onChange={(e) => setDeadline(e.target.value)} />
+          </div>
+        </div>
+        <label className="f">
+          Bezug (freiwillig)
+          <input type="text" maxLength={20} value={ref} onChange={(e) => setRef(e.target.value)} placeholder="FA01212 oder A01365" />
+        </label>
+        {err && <div className="bnote">{err}</div>}
+        <div className="actions" style={{ justifyContent: "flex-end", marginTop: 16 }}>
+          <button type="button" className="btn" onClick={onClose}>
+            Abbrechen
+          </button>
+          <button type="button" className="btn primary" disabled={busy || !to || text.trim().length < 2 || !deadline} onClick={save}>
+            Vergeben
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
