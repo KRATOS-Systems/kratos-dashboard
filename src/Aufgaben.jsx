@@ -14,14 +14,18 @@ const SHOW = 5;
 const NUMBERED = new Set(["mrp.production", "sale.order", "purchase.order", "stock.picking", "account.move"]);
 const WD = ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"];
 
-function due(deadline, today) {
+// Uhrzeit jetzt in deutscher Zeit, "HH:MM"
+const nowHM = () => new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/Berlin", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date());
+
+function due(deadline, today, time) {
   if (!deadline) return { cls: "later", text: "ohne Frist" };
   const d = daysBetween(today, deadline);
+  const at = time ? ` bis ${time}` : "";
   if (d < 0) return { cls: "over", text: d === -1 ? "seit gestern fällig" : `seit ${-d} Tagen fällig` };
-  if (d === 0) return { cls: "today", text: "heute" };
-  if (d === 1) return { cls: "later", text: "morgen" };
+  if (d === 0) return time && nowHM() > time ? { cls: "over", text: `heute${at}, überfällig` } : { cls: "today", text: `heute${at}` };
+  if (d === 1) return { cls: "later", text: `morgen${at}` };
   const dt = new Date(`${deadline}T12:00:00Z`);
-  return { cls: "later", text: `${WD[dt.getUTCDay()]} ${deadline.slice(8, 10)}.${deadline.slice(5, 7)}.` };
+  return { cls: "later", text: `${WD[dt.getUTCDay()]} ${deadline.slice(8, 10)}.${deadline.slice(5, 7)}.${at}` };
 }
 
 export default function Aufgaben({ viewId, canStamp, onStamp }) {
@@ -105,11 +109,12 @@ export default function Aufgaben({ viewId, canStamp, onStamp }) {
       {!data.noUser && items.length === 0 && <div className="bnote quiet">Keine offenen Aufgaben.</div>}
       <div className="brecent">
         {shown.map((a) => {
-          const u = due(a.deadline, data.today);
+          const u = due(a.deadline, data.today, a.time);
           return (
-            <div key={a.id} className={`card task due-${u.cls}`}>
+            <div key={a.id} className={`card task due-${u.cls}${a.urgent ? " urgent" : ""}`}>
               <div className="task-main">
                 <div className="task-top">
+                  {a.urgent && <span className="task-urgent">Dringend</span>}
                   {a.summary && <span className="task-type">{a.type}</span>}
                   <b className="task-sum">{a.summary || a.type}</b>
                 </div>
@@ -175,12 +180,13 @@ export default function Aufgaben({ viewId, canStamp, onStamp }) {
           {showSent && (
             <div className="brecent">
               {sent.items.map((x) => {
-                const u = due(x.deadline, sent.today);
+                const u = due(x.deadline, sent.today, x.time);
                 return (
-                  <div key={x.id} className={`card task due-${u.cls}`}>
+                  <div key={x.id} className={`card task due-${u.cls}${x.urgent ? " urgent" : ""}`}>
                     <Avatar id={x.toId} name={x.toName} size={30} />
                     <div className="task-main">
                       <div className="task-top">
+                        {x.urgent && <span className="task-urgent">Dringend</span>}
                         <b className="task-sum">{x.summary}</b>
                       </div>
                       <div className="task-meta">
@@ -328,6 +334,8 @@ function AssignDialog({ people, today, onClose, onDone }) {
   const [text, setText] = useState("");
   const [deadline, setDeadline] = useState(today);
   const [ref, setRef] = useState("");
+  const [time, setTime] = useState("");
+  const [urgent, setUrgent] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(null);
   const dow = new Date(`${today}T12:00:00Z`).getUTCDay();
@@ -346,10 +354,10 @@ function AssignDialog({ people, today, onClose, onDone }) {
     setBusy(true);
     setErr(null);
     try {
-      const r = await fetch("/api/bde/aufgaben/neu", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ to: to.id, summary: text, deadline, ref: ref || null }) });
+      const r = await fetch("/api/bde/aufgaben/neu", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ to: to.id, summary: text, deadline, ref: ref || null, time: time || null, urgent }) });
       const d = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(d.error || "Das hat nicht geklappt");
-      toast(`Aufgabe an ${to.name} vergeben`);
+      toast(`${urgent ? "Dringende " : ""}Aufgabe an ${to.name} vergeben`);
       onDone();
     } catch (e) {
       setErr(e.message);
@@ -371,7 +379,7 @@ function AssignDialog({ people, today, onClose, onDone }) {
         </div>
         <label className="f">
           Was ist zu tun?
-          <input type="text" maxLength={160} autoFocus value={text} onChange={(e) => setText(e.target.value)} placeholder="z. B. Spannbacken für FA01212 bestellen" />
+          <input type="text" maxLength={140} autoFocus value={text} onChange={(e) => setText(e.target.value)} placeholder="z. B. Spannbacken für FA01212 bestellen" />
         </label>
         <div className="f">
           Bis wann?
@@ -382,8 +390,13 @@ function AssignDialog({ people, today, onClose, onDone }) {
               </button>
             ))}
             <input type="date" min={today} value={deadline} onChange={(e) => setDeadline(e.target.value)} />
+            <input type="time" value={time} onChange={(e) => setTime(e.target.value)} aria-label="Uhrzeit (freiwillig)" title="Uhrzeit (freiwillig)" />
           </div>
         </div>
+        <button type="button" className={`chipf assign-urgent${urgent ? " on" : ""}`} aria-pressed={urgent} onClick={() => setUrgent((v) => !v)}>
+          <Ico n="warn" s={15} />
+          Dringend
+        </button>
         <label className="f">
           Bezug (freiwillig)
           <input type="text" maxLength={20} value={ref} onChange={(e) => setRef(e.target.value)} placeholder="FA01212 oder A01365" />

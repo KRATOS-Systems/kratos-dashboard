@@ -993,6 +993,12 @@ a.btn { text-decoration: none; }
 .task-more { margin-top: 6px; }
 .cntb.quiet { background: var(--sunken); color: var(--muted); border: 1px solid var(--line); }
 
+/* Dringende Aufgaben: roter Rand und Hinweis, stehen oben */
+.task.urgent { border-color: color-mix(in srgb, var(--bad) 55%, var(--line)); background: color-mix(in srgb, var(--bad) 7%, var(--surface)); }
+.task.urgent::before { background: var(--bad); }
+.task-urgent { flex: none; font: 700 11px/1 var(--f-display); letter-spacing: .08em; text-transform: uppercase; color: #fff; background: var(--bad); padding: 4px 7px; border-radius: 5px; }
+.assign-urgent { display: inline-flex; align-items: center; gap: 6px; margin-top: 12px; width: fit-content; align-self: flex-start; }
+.assign-urgent.on { background: var(--bad); border-color: var(--bad); color: #fff; }
 /* Rückfragen zu Aufgaben: Verlauf unter der Aufgabe, eigene Nachrichten rechts */
 .task-ask { position: relative; }
 .task-ask.on { border-color: var(--iris); color: var(--iris); }
@@ -1089,6 +1095,13 @@ a.btn { text-decoration: none; }
 .bmini-what .jobref b { font-size: 15px; }
 .bmini.st-idle .bmini-none { display: inline-flex; align-items: center; gap: 8px; color: var(--warn); font: 600 20px var(--f-display); }
 .bmini-hint { font-size: 12px; color: var(--muted); }
+/* Neue Odoo-Nachrichten im kleinen Fenster */
+.bmini-news { display: flex; flex-direction: column; gap: 4px; }
+.bmini-new { display: flex; flex-direction: column; gap: 1px; padding: 5px 9px; border-radius: 8px; border: 1px solid color-mix(in srgb, var(--dmu) 45%, var(--line)); background: color-mix(in srgb, var(--dmu) 12%, var(--surface)); color: var(--ink); text-decoration: none; min-width: 0; }
+.bmini-new:hover { border-color: var(--dmu); }
+.bmini-new-who { font-size: 11.5px; font-weight: 600; color: var(--dmu); display: flex; align-items: center; gap: 6px; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.bmini-new-n { background: var(--bad); color: #fff; border-radius: 9px; padding: 0 6px; font-size: 10.5px; line-height: 16px; }
+.bmini-new-text { font-size: 12.5px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 /* Auswahl im kleinen Fenster */
 .bmini-pick { gap: 8px; }
 .bmini-pick-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; font: 600 16px var(--f-display); }

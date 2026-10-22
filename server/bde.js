@@ -16,6 +16,7 @@ import registerBdeKiosk from "./bdeKiosk.js";
 import registerBdeMachines from "./bdeMachines.js";
 import registerBdeTasks from "./bdeTasks.js";
 import registerBdePhotos from "./bdePhotos.js";
+import registerBdeMessages from "./bdeMessages.js";
 import registerBdeParts from "./bdeParts.js";
 
 const TZ = "Europe/Berlin";
@@ -358,7 +359,9 @@ export default function registerBde(app, db, staff) {
     if (!team) return fail(res, teamErr);
     const now = Date.now();
     const cards = TEAM.map((id) => cardOf(id, now));
-    res.json({ ...teamMeta(), cards, hintCount: hintList(now).count });
+    // Eigene Karte des Angemeldeten, auch wenn er nicht auf der Tafel steht (Leitung): für das kleine Fenster
+    const s = readSession(req);
+    res.json({ ...teamMeta(), cards, mine: s && PEOPLE.includes(s.e) ? cardOf(s.e, now) : null, hintCount: hintList(now).count });
   });
 
   app.get("/api/bde/people", async (req, res) => {
@@ -577,6 +580,7 @@ export default function registerBde(app, db, staff) {
   registerBdeMachines(app, db, ctx);
   registerBdeTasks(app, ctx, db);
   registerBdePhotos(app, ctx);
+  registerBdeMessages(app, ctx);
   if (staff) registerBdeParts(app, db, ctx, staff);
 
   // Für Erinnerungen über Talos (n8n): offene Hinweise mit Odoo-Benutzer, nur mit eigenem Schlüssel

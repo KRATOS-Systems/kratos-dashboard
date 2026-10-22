@@ -44,6 +44,16 @@ const plain = (html) =>
     .slice(0, 240);
 
 const MARK = "über Kratos BDE";
+// Odoo-Aktivitäten haben nur ein Datum und keine Priorität: Dringend und Uhrzeit stehen deshalb sichtbar vorn in der
+// Zusammenfassung ("DRINGEND · bis 14:00 · Spannbacken prüfen"), so sieht man sie auch in Odoo, und hier werden sie wieder gelesen.
+const URGENT = "DRINGEND";
+function splitSummary(s) {
+  const m = /^(DRINGEND · )?(bis (\d{1,2}:\d{2}) · )?([\s\S]*)$/.exec(String(s || ""));
+  return { urgent: !!m[1], time: m[3] || null, text: m[4] };
+}
+const joinSummary = (text, urgent, time) => `${urgent ? `${URGENT} · ` : ""}${time ? `bis ${time} · ` : ""}${text}`;
+// Dringende zuerst, dann nach Frist und Uhrzeit
+const byUrgency = (a, b) => (b.urgent ? 1 : 0) - (a.urgent ? 1 : 0) || String(a.deadline || "9").localeCompare(String(b.deadline || "9")) || String(a.time || "99").localeCompare(String(b.time || "99"));
 const escHtml = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
 export default function registerBdeTasks(app, ctx, db) {
@@ -61,18 +71,19 @@ export default function registerBdeTasks(app, ctx, db) {
       limit: 100,
     });
     return rows.map((a) => ({
+      ...(({ urgent, time }) => ({ urgent, time }))(splitSummary(a.summary)),
       id: a.id,
       // Wer die Aufgabe vergeben hat (für Rückfragen)
       assigner: questions.participants(a).assigner ? { id: questions.participants(a).assigner.id, name: questions.participants(a).assigner.name } : null,
       type: m2o(a.activity_type_id)?.name || "Aufgabe",
-      summary: a.summary ? String(a.summary).slice(0, 160) : null,
+      summary: a.summary ? splitSummary(a.summary).text.slice(0, 160) || null : null,
       note: plain(a.note) || null,
       deadline: typeof a.date_deadline === "string" ? a.date_deadline.slice(0, 10) : null,
       model: a.res_model || null,
       modelLabel: MODEL_LABELS[a.res_model] || null,
       resId: Number.isInteger(a.res_id) ? a.res_id : null,
       resName: a.res_name ? String(a.res_name).slice(0, 120) : null,
-    }));
+    })).sort(byUrgency);
   }
 
   // Ziel der Aufgabe: Session prüfen wie bei /api/bde/me (Leitung darf andere ansehen)
@@ -135,7 +146,7 @@ export default function registerBdeTasks(app, ctx, db) {
     if (!s) return res.status(401).json({ error: "Bitte anmelden" });
     if (isPhone(req)) return res.status(403).json({ error: "Am Handy gibt es nur die Anzeige." });
     if (!odoo.writeEnabled) return res.status(403).json({ error: "Aufgaben vergeben ist noch nicht freigeschaltet (BDE_WRITE)" });
-    const { to, summary, deadline, ref } = req.body || {};
+    const { to, summary, deadline, ref, time, urgent } = req.body || {};
     const text = String(summary || "").trim();
     const today = berlinDate(Date.now());
     try {
@@ -145,7 +156,9 @@ export default function registerBdeTasks(app, ctx, db) {
       const target = list.find((e) => e.id === Number(to));
       if (!from) throw Object.assign(new Error("Ohne Odoo-Benutzer können keine Aufgaben vergeben werden"), { forbidden: true });
       if (!target) throw userErr("Diese Person kann keine Aufgaben bekommen");
-      if (text.length < 2 || text.length > 160) throw userErr("Bitte kurz beschreiben, was zu tun ist");
+      if (text.length < 2 || text.length > 140) throw userErr("Bitte kurz beschreiben, was zu tun ist");
+      const hhmm = time ? String(time) : null;
+      if (hhmm && !/^([01]\d|2[0-3]):[0-5]\d$/.test(hhmm)) throw userErr("Uhrzeit bitte als HH:MM");
       if (!/^\d{4}-\d{2}-\d{2}$/.test(String(deadline || "")) || deadline < today) throw userErr("Bitte eine Frist ab heute wählen");
       // Bezug: Fertigungsauftrag (FA…) oder Auftrag (A…), sonst der Mitarbeiter selbst
       let model = "hr.employee";
@@ -162,7 +175,7 @@ export default function registerBdeTasks(app, ctx, db) {
         ids: [recId],
         act_type_xmlid: "mail.mail_activity_data_todo",
         date_deadline: deadline,
-        summary: text,
+        summary: joinSummary(text, !!urgent, hhmm),
         note: `<p>Vergeben von ${escHtml(from.name)} ${MARK}</p>`,
         user_id: target.userId,
       });
@@ -196,8 +209,9 @@ export default function registerBdeTasks(app, ctx, db) {
           items: rows.map((a) => {
             const u = m2o(a.user_id);
             const emp = u ? byUser.get(u.id) : null;
-            return { id: a.id, summary: a.summary || "", deadline: a.date_deadline || null, toId: emp ? emp.id : null, toName: emp ? emp.name : u ? u.name : "?", model: a.res_model, resName: a.res_model === "hr.employee" ? null : a.res_name || null };
-          }),
+            const sp = splitSummary(a.summary);
+            return { id: a.id, summary: sp.text, urgent: sp.urgent, time: sp.time, deadline: a.date_deadline || null, toId: emp ? emp.id : null, toName: emp ? emp.name : u ? u.name : "?", model: a.res_model, resName: a.res_model === "hr.employee" ? null : a.res_name || null };
+          }).sort(byUrgency),
         };
         sentCache.set(s.e, c);
       }

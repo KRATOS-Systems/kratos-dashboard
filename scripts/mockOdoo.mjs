@@ -26,11 +26,40 @@ const M2O = {
   "quality.alert": { product_id: "product.product", product_tmpl_id: "product.template", production_id: "mrp.production" },
   "product.product": { product_tmpl_id: "product.template" },
   "mail.activity": { activity_type_id: "mail.activity.type", user_id: "res.users", create_uid: "res.users" },
+  "res.users": { partner_id: "res.partner" },
+  "discuss.channel.member": { partner_id: "res.partner", channel_id: "discuss.channel" },
+  "mail.message": { author_id: "res.partner" },
+  "mail.notification": { res_partner_id: "res.partner", mail_message_id: "mail.message" },
 };
 const O2M = { "product.template": { product_variant_ids: ["product.product", "product_tmpl_id"] } };
 
 const T = {
-  "res.users": [{ id: 2, name: "Alexander Meimeteas" }, { id: 25, name: "Frank Häckl" }, { id: 30, name: "Aurel Rama" }, { id: 29, name: "Nino Posset" }],
+  "res.users": [{ id: 2, name: "Alexander Meimeteas", partner_id: 3 }, { id: 25, name: "Frank Häckl", partner_id: 41 }, { id: 30, name: "Aurel Rama", partner_id: 42 }, { id: 29, name: "Nino Posset", partner_id: 43 }],
+  // Odoo-Nachrichten: Chats und Posteingang (für das kleine Fenster)
+  "res.partner": [{ id: 3, name: "Alexander Meimeteas" }, { id: 41, name: "Frank Häckl" }, { id: 42, name: "Aurel Rama" }, { id: 43, name: "Nino Posset" }],
+  "discuss.channel": [
+    { id: 70, name: "Frank Häckl, Aurel Rama", channel_type: "chat" },
+    { id: 71, name: "Fertigung", channel_type: "group" },
+    { id: 72, name: "allgemein", channel_type: "channel" },
+    { id: 73, name: "Frank Häckl, Nino Posset", channel_type: "chat" },
+  ],
+  "discuss.channel.member": [
+    { id: 1, partner_id: 42, channel_id: 70, message_unread_counter: 2 },
+    { id: 2, partner_id: 41, channel_id: 70, message_unread_counter: 0 },
+    { id: 3, partner_id: 42, channel_id: 71, message_unread_counter: 1 },
+    { id: 4, partner_id: 42, channel_id: 72, message_unread_counter: 5 },
+    { id: 5, partner_id: 43, channel_id: 73, message_unread_counter: 1 },
+  ],
+  "mail.message": [
+    { id: 900, model: "discuss.channel", res_id: 70, message_type: "comment", author_id: 41, body: "<p>Kannst du kurz in die Halle kommen? Die <b>Spannbacken</b> passen nicht.</p>", date: ago(0.2), record_name: false, subject: false },
+    { id: 901, model: "discuss.channel", res_id: 71, message_type: "comment", author_id: 43, body: "<p>Material für FA01307 ist da</p>", date: ago(1), record_name: false, subject: false },
+    { id: 902, model: "discuss.channel", res_id: 73, message_type: "comment", author_id: 41, body: "<p>Privat an Nino</p>", date: ago(0.5), record_name: false, subject: false },
+    { id: 903, model: "mrp.production", res_id: 1307, message_type: "comment", author_id: 3, body: "<p>@Aurel Rama bitte Erstmuster vor Serienstart prüfen</p>", date: ago(2), record_name: "FA01307", subject: false },
+  ],
+  "mail.notification": [
+    { id: 1, res_partner_id: 42, mail_message_id: 903, notification_type: "inbox", is_read: false },
+    { id: 2, res_partner_id: 43, mail_message_id: 903, notification_type: "inbox", is_read: true },
+  ],
   "resource.calendar": [{ id: 1, name: "Standard 40h / Woche", hours_per_week: 40 }, { id: 8, name: "Standard 30h/ Woche", hours_per_week: 30 }],
   "res.company": [{ id: 1, name: "KRATOS", attendance_kiosk_key: "mocktoken" }],
   "hr.employee": [

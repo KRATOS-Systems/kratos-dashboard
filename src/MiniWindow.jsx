@@ -12,9 +12,12 @@ import { ActButtons, JobRef } from "./BdeControls.jsx";
 // nach einem Klick). Abschaltbar unter "Mehr"; die Wahl merkt sich der PC.
 // "Wechseln" (⇄) klappt die Auswahl direkt im kleinen Fenster auf (Zuletzt, Nächste, Suchen); das Fenster wird dafür größer
 // und nach dem Start wieder klein. "Helfen" und alles Weitere gibt es in "Mein Arbeitsplatz".
+// Darunter ungelesene Odoo-Nachrichten des Angemeldeten (Chats, Posteingang): nur Anzeige, ein Klick öffnet sie in Odoo.
 
 const PREF_KEY = "kratos-bde-mini";
-const SIZE_SMALL = [340, 250];
+const SIZE_SMALL = [340, 290];
+const MSG_REFRESH_MS = 60 * 1000;
+const MSG_SHOW = 2;
 const SIZE_PICK = [380, 540];
 const REFRESH_MS = 30 * 1000;
 export const BDE_CHANGED = "bde-changed"; // Ereignis: es wurde gebucht, Anzeigen neu laden
@@ -135,7 +138,7 @@ function MiniContent({ goTo, onGone, win }) {
       setSession(s);
       if (!s.id) return setCard(null);
       const t = await fetch("/api/bde/team").then((r) => r.json());
-      setCard((t.cards || []).find((c) => c.id === s.id) || { id: s.id, persons: [], machine: [], name: "" });
+      setCard(t.mine || (t.cards || []).find((c) => c.id === s.id) || { id: s.id, persons: [], machine: [], name: "" });
     } catch {
       /* nächster Versuch beim nächsten Takt */
     }
@@ -217,6 +220,7 @@ function MiniContent({ goTo, onGone, win }) {
         </div>
       )}
       {msg && <div className="bmini-msg">{msg}</div>}
+      <MiniMessages />
       {canAct ? (
         <ActButtons
           compact
@@ -307,6 +311,40 @@ function MiniPicker({ busy, msg, onClose, onMore, onPick }) {
       <button type="button" className="bbtn bmini-more" onClick={onMore}>
         Helfen und mehr in Mein Arbeitsplatz
       </button>
+    </div>
+  );
+}
+
+// Ungelesene Odoo-Nachrichten: die neuesten zwei mit Absender und den ersten Worten, darunter wie viele es noch gibt
+function MiniMessages() {
+  const [items, setItems] = useState([]);
+  useEffect(() => {
+    const load = () =>
+      fetch("/api/bde/nachrichten")
+        .then((r) => (r.ok ? r.json() : { items: [] }))
+        .then((d) => setItems(d.items || []))
+        .catch(() => {
+          /* nächster Versuch beim nächsten Takt */
+        });
+    load();
+    const t = setInterval(load, MSG_REFRESH_MS);
+    return () => clearInterval(t);
+  }, []);
+  if (!items.length) return null;
+  const more = items.length - MSG_SHOW;
+  return (
+    <div className="bmini-news" aria-label="Neue Nachrichten in Odoo">
+      {items.slice(0, MSG_SHOW).map((x) => (
+        <a key={x.key} className="bmini-new" href={x.link || undefined} target="_blank" rel="noreferrer" title={x.text}>
+          <span className="bmini-new-who">
+            {x.kind === "posteingang" ? "@" : "💬"} {x.from.split(" ")[0]}
+            {x.group ? ` · ${x.group}` : x.about ? ` · ${x.about}` : ""}
+            {x.count > 1 && <span className="bmini-new-n">{x.count}</span>}
+          </span>
+          <span className="bmini-new-text">{x.text}</span>
+        </a>
+      ))}
+      {more > 0 && <div className="bmini-hint">+ {more} weitere in Odoo</div>}
     </div>
   );
 }
