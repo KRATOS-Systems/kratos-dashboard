@@ -1,7 +1,7 @@
 // Zuständigkeiten der Planung speichern: Stammbediener je Maschine, Rollen (QS, Arbeitsvorbereitung, Planung)
 // und Abweichungen je Position und Tätigkeit. Die Regeln stehen in src/staffLib.js.
 
-import { STAFF, STAFF_DEFAULTS, STAFF_KEYS, ACTIVITIES } from "../src/staffLib.js";
+import { STAFF, STAFF_DEFAULTS, STAFF_KEYS, STAFF_EMPTY_OK, ACTIVITIES } from "../src/staffLib.js";
 
 const NAMES = new Set(STAFF.map((s) => s.name));
 const ACT_IDS = new Set(ACTIVITIES.map((a) => a.id));
@@ -33,11 +33,11 @@ export default function registerStaff(app, db) {
     res.json({ defaults: defaults(), orders: db.prepare("SELECT order_id, activity, name FROM order_staff").all() });
   });
 
-  // Standard ändern; leerer Name nur bei der Programmierung erlaubt (= Stammbediener)
+  // Standard ändern; leerer Name nur dort, wo er etwas bedeutet (Programmierung = Stammbediener, AV-Programm = wie Programmierung)
   app.put("/api/staff/defaults", (req, res) => {
     const { key, name } = req.body || {};
     if (!STAFF_KEYS.includes(key)) return res.status(400).json({ error: "invalid key" });
-    if (name === "" && key === "role:programmierung") {
+    if (name === "" && STAFF_EMPTY_OK.includes(key)) {
       db.prepare("INSERT INTO staff_defaults (key, name) VALUES (?, '') ON CONFLICT (key) DO UPDATE SET name = ''").run(key);
     } else if (NAMES.has(name)) {
       db.prepare("INSERT INTO staff_defaults (key, name) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET name = excluded.name").run(key, name);

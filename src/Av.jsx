@@ -37,7 +37,7 @@ const store = (k, v) => {
 };
 
 // Aufgeklapptes Fenster einer Position: links Zeichnung und 3D-Modell als Vorschau (Klick = groß), rechts Plan und Checkliste
-function AvPanel({ r, checks, orders, onSet, onBulk, people, repeatSrc, onApplyRepeat, leadDays, today, openPlanning, matText }) {
+function AvPanel({ avStdOf = () => null, r, checks, orders, onSet, onBulk, people, repeatSrc, onApplyRepeat, leadDays, today, openPlanning, matText }) {
   const { o, sum, plan, muss } = r;
   const ids = orders.filter((x) => !x.done && !LANE_IDS.includes(x.machine) && groupKey(x) === groupKey(o)).map((x) => x.id);
   const late = !sum.ready && muss && muss < today;
@@ -132,8 +132,8 @@ function AvPanel({ r, checks, orders, onSet, onBulk, people, repeatSrc, onApplyR
                 {st.status !== "entfaellt" && (
                   <div className="sub">
                     <input type="date" value={st.due || ""} onChange={(ev) => onSet(o.id, item.id, { due: ev.target.value || null })} aria-label={item.label + (st.status === "bereit" ? " bereit seit" : " bereit am")} title={st.status === "bereit" ? "bereit seit" : "bereit am"} />
-                    <select title="Wer kümmert sich darum?" aria-label={item.label + " zuständig"} value={st.assignee || ""} onChange={(ev) => onSet(o.id, item.id, { assignee: ev.target.value || null })} style={{ flex: "0 1 130px" }}>
-                      <option value="">Zuständig: –</option>
+                    <select title="Wer kümmert sich darum?" aria-label={item.label + " zuständig"} value={st.assignee || ""} onChange={(ev) => onSet(o.id, item.id, { assignee: ev.target.value || null })} style={{ flex: "0 1 150px" }}>
+                      <option value="">{avStdOf(o, item.id) ? `Standard: ${avStdOf(o, item.id)}` : "Zuständig: –"}</option>
                       {people.concat(st.assignee && !people.includes(st.assignee) ? [st.assignee] : []).map((n) => (
                         <option key={n} value={n}>
                           {n}
@@ -162,7 +162,7 @@ function AvPanel({ r, checks, orders, onSet, onBulk, people, repeatSrc, onApplyR
 // orders = alle Positionen, checks = Map (Position|Punkt -> { status, due, note, assignee }),
 // planStart = Map (Position -> { machine, start }) für eingeplante Positionen,
 // leadDays = Vorlauf: So viele Tage vor dem Start auf der Maschine muss alles bereit sein ("Muss bis").
-export default function AvView({ orders, checks, planStart, today, onSet, onBulk, selectedId, onOpen, filter, setFilter, leadDays, repeatOf, people, onApplyRepeat, openPlanning, focusId, onFocusDone }) {
+export default function AvView({ avStdOf = () => null, orders, checks, planStart, today, onSet, onBulk, selectedId, onOpen, filter, setFilter, leadDays, repeatOf, people, onApplyRepeat, openPlanning, focusId, onFocusDone }) {
   const [query, setQuery] = useState("");
   const [popKey, setPopKey] = useState(null);
   const [hoverOrder, setHoverOrder] = useState(null); // Auftrag, über dessen Zeile die Maus steht
@@ -223,7 +223,8 @@ export default function AvView({ orders, checks, planStart, today, onSet, onBulk
     return AV_ITEMS.some((it) => {
       const st = avState(checks, r.o.id, it.id);
       if (avDone(st.status)) return false;
-      return person === "__none" ? !st.assignee : st.assignee === person;
+      const who = st.assignee || avStdOf(r.o, it.id);
+      return person === "__none" ? !who : who === person;
     });
   };
   const isUrgent = (r) => !r.sum.ready && r.plan && daysBetween(today, r.plan.start) <= 7;
@@ -273,7 +274,11 @@ export default function AvView({ orders, checks, planStart, today, onSet, onBulk
           >
             {label}
           </button>
-          {st.assignee && st.status !== "entfaellt" && <small className="who">{st.assignee}</small>}
+          {(st.assignee || avStdOf(r.o, item.id)) && !avDone(st.status) && (
+            <small className={`who${st.assignee ? "" : " std"}`} title={st.assignee ? "Zuständig" : "Zuständig (Standard)"}>
+              {st.assignee || avStdOf(r.o, item.id)}
+            </small>
+          )}
           {st.due && st.status !== "entfaellt" && st.status !== "bereit" && (
             <small className="num" style={late ? { color: "var(--bad)", fontWeight: 600 } : undefined}>
               {fmtShort(st.due)}
@@ -382,7 +387,7 @@ export default function AvView({ orders, checks, planStart, today, onSet, onBulk
       {isOpen && (
         <tr className="xrow">
           <td colSpan={COLS}>
-            <AvPanel
+            <AvPanel avStdOf={avStdOf}
               r={r}
               checks={checks}
               orders={orders}

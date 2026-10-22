@@ -4,7 +4,7 @@ import { parseOdooExport } from "./odooImport.js";
 import { holidaysBavaria } from "./holidays.js";
 import AvView, { avUrgentCount } from "./Av.jsx";
 import { AV_ITEMS, AV_STATUS, AV_TEAM, avKey, avState, avSummary } from "./avLib.js";
-import { STAFF, ACTIVITIES, STAFF_DEFAULTS, responsible } from "./staffLib.js";
+import { STAFF, ACTIVITIES, STAFF_DEFAULTS, responsible, avResponsible } from "./staffLib.js";
 import Avatar from "./Avatar.jsx";
 import { AppTile, Ico, LaneTile, MTile, Thumb, useToast, partImg } from "./ui.jsx";
 import {
@@ -1051,6 +1051,7 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
   }, [orders, checks]); // eslint-disable-line react-hooks/exhaustive-deps
   // Zuständig für eine Tätigkeit an einer Position (Abweichung, sonst Stammbediener bzw. Rolle)
   const whoOf = (o, activity) => responsible(o, activity, staff.defaults, staff.overrides);
+  const avStdOf = (o, item) => avResponsible(o, item, null, staff.defaults, staff.overrides, true);
   function setOrderStaff(orderId, activity, name) {
     setStaff((st) => {
       const overrides = new Map(st.overrides);
@@ -1541,8 +1542,8 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
                   {st.status !== "entfaellt" && (
                     <div className="sub">
                       <input type="date" value={st.due || ""} onChange={(ev) => setAv(o.id, item.id, { due: ev.target.value || null })} aria-label={`${item.label} ${st.status === "bereit" ? "bereit seit" : "bereit am"}`} title={st.status === "bereit" ? "bereit seit" : "bereit am"} />
-                      <select title="Wer kümmert sich darum?" aria-label={item.label + " zuständig"} value={st.assignee || ""} onChange={(ev) => setAv(o.id, item.id, { assignee: ev.target.value || null })} style={{ flex: "0 1 130px" }}>
-                        <option value="">Zuständig: –</option>
+                      <select title="Wer kümmert sich darum?" aria-label={item.label + " zuständig"} value={st.assignee || ""} onChange={(ev) => setAv(o.id, item.id, { assignee: ev.target.value || null })} style={{ flex: "0 1 150px" }}>
+                        <option value="">{avStdOf(o, item.id) ? `Standard: ${avStdOf(o, item.id)}` : "Zuständig: –"}</option>
                         {people.concat(st.assignee && !people.includes(st.assignee) ? [st.assignee] : []).map((n) => (
                           <option key={n} value={n}>
                             {n}
@@ -1983,6 +1984,7 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
     return (
       <>
         <AvView
+          avStdOf={avStdOf}
           orders={orders}
           checks={checks}
           planStart={planStart}
@@ -2962,7 +2964,7 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
       <Avatar name={staff.defaults[key] || "?"} size={30} />
       <span className="sl">{label}</span>
       <select value={staff.defaults[key] || ""} onChange={(ev) => setStaffDefault(key, ev.target.value)} aria-label={label}>
-        {allowMachineOwner && <option value="">Stammbediener der Maschine</option>}
+        {allowMachineOwner && <option value="">{typeof allowMachineOwner === "string" ? allowMachineOwner : "Stammbediener der Maschine"}</option>}
         {STAFF.map((p) => (
           <option key={p.name} value={p.name}>
             {p.name}
@@ -2985,8 +2987,17 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
           {MACHINES.map((m) => staffRow(`machine:${m.id}`, `Stammbediener ${m.name}`))}
           {staffRow("role:programmierung", "Programmierung", true)}
           {staffRow("role:qs", "QS")}
-          {staffRow("role:av", "Arbeitsvorbereitung")}
+          {staffRow("role:av", "Arbeitsvorbereitung (sonst)")}
           {staffRow("role:planung", "Produktionsplanung")}
+        </div>
+        <div className="sec-head" style={{ paddingTop: 0 }}>
+          <div>
+            <h2 style={{ fontSize: 16 }}>Arbeitsvorbereitung je Punkt</h2>
+            <p>Wer sich standardmäßig um welchen Punkt kümmert. Steht bei einer Position jemand anderes am Punkt, gilt der.</p>
+          </div>
+        </div>
+        <div className="staffgrid" style={{ padding: "4px 18px 16px" }}>
+          {AV_ITEMS.map((it) => staffRow(`av:${it.id}`, it.label, it.id === "programm" ? "Wie Programmierung" : false))}
         </div>
       </div>
       <div className="card">

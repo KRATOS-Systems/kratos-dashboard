@@ -8,7 +8,7 @@
 // - Planung: wer die Rolle Produktionsplanung hat, sieht die Zahl der noch nicht eingeplanten Positionen.
 // - Leitung: dezente Übersicht der offenen Arbeitsvorbereitung (Frank arbeitet die AV ein).
 
-import { ACTIVITIES, responsible, staffName } from "../src/staffLib.js";
+import { ACTIVITIES, responsible, avResponsible, staffName } from "../src/staffLib.js";
 import { avKey, avSummary } from "../src/avLib.js";
 import { labelOf, m2o } from "./bde.js";
 
@@ -74,7 +74,7 @@ export default function registerBdeParts(app, db, ctx, staff) {
   // Offene AV-Punkte einer Position, für die "name" zuständig ist
   function avFor(o, data, name) {
     const sum = avSummary(data.checks, o.id);
-    const mine = sum.open.filter((s) => (s.assignee || data.defaults["role:av"]) === name);
+    const mine = sum.open.filter((s) => avResponsible(o, s.id, s.assignee, data.defaults, data.overrides) === name);
     return { sum, mine };
   }
 
