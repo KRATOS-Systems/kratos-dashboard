@@ -5,6 +5,7 @@
 // wer sie über die BDE erledigt hat. Nur mit BDE_WRITE=1, nur eigene Aufgaben, nicht am Handy.
 
 import { m2o, berlinDate, isPhone } from "./bde.js";
+import registerBdeQuestions from "./bdeQuestions.js";
 
 const CACHE_MS = 60 * 1000;
 // Ausgeblendete Aktivitätstypen: 6 = "Ausnahme" (legt Odoo selbst an, wenn bei Verkauf, Fertigung oder Lieferung etwas nicht passt)
@@ -45,21 +46,24 @@ const plain = (html) =>
 const MARK = "über Kratos BDE";
 const escHtml = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
-export default function registerBdeTasks(app, ctx) {
+export default function registerBdeTasks(app, ctx, db) {
   const { odoo } = ctx;
   const cache = new Map();
+  const questions = registerBdeQuestions(app, db, ctx);
   // Wer Aufgaben vergeben und bekommen kann: Mitarbeiter der BDE mit Odoo-Benutzer (Aktivitäten gehören in Odoo einem Benutzer)
   const withUser = () => ctx.PEOPLE.map((id) => ctx.employees().get(id)).filter((e) => e && e.userId);
 
   async function load(userId) {
     const rows = await odoo.read("mail.activity", "search_read", {
       domain: [["user_id", "=", userId], ["date_done", "=", false], ["activity_type_id", "not in", HIDDEN_TYPES]],
-      fields: ["activity_type_id", "summary", "note", "date_deadline", "res_model", "res_id", "res_name"],
+      fields: ["activity_type_id", "summary", "note", "date_deadline", "res_model", "res_id", "res_name", "user_id", "create_uid"],
       order: "date_deadline asc, id asc",
       limit: 100,
     });
     return rows.map((a) => ({
       id: a.id,
+      // Wer die Aufgabe vergeben hat (für Rückfragen)
+      assigner: questions.participants(a).assigner ? { id: questions.participants(a).assigner.id, name: questions.participants(a).assigner.name } : null,
       type: m2o(a.activity_type_id)?.name || "Aufgabe",
       summary: a.summary ? String(a.summary).slice(0, 160) : null,
       note: plain(a.note) || null,
@@ -103,7 +107,10 @@ export default function registerBdeTasks(app, ctx) {
         today: berlinDate(Date.now()),
         own: t.id === t.s.e,
         canDone: t.id === t.s.e && odoo.writeEnabled && !isPhone(req),
-        items: c.items.map((a) => ({ ...a, link: base && a.model && a.resId ? `${base}/odoo/${a.model}/${a.resId}` : null })),
+        items: (() => {
+          const cnt = questions.counts(c.items.map((a) => a.id), t.s.e);
+          return c.items.map((a) => ({ ...a, link: base && a.model && a.resId ? `${base}/odoo/${a.model}/${a.resId}` : null, questions: cnt.get(a.id) || { total: 0, unread: 0 } }));
+        })(),
       });
     } catch (err) {
       ctx.fail(res, err);
@@ -194,7 +201,8 @@ export default function registerBdeTasks(app, ctx) {
         };
         sentCache.set(s.e, c);
       }
-      res.json({ today: berlinDate(Date.now()), items: c.items });
+      const cnt = questions.counts(c.items.map((a) => a.id), s.e);
+      res.json({ today: berlinDate(Date.now()), items: c.items.map((a) => ({ ...a, questions: cnt.get(a.id) || { total: 0, unread: 0 } })) });
     } catch (err) {
       ctx.fail(res, err);
     }

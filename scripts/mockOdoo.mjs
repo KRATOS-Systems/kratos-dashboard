@@ -25,7 +25,7 @@ const M2O = {
   "hr.leave.allocation": { employee_id: "hr.employee" },
   "quality.alert": { product_id: "product.product", product_tmpl_id: "product.template", production_id: "mrp.production" },
   "product.product": { product_tmpl_id: "product.template" },
-  "mail.activity": { activity_type_id: "mail.activity.type", user_id: "res.users" },
+  "mail.activity": { activity_type_id: "mail.activity.type", user_id: "res.users", create_uid: "res.users" },
 };
 const O2M = { "product.template": { product_variant_ids: ["product.product", "product_tmpl_id"] } };
 
@@ -82,7 +82,7 @@ const T = {
   "sale.order": [{ id: 1365, name: "A01365" }],
   "mail.activity.type": [{ id: 1, name: "To-do" }, { id: 2, name: "Anruf" }, { id: 4, name: "E-Mail" }],
   "mail.activity": [
-    { id: 501, activity_type_id: 1, user_id: 30, summary: "Programm für Grundplatte prüfen", note: "<p>Bohrbild mit <b>Zeichnung</b> abgleichen</p>", date_deadline: day(-2), res_model: "mrp.production", res_id: 1307, res_name: "FA01307", date_done: false },
+    { id: 501, activity_type_id: 1, user_id: 30, create_uid: 25, summary: "Programm für Grundplatte prüfen", note: "<p>Bohrbild mit <b>Zeichnung</b> abgleichen</p>", date_deadline: day(-2), res_model: "mrp.production", res_id: 1307, res_name: "FA01307", date_done: false },
     { id: 502, activity_type_id: 2, user_id: 30, summary: "Lieferant wegen Material anrufen", note: false, date_deadline: day(0), res_model: "purchase.order", res_id: 77, res_name: "P00077", date_done: false },
     { id: 503, activity_type_id: 1, user_id: 30, summary: false, note: false, date_deadline: day(3), res_model: "knowledge.article", res_id: 5, res_name: "Arbeitsanweisung Rüsten", date_done: false },
     { id: 504, activity_type_id: 1, user_id: 25, summary: "Prüfplan freigeben", note: false, date_deadline: day(1), res_model: "mrp.production", res_id: 1070, res_name: "FA01070", date_done: false },
@@ -225,9 +225,13 @@ function call(model, method, p) {
     }
     case "activity_schedule": {
       const rec = byId(model, p.ids[0]);
-      T["mail.activity"].push({ id: nextId("mail.activity"), activity_type_id: 1, user_id: p.user_id, summary: p.summary, note: p.note, date_deadline: p.date_deadline, res_model: model, res_id: rec.id, res_name: rec.name, date_done: false });
+      T["mail.activity"].push({ id: nextId("mail.activity"), activity_type_id: 1, create_uid: API_USER, user_id: p.user_id, summary: p.summary, note: p.note, date_deadline: p.date_deadline, res_model: model, res_id: rec.id, res_name: rec.name, date_done: false });
       log.push({ at: fmt(now()), call: `${model}.activity_schedule(${rec.name}, user ${p.user_id}, "${p.summary}", ${p.date_deadline})` });
       return true;
+    }
+    case "message_post": {
+      log.push({ at: fmt(now()), call: `${model}.message_post(${p.ids}, ${p.subtype_xmlid}): ${String(p.body).replace(/<[^>]+>/g, " ").slice(0, 120)}` });
+      return 1;
     }
     case "action_feedback": {
       p.ids.forEach((id) => (byId(model, id).date_done = new Date().toISOString().slice(0, 10)));

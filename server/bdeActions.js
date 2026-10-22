@@ -137,6 +137,14 @@ export default function registerBdeActions(app, db, ctx) {
       state: w.state,
     };
   };
+  // Auftragsnummer (A…) aus dem Ursprung des Fertigungsauftrags dazuschreiben
+  async function withOrder(items) {
+    const ids = [...new Set(items.map((p) => p.productionId).filter(Boolean))];
+    if (!ids.length) return items;
+    const prods = await odoo.read("mrp.production", "read", { ids, fields: ["origin"] });
+    const origin = new Map(prods.map((p) => [p.id, p.origin || null]));
+    return items.map((p) => ({ ...p, order: origin.get(p.productionId) || null }));
+  }
   app.get("/api/bde/next", async (req, res) => {
     if (!ctx.readSession(req)) return res.status(401).json({ error: "Bitte anmelden" });
     try {
@@ -157,13 +165,13 @@ export default function registerBdeActions(app, db, ctx) {
         });
         rows = rows.concat(more);
       }
-      res.json({ items: rows.map(pickOf).filter((p) => p.kind !== "extern").slice(0, 12) });
+      res.json({ items: await withOrder(rows.map(pickOf).filter((p) => p.kind !== "extern").slice(0, 12)) });
     } catch (err) {
       ctx.fail(res, err);
     }
   });
 
-  // Suchen: Auftragsnummer oder Artikel
+  // Suchen: FA-Nummer, Auftragsnummer (A…) oder Artikel
   app.get("/api/bde/search", async (req, res) => {
     if (!ctx.readSession(req)) return res.status(401).json({ error: "Bitte anmelden" });
     const q = String(req.query.q || "").trim().slice(0, 60);
@@ -174,7 +182,9 @@ export default function registerBdeActions(app, db, ctx) {
           ["state", "not in", ["done", "cancel"]],
           "|",
           "|",
+          "|",
           ["production_id.name", "ilike", q],
+          ["production_id.origin", "ilike", q],
           ["production_id.product_id.name", "ilike", q],
           ["production_id.product_id.default_code", "ilike", q],
         ],
@@ -182,7 +192,7 @@ export default function registerBdeActions(app, db, ctx) {
         order: "production_id desc, id asc",
         limit: 40,
       });
-      res.json({ items: rows.map(pickOf).filter((p) => p.kind !== "extern") });
+      res.json({ items: await withOrder(rows.map(pickOf).filter((p) => p.kind !== "extern")) });
     } catch (err) {
       ctx.fail(res, err);
     }

@@ -10,8 +10,12 @@ import { ActButtons, JobRef } from "./BdeControls.jsx";
 // und bleibt deshalb offen, solange der Tab offen ist, auch beim Wechsel in Planung oder Dashboard.
 // Es öffnet sich automatisch nach der Anmeldung in "Mein Arbeitsplatz" und beim Stempeln (der Browser erlaubt das nur direkt
 // nach einem Klick). Abschaltbar unter "Mehr"; die Wahl merkt sich der PC.
+// "Wechseln" (⇄) klappt die Auswahl direkt im kleinen Fenster auf (Zuletzt, Nächste, Suchen); das Fenster wird dafür größer
+// und nach dem Start wieder klein. "Helfen" und alles Weitere gibt es in "Mein Arbeitsplatz".
 
 const PREF_KEY = "kratos-bde-mini";
+const SIZE_SMALL = [340, 250];
+const SIZE_PICK = [380, 540];
 const REFRESH_MS = 30 * 1000;
 export const BDE_CHANGED = "bde-changed"; // Ereignis: es wurde gebucht, Anzeigen neu laden
 export const BDE_OPEN_PICKER = "bde-open-picker"; // Ereignis: Auswahl "Wechseln" in Mein Arbeitsplatz öffnen
@@ -39,7 +43,7 @@ export function MiniProvider({ goTo, children }) {
     if (window.documentPictureInPicture.window) return true;
     opening.current = true;
     try {
-      const w = await window.documentPictureInPicture.requestWindow({ width: 340, height: 250 });
+      const w = await window.documentPictureInPicture.requestWindow({ width: SIZE_SMALL[0], height: SIZE_SMALL[1] });
       [...document.styleSheets].forEach((sheet) => {
         try {
           const style = w.document.createElement("style");
@@ -94,18 +98,36 @@ export function MiniProvider({ goTo, children }) {
   return (
     <MiniCtx.Provider value={{ supported, isOpen: !!win, open, openAuto, close, auto, setAuto }}>
       {children}
-      {win && createPortal(<MiniContent goTo={goTo} onGone={close} />, win.document.body)}
+      {win && createPortal(<MiniContent goTo={goTo} onGone={close} win={win} />, win.document.body)}
     </MiniCtx.Provider>
   );
 }
 
 // Inhalt des kleinen Fensters: liest selbst (Anmeldung + Team-Tafel), damit es auf jeder Seite der App aktuell bleibt
-function MiniContent({ goTo, onGone }) {
+function MiniContent({ goTo, onGone, win }) {
   const [session, setSession] = useState(null);
   const [card, setCard] = useState(null);
   const [msg, setMsg] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [pick, setPick] = useState(false);
   const now = useNow();
+  // Fenstergröße: der Browser erlaubt das Ändern nur direkt nach einem Klick; sonst bleibt es klein und die Liste scrollt
+  const resize = (size) => {
+    try {
+      win.resizeTo(size[0] + (win.outerWidth - win.innerWidth), size[1] + (win.outerHeight - win.innerHeight));
+    } catch {
+      /* nicht erlaubt: Inhalt scrollt */
+    }
+  };
+  const openPick = () => {
+    setMsg(null);
+    setPick(true);
+    resize(SIZE_PICK);
+  };
+  const closePick = () => {
+    setPick(false);
+    resize(SIZE_SMALL);
+  };
 
   const load = useCallback(async () => {
     try {
@@ -139,8 +161,10 @@ function MiniContent({ goTo, onGone }) {
     try {
       await act(body);
       notifyChanged();
+      return true;
     } catch (err) {
       setMsg(err.message);
+      return false;
     } finally {
       setBusy(false);
     }
@@ -154,6 +178,21 @@ function MiniContent({ goTo, onGone }) {
   if (!session || !card) return <div className="bmini">…</div>;
   const b = card.persons && card.persons[0];
   const canAct = session.write;
+  if (pick && canAct)
+    return (
+      <MiniPicker
+        busy={busy}
+        msg={msg}
+        onClose={closePick}
+        onMore={() => {
+          closePick();
+          switchTo();
+        }}
+        onPick={async (r) => {
+          if (await run({ action: "start", workorderId: r.workorderId })) closePick();
+        }}
+      />
+    );
   // Zustand über Farbe: grün = Zeit läuft, gelb = keine Zeit läuft (fällt auf), rot = Buchung vergessen
   const state = b ? (b.forgotten ? "alarm" : "run") : "idle";
   return (
@@ -183,7 +222,7 @@ function MiniContent({ goTo, onGone }) {
           compact
           running={!!b}
           busy={busy}
-          onSwitch={switchTo}
+          onSwitch={openPick}
           onPause={() => run({ action: "pause" })}
           onResume={() => run({ action: "resume" })}
           onStop={() => b && run({ action: "stop", workorderId: b.workorderId })}
@@ -193,6 +232,81 @@ function MiniContent({ goTo, onGone }) {
           Mein Arbeitsplatz
         </button>
       )}
+    </div>
+  );
+}
+
+// Auswahl im kleinen Fenster: Zuletzt (3), Nächste (die ersten 5 aus "Meine nächsten Teile"), Suchen nach FA oder Auftrag
+const MINI_TABS = [
+  ["zuletzt", "Zuletzt"],
+  ["next", "Nächste"],
+  ["suchen", "Suchen"],
+];
+function MiniPicker({ busy, msg, onClose, onMore, onPick }) {
+  const [tab, setTab] = useState("zuletzt");
+  const [items, setItems] = useState(null);
+  const [q, setQ] = useState("");
+  const [err, setErr] = useState(null);
+  useEffect(() => {
+    setErr(null);
+    setItems(null);
+    if (tab === "zuletzt")
+      fetch("/api/bde/me")
+        .then((r) => r.json())
+        .then((d) => (d.error ? setErr(d.error) : setItems((d.recent || []).filter((r) => r.open !== false))))
+        .catch(() => setErr("Odoo ist gerade nicht erreichbar"));
+    if (tab === "next")
+      fetch("/api/bde/next")
+        .then((r) => r.json())
+        .then((d) => (d.error ? setErr(d.error) : setItems(d.items.slice(0, 5))))
+        .catch(() => setErr("Odoo ist gerade nicht erreichbar"));
+  }, [tab]);
+  useEffect(() => {
+    if (tab !== "suchen" || q.trim().length < 2) return undefined;
+    const t = setTimeout(() => {
+      fetch(`/api/bde/search?q=${encodeURIComponent(q.trim())}`)
+        .then((r) => r.json())
+        .then((d) => (d.error ? setErr(d.error) : setItems(d.items.slice(0, 8))))
+        .catch(() => setErr("Odoo ist gerade nicht erreichbar"));
+    }, 350);
+    return () => clearTimeout(t);
+  }, [q, tab]);
+  const waiting = items == null && !err && (tab !== "suchen" || q.trim().length >= 2);
+  return (
+    <div className="bmini bmini-pick">
+      <div className="bmini-pick-head">
+        <b>Woran arbeitest du?</b>
+        <button type="button" className="bbtn bmini-x" onClick={onClose} aria-label="Zurück">
+          ✕
+        </button>
+      </div>
+      <div className="seg bmini-tabs">
+        {MINI_TABS.map(([id, l]) => (
+          <button key={id} type="button" className={tab === id ? "on" : ""} onClick={() => setTab(id)}>
+            {l}
+          </button>
+        ))}
+      </div>
+      {tab === "suchen" && <input type="search" autoFocus placeholder="FA- oder Auftragsnummer" value={q} onChange={(e) => setQ(e.target.value)} className="bsearch" />}
+      {(err || msg) && <div className="bmini-msg">{err || msg}</div>}
+      <div className="bmini-list">
+        {waiting && <div className="bmini-hint">Lade …</div>}
+        {items && items.length === 0 && <div className="bmini-hint">Nichts gefunden</div>}
+        {items &&
+          items.map((r) => (
+            <button key={r.workorderId} type="button" className="bmini-row" disabled={busy} onClick={() => onPick(r)}>
+              <span className="bact">{r.label}</span>
+              <JobRef fa={r.fa} order={r.order} />
+              {r.product && <span className="bmini-prod">{r.product}</span>}
+              <span className="bmini-go" aria-hidden="true">
+                ▶
+              </span>
+            </button>
+          ))}
+      </div>
+      <button type="button" className="bbtn bmini-more" onClick={onMore}>
+        Helfen und mehr in Mein Arbeitsplatz
+      </button>
     </div>
   );
 }

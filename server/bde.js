@@ -575,7 +575,7 @@ export default function registerBde(app, db, staff) {
   registerBdeActions(app, db, ctx);
   registerBdeKiosk(app, ctx);
   registerBdeMachines(app, db, ctx);
-  registerBdeTasks(app, ctx);
+  registerBdeTasks(app, ctx, db);
   registerBdePhotos(app, ctx);
   if (staff) registerBdeParts(app, db, ctx, staff);
 

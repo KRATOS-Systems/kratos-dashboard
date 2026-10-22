@@ -16,9 +16,10 @@ const WRITE_METHODS = {
   "mrp.workcenter.productivity": new Set(["write"]),
   "mail.activity": new Set(["action_feedback"]),
   // Aufgabe vergeben: Odoo-Aktivität am Fertigungsauftrag, Verkaufsauftrag oder Mitarbeiter anlegen
-  "mrp.production": new Set(["activity_schedule"]),
-  "sale.order": new Set(["activity_schedule"]),
-  "hr.employee": new Set(["activity_schedule"]),
+  // und Rückfragen dazu als interne Notiz (message_post mit Untertyp Notiz, keine E-Mail)
+  "mrp.production": new Set(["activity_schedule", "message_post"]),
+  "sale.order": new Set(["activity_schedule", "message_post"]),
+  "hr.employee": new Set(["activity_schedule", "message_post"]),
 };
 // Beim Nachtragen der Endzeit darf nur Ende und Beschreibung geändert werden
 const PRODUCTIVITY_FIELDS = new Set(["date_end", "description"]);
@@ -108,6 +109,8 @@ export function createOdooClient() {
   }
 
   function write(model, method, params) {
+    // Notizen nur intern: kein anderer Untertyp, keine Empfänger
+    if (method === "message_post" && (params.subtype_xmlid !== "mail.mt_note" || params.partner_ids)) return Promise.reject(new Error("Nur interne Notizen erlaubt"));
     if (!writeEnabled) return Promise.reject(Object.assign(new Error("Bedienen ist noch nicht freigeschaltet (BDE_WRITE)"), { forbidden: true }));
     if (!WRITE_METHODS[model] || !WRITE_METHODS[model].has(method)) return Promise.reject(new Error(`Odoo-Methode ${model}.${method} ist gesperrt`));
     if (model === "mrp.workcenter.productivity" && Object.keys(params.vals || {}).some((f) => !PRODUCTIVITY_FIELDS.has(f)))

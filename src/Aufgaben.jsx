@@ -7,6 +7,7 @@ import Avatar from "./Avatar.jsx";
 // Farbe statt Text: rot = überfällig, gelb = heute, ohne Farbe = später.
 // "Erledigt" (nur mit BDE_WRITE, nur eigene) schließt die Aktivität in Odoo; "Stempeln" springt bei Fertigungsaufträgen in die Auswahl.
 // "Aufgabe vergeben" legt eine Odoo-Aktivität (To-do) beim Empfänger an, "Von mir vergeben" zeigt deren Stand.
+// "Rückfrage" öffnet unter der Aufgabe einen kleinen Verlauf zwischen Empfänger und dem, der sie vergeben hat (roter Punkt = ungelesen).
 
 const SHOW = 5;
 // Belegnummern (FA01307, A01365, P00077, WH/OUT/00012) in Schreibmaschinenschrift, Namen normal
@@ -34,6 +35,7 @@ export default function Aufgaben({ viewId, canStamp, onStamp }) {
   const [dlg, setDlg] = useState(false);
   const [sent, setSent] = useState(null);
   const [showSent, setShowSent] = useState(false);
+  const [thread, setThread] = useState(null); // offene Rückfrage (Aktivitäts-ID)
   const loadSent = useCallback(() => {
     fetch("/api/bde/aufgaben/vergeben")
       .then((r) => (r.ok ? r.json() : null))
@@ -123,6 +125,9 @@ export default function Aufgaben({ viewId, canStamp, onStamp }) {
                 {a.note && <div className="task-note">{a.note}</div>}
               </div>
               <div className="task-act">
+                {(data.own !== false ? a.assigner : a.questions.total > 0) && (
+                  <AskButton q={a.questions} open={thread === a.id} onClick={() => setThread(thread === a.id ? null : a.id)} />
+                )}
                 {canStamp && a.model === "mrp.production" && a.resName && (
                   <button type="button" className="btn sm" onClick={() => onStamp(a.resName)}>
                     Stempeln
@@ -150,6 +155,7 @@ export default function Aufgaben({ viewId, canStamp, onStamp }) {
                   </a>
                 )}
               </div>
+              {thread === a.id && <Thread id={a.id} view={data.own === false} onRead={load} />}
             </div>
           );
         })}
@@ -163,6 +169,7 @@ export default function Aufgaben({ viewId, canStamp, onStamp }) {
         <div className="task-sent">
           <button type="button" className="btn quiet info-toggle" onClick={() => setShowSent((v) => !v)}>
             Von mir vergeben: {sent.items.length} offen
+            {sent.items.some((x) => x.questions.unread > 0) && <span className="qdot" title="Neue Rückfrage" />}
             {sent.items.some((x) => x.deadline && x.deadline < sent.today) ? ` · ${sent.items.filter((x) => x.deadline && x.deadline < sent.today).length} überfällig` : ""} {showSent ? "▴" : "▾"}
           </button>
           {showSent && (
@@ -182,6 +189,10 @@ export default function Aufgaben({ viewId, canStamp, onStamp }) {
                         <span className="task-due">{u.text}</span>
                       </div>
                     </div>
+                    <div className="task-act">
+                      <AskButton q={x.questions} open={thread === x.id} onClick={() => setThread(thread === x.id ? null : x.id)} />
+                    </div>
+                    {thread === x.id && <Thread id={x.id} onRead={loadSent} />}
                   </div>
                 );
               })}
@@ -203,6 +214,111 @@ export default function Aufgaben({ viewId, canStamp, onStamp }) {
       )}
     </section>
   );
+}
+
+// Knopf "Rückfrage" mit Anzahl und rotem Punkt für Ungelesenes
+function AskButton({ q, open, onClick }) {
+  return (
+    <button type="button" className={`btn sm task-ask${open ? " on" : ""}`} onClick={onClick} aria-expanded={open}>
+      <Ico n="chat" s={15} />
+      Rückfrage{q.total > 0 ? ` (${q.total})` : ""}
+      {q.unread > 0 && <span className="qdot" title={`${q.unread} neu`} />}
+    </button>
+  );
+}
+
+// Verlauf einer Rückfrage: Nachrichten beider Seiten, unten das Eingabefeld (bei Leitungs-Ansicht nur lesen)
+function Thread({ id, view, onRead }) {
+  const toast = useToast();
+  const [d, setD] = useState(null);
+  const [err, setErr] = useState(null);
+  const [text, setText] = useState("");
+  const [busy, setBusy] = useState(false);
+  const listRef = React.useRef(null);
+  const get = useCallback(
+    (first) =>
+      fetch(`/api/bde/aufgaben/${id}/fragen${view ? "?ansicht=1" : ""}`)
+        .then(async (r) => {
+          const x = await r.json();
+          if (!r.ok) throw new Error(x.error || "Rückfragen nicht verfügbar");
+          setD(x);
+          if (first && onRead) onRead();
+        })
+        .catch((e) => setErr(e.message)),
+    [id, view, onRead]
+  );
+  useEffect(() => {
+    get(true);
+    const t = setInterval(() => get(false), 30 * 1000);
+    return () => clearInterval(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
+  useEffect(() => {
+    if (listRef.current) listRef.current.scrollTop = listRef.current.scrollHeight;
+  }, [d]);
+  async function send() {
+    setBusy(true);
+    try {
+      const r = await fetch(`/api/bde/aufgaben/${id}/fragen`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text }) });
+      const x = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(x.error || "Das hat nicht geklappt");
+      setText("");
+      get(false);
+    } catch (e) {
+      toast(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  if (err) return <div className="task-thread"><div className="bnote">{err}</div></div>;
+  if (!d) return <div className="task-thread"><div className="bnote quiet">Lädt …</div></div>;
+  return (
+    <div className="task-thread">
+      {d.messages.length === 0 && (
+        <div className="bnote quiet">
+          {d.canWrite && d.other ? `Noch keine Rückfrage. Die Nachricht geht an ${d.other.name}.` : "Noch keine Rückfragen."}
+        </div>
+      )}
+      {d.messages.length > 0 && (
+        <div className="tmsgs" ref={listRef}>
+          {d.messages.map((m) => (
+            <div key={m.id} className={`tmsg${m.mine ? " mine" : ""}`}>
+              {!m.mine && <Avatar id={m.fromId} name={m.fromName} size={26} />}
+              <div className="tbub">
+                <div className="tmeta">
+                  {m.mine ? "Ich" : m.fromName.split(" ")[0]} · {fmtAt(m.at)}
+                </div>
+                <div className="ttext">{m.text}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      {d.canWrite && (
+        <form
+          className="tinput"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (text.trim() && !busy) send();
+          }}
+        >
+          <input type="text" maxLength={1000} value={text} onChange={(e) => setText(e.target.value)} placeholder="Frage oder Antwort schreiben …" aria-label="Nachricht" />
+          <button type="submit" className="btn sm primary" disabled={busy || !text.trim()}>
+            Senden
+          </button>
+        </form>
+      )}
+    </div>
+  );
+}
+
+// Zeitpunkt kurz: heute nur Uhrzeit, sonst Tag und Uhrzeit (deutsche Zeit)
+function fmtAt(iso) {
+  const dt = new Date(iso);
+  const tz = { timeZone: "Europe/Berlin" };
+  const day = (x) => x.toLocaleDateString("de-DE", tz);
+  const time = dt.toLocaleTimeString("de-DE", { ...tz, hour: "2-digit", minute: "2-digit" });
+  return day(dt) === day(new Date()) ? time : `${dt.toLocaleDateString("de-DE", { ...tz, day: "2-digit", month: "2-digit" })} ${time}`;
 }
 
 // Aufgabe vergeben: für wen, was, bis wann, freiwillig ein Bezug (FA oder Auftrag)
