@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Ico } from "./ui.jsx";
 import { useBdeTeam, TeamGrid } from "./Team.jsx";
 import { useNow, fmtTime, hm } from "./bdeLib.js";
+import { greetText, GreetTitle } from "./Greeting.jsx";
 
 // Kiosk für Kommen und Gehen am Terminal (ersetzt den Odoo-Kiosk).
 // Zeigt die Team-Tafel. Der Chipleser tippt die Nummer wie eine Tastatur (Ziffern + Enter).
@@ -192,10 +193,11 @@ export default function Kiosk() {
 function HoursCard({ d }) {
   const c = d.card || {};
   const share = c.weekTargetH ? Math.min(1, (c.weekH || 0) / c.weekTargetH) : null;
+  const g = greetText(d.action === "in" ? "in" : "out", d.name);
   return (
     <div className={`kbox card kcard ${d.action === "in" ? "in" : "out"}`}>
-      <div className="kname">{d.name}</div>
-      <div className="kstate">{d.action === "in" ? "Willkommen" : "Schönen Feierabend"}</div>
+      <GreetTitle text={g.title} className="kname" />
+      <div className="kstate">{g.sub}</div>
       <div className="kgrid">
         <div>
           <small>Heute</small>

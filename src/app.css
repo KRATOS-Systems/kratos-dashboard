@@ -950,3 +950,26 @@ a.btn { text-decoration: none; }
 .kgrid b { font-size: 44px; font-weight: 500; line-height: 1.1; }
 .kbar { display: block; height: 8px; border-radius: 4px; background: var(--sunken); border: 1px solid var(--line); margin-top: 8px; overflow: hidden; }
 .kbar i { display: block; height: 100%; background: var(--ok); }
+
+/* Begrüßung und Verabschiedung: Wörter steigen nacheinander auf, Linie läuft mit der Anzeigedauer */
+.gt { display: inline-flex; flex-wrap: wrap; gap: 0 .28em; }
+.gt-w { display: inline-block; opacity: 0; transform: translateY(.45em); filter: blur(4px); animation: gtw .6s cubic-bezier(.2,.7,.2,1) forwards; animation-delay: calc(120ms + var(--i) * 90ms); }
+@keyframes gtw { to { opacity: 1; transform: none; filter: none; } }
+.greet { position: fixed; inset: 0; z-index: 90; display: grid; place-items: center; padding: 24px; cursor: pointer;
+  background: color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter: blur(10px); animation: greetbg var(--ms) ease forwards; }
+@keyframes greetbg { 0% { opacity: 0; } 8% { opacity: 1; } 86% { opacity: 1; } 100% { opacity: 0; } }
+.greet-in { display: flex; flex-direction: column; align-items: center; gap: 14px; text-align: center; max-width: 900px; }
+.greet-mark { animation: greetmark .7s cubic-bezier(.2,.7,.2,1) both; }
+@keyframes greetmark { from { opacity: 0; transform: scale(.7) rotate(-8deg); } to { opacity: 1; transform: none; } }
+.greet-title { font: 600 clamp(40px, 7vw, 76px)/1.05 var(--f-display); letter-spacing: .005em; justify-content: center; }
+.greet-sub { color: var(--muted); font-size: clamp(16px, 2vw, 20px); opacity: 0; animation: gtw .6s ease .55s forwards; }
+.greet-line { display: block; width: 180px; height: 3px; border-radius: 2px; background: var(--line); overflow: hidden; position: relative; margin-top: 10px; }
+.greet-line::after { content: ""; position: absolute; inset: 0; transform-origin: left; background: var(--ok); animation: greetline var(--ms) linear forwards; }
+.greet.out .greet-line::after, .greet.bye .greet-line::after { background: var(--brand); }
+@keyframes greetline { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+.kname.gt { font: 600 40px/1.1 var(--f-display); }
+@media (prefers-reduced-motion: reduce) {
+  .gt-w, .greet-sub, .greet-mark { animation: none; opacity: 1; transform: none; filter: none; }
+  .greet { animation: none; }
+  .greet-line { display: none; }
+}

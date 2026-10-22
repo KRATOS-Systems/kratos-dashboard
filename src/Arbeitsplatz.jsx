@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { Ico, useToast } from "./ui.jsx";
 import { Clock, MachineRuns, OdooLink, Complaints, MachineGlyph, MachineStop } from "./Team.jsx";
 import Maschinenzeit from "./Maschinenzeit.jsx";
+import Greeting, { berlinHour } from "./Greeting.jsx";
 import { useNow, clock, since, fmtTime, hm, splitProduct, initials, act, isPhoneView } from "./bdeLib.js";
 
 // Mein Arbeitsplatz: persönliche Seite nach Anmeldung mit PIN.
@@ -14,7 +15,19 @@ import { useNow, clock, since, fmtTime, hm, splitProduct, initials, act, isPhone
 const REFRESH_MS = 30 * 1000;
 const TABLET_IDLE_MS = 2 * 60 * 1000;
 
+// Begrüßung beim Anmelden und Verabschiedung beim Abmelden liegen über der Seite
 export default function Arbeitsplatz() {
+  const [greet, setGreet] = useState(null);
+  const done = useCallback(() => setGreet(null), []);
+  return (
+    <>
+      <ArbeitsplatzInner onGreet={setGreet} />
+      {greet && <Greeting name={greet.name} kind={greet.kind} onDone={done} />}
+    </>
+  );
+}
+
+function ArbeitsplatzInner({ onGreet }) {
   const [state, setState] = useState("loading"); // loading | login | ok | error
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
@@ -50,14 +63,17 @@ export default function Arbeitsplatz() {
     return () => clearInterval(t);
   }, [load]);
 
-  const logout = useCallback(() => {
+  // Abmelden; mit Knopf verabschiedet die Seite den Mitarbeiter (schon ausgestempelt oder ab 12 Uhr: Feierabend, sonst "Bis später"),
+  // beim automatischen Abmelden am Tablet nicht
+  const logout = useCallback((name, present) => {
+    if (typeof name === "string" && name) onGreet({ name, kind: !present || berlinHour() >= 12 ? "out" : "bye" });
     fetch("/api/bde/logout", { method: "POST" }).finally(() => {
       setViewId(null);
       setData(null);
       setPicker(false);
       setState("login");
     });
-  }, []);
+  }, [onGreet]);
 
   // Am Tablet (geteiltes Gerät) nach 2 Minuten ohne Berührung abmelden
   useEffect(() => {
@@ -140,7 +156,15 @@ export default function Arbeitsplatz() {
         <div className="bnote quiet">Lade …</div>
       </div>
     );
-  if (state === "login") return <Login onDone={load} />;
+  if (state === "login")
+    return (
+      <Login
+        onDone={(who) => {
+          onGreet({ name: who.name, kind: "in" });
+          load();
+        }}
+      />
+    );
   if (state === "error" || !data)
     return (
       <div className="bde">
@@ -190,7 +214,7 @@ export default function Arbeitsplatz() {
               </div>
             </details>
           )}
-          <button type="button" className="btn" onClick={logout}>
+          <button type="button" className="btn" onClick={() => logout(data.me.name, own ? !!(data.card && data.card.present) : true)}>
             Abmelden
           </button>
         </div>
@@ -577,7 +601,7 @@ function Login({ onDone }) {
       const r = await fetch("/api/bde/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: who.id, pin: pinRef.current }) });
       const d = await r.json();
       if (!r.ok) throw new Error(d.error || "Anmeldung fehlgeschlagen");
-      onDone();
+      onDone(who);
     } catch (err) {
       setError(err.message);
       setPin("");
