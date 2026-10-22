@@ -15,6 +15,9 @@ import { useNow, clock, since, fmtTime, hm, splitProduct, initials, act, isPhone
 
 const REFRESH_MS = 30 * 1000;
 const TABLET_IDLE_MS = 2 * 60 * 1000;
+// Maschinenzeit-Prüfung vorerst ausgeblendet (Nutzerentscheidung 22.10.2026): sinnvoll erst, wenn jede Maschine in Odoo einen
+// eigenen Arbeitsplatz hat und einige Wochen live gestempelt wurde. Code und Schnittstelle bleiben.
+const SHOW_MASCHINENZEIT = false;
 
 // Begrüßung beim Anmelden und Verabschiedung beim Abmelden liegen über der Seite
 export default function Arbeitsplatz() {
@@ -297,7 +300,7 @@ function ArbeitsplatzInner({ onGreet }) {
       </section>
 
       {data.hints && <LeitungHints hints={data.hints} now={now} odooUrl={data.odooUrl} canStop={data.write && !data.phone && !isPhoneView()} onChanged={load} />}
-      {data.me.leitung && own && <Maschinenzeit />}
+      {SHOW_MASCHINENZEIT && data.me.leitung && own && <Maschinenzeit />}
       <p className="bfoot">Stand {data.at ? fmtTime(data.at) : "–"} · Zeiten aus Odoo, Woche ab Montag</p>
 
       {picker && <Picker data={data} now={now} busy={busy} initial={picker === true ? null : picker} onClose={() => setPicker(false)} onPick={(r) => run({ action: "start", workorderId: r.workorderId }, `${r.label} ${r.fa} gestartet`)} />}

@@ -16,7 +16,7 @@ Neue Bereiche im Produktionsdashboard. Odoo bleibt die einzige Wahrheit: Die App
 - Maschinenlauf (Fräsen, Drehen): „Läuft länger als geplant“ über Vorgabezeit + 20 %, ohne Vorgabezeit ab 24 Stunden. Maschinenläufe werden nie rot (nachts mannlos ist erlaubt).
 - Offene Reklamationen zum Artikel stehen auf der Karte.
 - Mein Arbeitsplatz: laufende Tätigkeit mit Uhr, Woche (anwesend, auf Aufträge gebucht, nicht gebucht), Resturlaub, Zuletzt.
-- Leitung (Frank, Alex): Hinweise (vergessen, doppelt, Maschine zu lang), Daten der anderen ansehen, Maschinenzeit prüfen.
+- Leitung (Frank, Alex): Hinweise (vergessen, doppelt, Maschine zu lang), Daten der anderen ansehen.
 - Meine Aufgaben: offene Odoo-Aktivitäten des Angemeldeten nach Frist (rot überfällig, gelb heute), mit Verweis in Odoo; bei Fertigungsaufträgen „Stempeln“ (öffnet die Auswahl mit dem Auftrag). „Erledigt“ nur mit `BDE_WRITE=1`, nur eigene, über `mail.activity.action_feedback` mit Vermerk „Erledigt über Kratos BDE von …“. Ohne Odoo-Benutzer keine Aufgaben.
 - Begrüßung beim Anmelden/Kommen („Guten Morgen, Aurel!“) und Verabschiedung beim Abmelden/Gehen („Schönen Feierabend“, freitags/samstags „Schönes Wochenende“, mitten am Tag „Bis später“).
 
@@ -70,7 +70,9 @@ Empfohlene Reihenfolge: erst ohne `BDE_WRITE` live (nur Anzeige) und eine Woche 
 
 In Odoo nötig: PIN (4–8 Ziffern) und Ausweisnummer je Mitarbeiter; je Maschine ein eigener Arbeitsplatz für die Maschinenzeit je Maschine; Arbeitsvorbereitung (archiviert) und Produktionsplanung (fehlt) als Arbeitsplätze in die Arbeitspläne aufnehmen.
 
-## Maschinenzeit prüfen
+## Maschinenzeit prüfen (vorerst ausgeblendet)
+
+Ausgeblendet über `SHOW_MASCHINENZEIT` in `src/Arbeitsplatz.jsx`, Schnittstelle `/api/bde/maschinenzeit` bleibt. Wieder einschalten, wenn jede Maschine in Odoo einen eigenen Arbeitsplatz hat und einige Wochen live gestempelt wurde; dann eher als eine Kennzahl im Dashboard.
 
 | Gebucht | Ampel | Hinweis |
 |---|---|---|
