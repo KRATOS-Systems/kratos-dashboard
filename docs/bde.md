@@ -18,6 +18,9 @@ Neue Bereiche im Produktionsdashboard. Odoo bleibt die einzige Wahrheit: Die App
 - Mein Arbeitsplatz: laufende Tätigkeit mit Uhr, Woche (anwesend, auf Aufträge gebucht, nicht gebucht), Resturlaub, Zuletzt.
 - Leitung (Frank, Alex): Hinweise (vergessen, doppelt, Maschine zu lang), Daten der anderen ansehen.
 - Meine Aufgaben: offene Odoo-Aktivitäten des Angemeldeten nach Frist (rot überfällig, gelb heute), mit Verweis in Odoo; bei Fertigungsaufträgen „Stempeln“ (öffnet die Auswahl mit dem Auftrag). „Erledigt“ nur mit `BDE_WRITE=1`, nur eigene, über `mail.activity.action_feedback` mit Vermerk „Erledigt über Kratos BDE von …“. Ohne Odoo-Benutzer keine Aufgaben.
+- Meine nächsten Teile: Positionen, bei denen der Mitarbeiter für Programmierung, Rüsten, Fräsen (Reihenfolge des Zeitstrahls) oder QS (Positionen in der QS) zuständig ist, mit Bild, Liefertermin, AV-Status, Zeichnung und „… starten“ (mit `BDE_WRITE`). Erledigte Arbeitsgänge (Odoo) fallen weg. Darunter seine offene Arbeitsvorbereitung; wer die Planung hat, sieht die Zahl der nicht eingeplanten Positionen; die Leitung dezent die offene AV.
+- Zuständigkeiten (Planung → Einstellungen und Schublade „Zuständig“): Stammbediener je Maschine (DMU 40 Nino, M1 Frank, H800U Aurel) für Programmierung, Rüsten, Fräsen; QS Aurel, Arbeitsvorbereitung Nino, Planung Frank; Abweichung je Position und Tätigkeit. Fotos und Namen an Maschinenzeile und Balken. Gespeichert in `staff_defaults` und `order_staff` (im Backup), Regeln in `src/staffLib.js`.
+- Mitarbeiterfotos aus Odoo (`hr.employee.image_128`, nur lesen) auf Tafel, Anmeldung, Begrüßung, Kiosk und in der Planung, ohne Foto Initialen.
 - Begrüßung beim Anmelden/Kommen („Guten Morgen, Aurel!“) und Verabschiedung beim Abmelden/Gehen („Schönen Feierabend“, freitags/samstags „Schönes Wochenende“, mitten am Tag „Bis später“).
 
 **Version 2 (Bedienen, nur mit `BDE_WRITE=1`)**

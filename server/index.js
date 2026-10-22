@@ -9,6 +9,7 @@ import registerPartImages from "./partImages.js";
 import registerOdooSync from "./odooSync.js";
 import registerOdooFiles from "./odooFiles.js";
 import registerBde from "./bde.js";
+import registerStaff from "./staff.js";
 
 // Lokal dürfen Umgebungsvariablen in einer Datei .env stehen (nicht im Repository). Bei Hostinger gibt es sie nicht.
 try {
@@ -1012,6 +1013,8 @@ app.get("/api/backup", (req, res) => {
     plan_rates: all("SELECT * FROM plan_rates ORDER BY machine"),
     plan_settings: all("SELECT * FROM plan_settings ORDER BY key"),
     av_checks: all("SELECT * FROM av_checks ORDER BY order_id, item"),
+    staff_defaults: all("SELECT * FROM staff_defaults ORDER BY key"),
+    order_staff: all("SELECT * FROM order_staff ORDER BY order_id, activity"),
   };
   res.setHeader("Content-Disposition", `attachment; filename="kratos-backup-${created.slice(0, 10)}.json"`);
   res.type("json").send(JSON.stringify(backup, null, 2));
@@ -1029,6 +1032,8 @@ const RESTORE_TABLES = [
   "free_days",
   "free_days_seeded",
   "av_checks",
+  "staff_defaults",
+  "order_staff",
 ];
 app.post("/api/restore", (req, res) => {
   const { backup, dryRun } = req.body || {};
@@ -1072,7 +1077,8 @@ app.post("/api/restore", (req, res) => {
 registerPartImages(app, db);
 registerOdooSync(app, db, { isDate, nextPosition });
 registerOdooFiles(app, db);
-registerBde(app, db);
+const staff = registerStaff(app, db);
+registerBde(app, db, staff);
 
 if (existsSync(DIST_PATH)) {
   app.use(express.static(DIST_PATH));

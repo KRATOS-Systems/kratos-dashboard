@@ -15,6 +15,8 @@ import registerBdeActions from "./bdeActions.js";
 import registerBdeKiosk from "./bdeKiosk.js";
 import registerBdeMachines from "./bdeMachines.js";
 import registerBdeTasks from "./bdeTasks.js";
+import registerBdePhotos from "./bdePhotos.js";
+import registerBdeParts from "./bdeParts.js";
 
 const TZ = "Europe/Berlin";
 const TEAM_TTL = 25 * 1000;
@@ -121,7 +123,7 @@ export function isPhone(req) {
   return /iPhone|iPod|Android.+Mobile|Windows Phone|Mobile Safari(?!.*iPad)/i.test(ua) && !/iPad|Tablet/i.test(ua);
 }
 
-export default function registerBde(app, db) {
+export default function registerBde(app, db, staff) {
   const odoo = createOdooClient();
   const SECRET = process.env.BDE_SECRET || randomBytes(32).toString("hex");
   if (!process.env.BDE_SECRET) console.warn("BDE: BDE_SECRET fehlt, Anmeldungen gelten nur bis zum nächsten Neustart");
@@ -565,6 +567,8 @@ export default function registerBde(app, db) {
   registerBdeKiosk(app, ctx);
   registerBdeMachines(app, db, ctx);
   registerBdeTasks(app, ctx);
+  registerBdePhotos(app, ctx);
+  if (staff) registerBdeParts(app, db, ctx, staff);
 
   // Für Erinnerungen über Talos (n8n): offene Hinweise mit Odoo-Benutzer, nur mit eigenem Schlüssel
   app.get("/api/bde/reminders", async (req, res) => {

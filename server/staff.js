@@ -1,0 +1,59 @@
+// Zuständigkeiten der Planung speichern: Stammbediener je Maschine, Rollen (QS, Arbeitsvorbereitung, Planung)
+// und Abweichungen je Position und Tätigkeit. Die Regeln stehen in src/staffLib.js.
+
+import { STAFF, STAFF_DEFAULTS, STAFF_KEYS, ACTIVITIES } from "../src/staffLib.js";
+
+const NAMES = new Set(STAFF.map((s) => s.name));
+const ACT_IDS = new Set(ACTIVITIES.map((a) => a.id));
+
+export default function registerStaff(app, db) {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS staff_defaults (
+      key TEXT PRIMARY KEY,
+      name TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS order_staff (
+      order_id INTEGER NOT NULL,
+      activity TEXT NOT NULL,
+      name TEXT NOT NULL,
+      PRIMARY KEY (order_id, activity)
+    );
+  `);
+
+  const defaults = () => {
+    const out = { ...STAFF_DEFAULTS };
+    db.prepare("SELECT key, name FROM staff_defaults").all().forEach((r) => {
+      if (STAFF_KEYS.includes(r.key)) out[r.key] = r.name;
+    });
+    return out;
+  };
+  const overrides = () => new Map(db.prepare("SELECT order_id, activity, name FROM order_staff").all().map((r) => [`${r.order_id}|${r.activity}`, r.name]));
+
+  app.get("/api/staff", (req, res) => {
+    res.json({ defaults: defaults(), orders: db.prepare("SELECT order_id, activity, name FROM order_staff").all() });
+  });
+
+  // Standard ändern; leerer Name nur bei der Programmierung erlaubt (= Stammbediener)
+  app.put("/api/staff/defaults", (req, res) => {
+    const { key, name } = req.body || {};
+    if (!STAFF_KEYS.includes(key)) return res.status(400).json({ error: "invalid key" });
+    if (name === "" && key === "role:programmierung") {
+      db.prepare("INSERT INTO staff_defaults (key, name) VALUES (?, '') ON CONFLICT (key) DO UPDATE SET name = ''").run(key);
+    } else if (NAMES.has(name)) {
+      db.prepare("INSERT INTO staff_defaults (key, name) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET name = excluded.name").run(key, name);
+    } else return res.status(400).json({ error: "invalid name" });
+    res.json({ defaults: defaults() });
+  });
+
+  // Abweichung je Position und Tätigkeit; name = null entfernt sie (dann gilt der Standard)
+  app.put("/api/staff/order", (req, res) => {
+    const { order_id, activity, name } = req.body || {};
+    if (!Number.isInteger(order_id) || !ACT_IDS.has(activity) || !(name === null || NAMES.has(name))) return res.status(400).json({ error: "invalid payload" });
+    if (!db.prepare("SELECT 1 FROM orders WHERE id = ?").get(order_id)) return res.status(404).json({ error: "not found" });
+    if (name === null) db.prepare("DELETE FROM order_staff WHERE order_id = ? AND activity = ?").run(order_id, activity);
+    else db.prepare("INSERT INTO order_staff (order_id, activity, name) VALUES (?, ?, ?) ON CONFLICT (order_id, activity) DO UPDATE SET name = excluded.name").run(order_id, activity, name);
+    res.json({ ok: true });
+  });
+
+  return { defaults, overrides };
+}

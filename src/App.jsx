@@ -244,7 +244,7 @@ export default function App() {
             />
           )}
           {page === "team" && <Team kiosk={kiosk} goTo={goTo} />}
-          {page === "platz" && <Arbeitsplatz />}
+          {page === "platz" && <Arbeitsplatz goTo={goTo} />}
           {page === "kiosk" && <Kiosk />}
           {page === "dashboard" && capLoaded && <Dashboard weekCap={weekCap} saveCapacity={saveCapacity} today={today} shared={shared} openTalos={(q) => { setTalosQ(q); setShowSearch(true); }} />}
         </main>

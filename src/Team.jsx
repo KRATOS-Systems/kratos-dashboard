@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { Ico, useToast } from "./ui.jsx";
-import { useNow, clock, since, fmtTime, splitProduct, odooLink, initials, act, useBdeSession, canOperate, toLocalInput, fromLocalInput } from "./bdeLib.js";
+import { useNow, clock, since, fmtTime, splitProduct, odooLink, act, useBdeSession, canOperate, toLocalInput, fromLocalInput } from "./bdeLib.js";
+import Avatar from "./Avatar.jsx";
 
 // Team-Tafel: eine Karte pro Mitarbeiter, wer ist da und woran wird gerade gearbeitet.
 // Farbe statt Text: grün = da und Buchung läuft, grau = da, nichts gebucht, orange = doppelt gestempelt, rot = Buchung vergessen,
@@ -189,7 +190,7 @@ export function TeamCard({ c, now, odooUrl, session, onChanged }) {
     <article className={`bcard st-${c.state}${own ? " own" : ""}`}>
       <header>
         <span className={`bav${c.present ? " here" : ""}`} title={c.present ? "Anwesend" : "Nicht da"}>
-          {initials(c.name)}
+          <Avatar id={c.id} name={c.name} size={46} />
         </span>
         <b className="bname">{c.name}</b>
         <OdooLink base={odooUrl} id={linkId} s={17} />

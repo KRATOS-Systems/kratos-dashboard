@@ -104,6 +104,7 @@ export default function registerBdeKiosk(app, ctx) {
       const p = await ctx.getPersonal(t.employeeId, true);
       res.json({
         action: t.action,
+        employeeId: t.employeeId,
         name: result.employee_name || null,
         card: { todayH: p.todayH, weekH: p.attendanceH, weekTargetH: p.weekTargetH, overtimeH: p.overtimeH, vacation: p.vacation },
       });

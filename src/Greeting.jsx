@@ -1,5 +1,6 @@
 import React, { useEffect } from "react";
 import { BrandMark } from "./ui.jsx";
+import Avatar from "./Avatar.jsx";
 
 // Begrüßung beim Anmelden / Kommen und Verabschiedung beim Abmelden / Gehen, kurz und ganzseitig:
 // "Guten Morgen, Aurel!", "Hallo, Aurel!", "Guten Abend, Aurel!" bzw. "Schönen Feierabend, Aurel!" (freitags/samstags "Schönes Wochenende"),
@@ -41,7 +42,7 @@ export function GreetTitle({ text, className = "" }) {
 }
 
 // Ganzseitige Begrüßung, verschwindet von selbst (Klick oder Taste schließt sofort)
-export default function Greeting({ name, kind = "in", ms = 2600, onDone }) {
+export default function Greeting({ name, id, kind = "in", ms = 2600, onDone }) {
   const g = greetText(kind, name);
   useEffect(() => {
     const t = setTimeout(onDone, ms);
@@ -55,9 +56,7 @@ export default function Greeting({ name, kind = "in", ms = 2600, onDone }) {
   return (
     <div className={`greet ${kind}`} role="status" onClick={onDone} style={{ "--ms": `${ms}ms` }}>
       <div className="greet-in">
-        <span className="greet-mark">
-          <BrandMark size={56} />
-        </span>
+        <span className="greet-mark">{id != null ? <Avatar id={id} name={name} size={96} className="greet-avt" /> : <BrandMark size={56} />}</span>
         <GreetTitle text={g.title} className="greet-title" />
         <span className="greet-sub">{g.sub}</span>
         <i className="greet-line" />

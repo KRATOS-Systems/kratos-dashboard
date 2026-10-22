@@ -4,6 +4,8 @@ import { parseOdooExport } from "./odooImport.js";
 import { holidaysBavaria } from "./holidays.js";
 import AvView, { avUrgentCount } from "./Av.jsx";
 import { AV_ITEMS, AV_STATUS, AV_TEAM, avKey, avState, avSummary } from "./avLib.js";
+import { STAFF, ACTIVITIES, STAFF_DEFAULTS, responsible } from "./staffLib.js";
+import Avatar from "./Avatar.jsx";
 import { AppTile, Ico, LaneTile, MTile, Thumb, useToast, partImg } from "./ui.jsx";
 import {
   DEFAULT_TIGHT_DAYS,
@@ -103,6 +105,8 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
   const toast = useToast();
   const [orders, setOrders] = useState([]);
   const [checks, setChecks] = useState(() => new Map()); // Arbeitsvorbereitung: Position|Punkt -> { status, due, note }
+  // Zuständigkeiten: Stammbediener je Maschine, Rollen, Abweichungen je Position und Tätigkeit ("id|tätigkeit" -> Name)
+  const [staff, setStaff] = useState(() => ({ defaults: { ...STAFF_DEFAULTS }, overrides: new Map() }));
   const [rates, setRates] = useState({});
   const [tightDays, setTightDays] = useState(DEFAULT_TIGHT_DAYS);
   const [avLead, setAvLead] = useState(2); // Vorlauf der Arbeitsvorbereitung in Tagen
@@ -167,7 +171,11 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
       fetch("/api/plan-rates").then((r) => r.json()),
       fetch("/api/plan-settings").then((r) => r.json()),
       fetch("/api/av").then((r) => r.json()),
-    ]).then(([o, r, s, a]) => {
+      fetch("/api/staff")
+        .then((r) => r.json())
+        .catch(() => null),
+    ]).then(([o, r, s, a, st]) => {
+      if (st && st.defaults) setStaff({ defaults: st.defaults, overrides: new Map(st.orders.map((x) => [`${x.order_id}|${x.activity}`, x.name])) });
       setOrders(o.orders);
       setChecks(new Map(a.checks.map((c) => [avKey(c.order_id, c.item), { status: c.status, due: c.due, note: c.note, assignee: c.assignee || null }])));
       setRates(r.rates);
@@ -1041,6 +1049,21 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
     });
     return m;
   }, [orders, checks]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Zuständig für eine Tätigkeit an einer Position (Abweichung, sonst Stammbediener bzw. Rolle)
+  const whoOf = (o, activity) => responsible(o, activity, staff.defaults, staff.overrides);
+  function setOrderStaff(orderId, activity, name) {
+    setStaff((st) => {
+      const overrides = new Map(st.overrides);
+      if (name) overrides.set(`${orderId}|${activity}`, name);
+      else overrides.delete(`${orderId}|${activity}`);
+      return { ...st, overrides };
+    });
+    fetch("/api/staff/order", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ order_id: orderId, activity, name: name || null }) }).catch((err) => console.error("Speichern fehlgeschlagen", err));
+  }
+  function setStaffDefault(key, name) {
+    setStaff((st) => ({ ...st, defaults: { ...st.defaults, [key]: name } }));
+    fetch("/api/staff/defaults", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ key, name }) }).catch((err) => console.error("Speichern fehlgeschlagen", err));
+  }
   const people = useMemo(() => [...AV_TEAM, ...[...new Set([...checks.values()].map((c) => c.assignee).filter((n) => n && !AV_TEAM.includes(n)))].sort((a, b) => a.localeCompare(b))], [checks]);
   const urgentIds = useMemo(() => new Set(positions.filter((p) => p.urgent).map((p) => p.id)), [positions]);
   const lateIds = useMemo(() => new Set(positions.filter((p) => p.status === "late").map((p) => p.id)), [positions]);
@@ -1459,6 +1482,31 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
             </div>
             {externEditor(o)}
             {metaLine(o) && <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 10 }}>{metaLine(o)}</div>}
+          </div>
+
+          <div className="dsec">
+            <h4>Zuständig</h4>
+            <div className="staffgrid">
+              {ACTIVITIES.map((a) => {
+                const own = staff.overrides.get(`${o.id}|${a.id}`) || "";
+                const name = whoOf(o, a.id);
+                const std = responsible(o, a.id, staff.defaults, new Map());
+                return (
+                  <label key={a.id} className="staffrow">
+                    <Avatar name={name || "?"} size={30} />
+                    <span className="sl">{a.label}</span>
+                    <select value={own} onChange={(ev) => setOrderStaff(o.id, a.id, ev.target.value || null)} aria-label={`${a.label} zuständig`} className={own ? "own" : ""}>
+                      <option value="">{std ? `Standard: ${std}` : "Standard: noch offen (keine Maschine)"}</option>
+                      {STAFF.map((p) => (
+                        <option key={p.name} value={p.name}>
+                          {p.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                );
+              })}
+            </div>
           </div>
 
           <div className="dsec">
@@ -2178,6 +2226,18 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
                 <i style={{ width: `${part.percent}%` }} />
               </div>
             )}
+            {(() => {
+              // Wer an dieser Position arbeitet (Programmierung, Rüsten, Fräsen), klein im Balken
+              const o0 = orders.find((x) => x.id === part.ids[0]);
+              const names = o0 ? [...new Set(["programmierung", "ruesten", "fraesen"].map((a) => whoOf(o0, a)).filter(Boolean))] : [];
+              return names.length ? (
+                <span className="bar-who" title={names.join(", ")}>
+                  {names.slice(0, 2).map((n) => (
+                    <Avatar key={n} name={n} size={20} />
+                  ))}
+                </span>
+              ) : null;
+            })()}
           </div>
         );
       });
@@ -2202,6 +2262,12 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
           <div className="lt">
             <b>{p.m.name}</b>
             <small>{p.rate ? `${fmtH(p.rate)} h/Woche` : "keine Wochenleistung"}</small>
+            {staff.defaults[`machine:${p.m.id}`] && (
+              <span className="who" title="Stammbediener">
+                <Avatar name={staff.defaults[`machine:${p.m.id}`]} size={18} />
+                <b>{staff.defaults[`machine:${p.m.id}`]}</b>
+              </span>
+            )}
           </div>
           <button type="button" className="btn icon quiet addb" title="Auftrag von Hand hinzufügen" aria-label={`Auftrag zu ${p.m.short} hinzufügen`} onClick={() => addOrder(p.m.id)}>
             <Ico n="plus" s={15} />
@@ -2269,6 +2335,12 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
         <div className="lt">
           <b>{lane.name}</b>
           <small>{lane.cap}</small>
+          {lane.id === "qs" && staff.defaults["role:qs"] && (
+            <span className="who" title="Zuständig für die QS">
+              <Avatar name={staff.defaults["role:qs"]} size={18} />
+              <b>{staff.defaults["role:qs"]}</b>
+            </span>
+          )}
         </div>
         {lane.id !== "qs" && (
           <button type="button" className="btn icon quiet addb" title="Auftrag von Hand hinzufügen" aria-label={`Auftrag zu ${lane.name} hinzufügen`} onClick={() => addLaneOrder(lane)}>
@@ -2322,6 +2394,16 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
                 {b.ids.length > 1 ? `${b.ids.length} Pos. · ` : ""}
                 {tags.length ? tags.join(", ") : fmtDuration(b.duration)}
               </span>
+              {lane.id === "qs" &&
+                (() => {
+                  const o0 = orders.find((x) => x.id === b.ids[0]);
+                  const n = o0 && whoOf(o0, "qs");
+                  return n ? (
+                    <span className="bar-who" title={`QS: ${n}`}>
+                      <Avatar name={n} size={20} />
+                    </span>
+                  ) : null;
+                })()}
             </div>
           );
         })}
@@ -2875,8 +2957,38 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
   const WD = ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"];
   const wd = (date) => WD[new Date(`${date}T00:00:00Z`).getUTCDay()];
 
+  const staffRow = (key, label, allowMachineOwner) => (
+    <label className="staffrow" key={key}>
+      <Avatar name={staff.defaults[key] || "?"} size={30} />
+      <span className="sl">{label}</span>
+      <select value={staff.defaults[key] || ""} onChange={(ev) => setStaffDefault(key, ev.target.value)} aria-label={label}>
+        {allowMachineOwner && <option value="">Stammbediener der Maschine</option>}
+        {STAFF.map((p) => (
+          <option key={p.name} value={p.name}>
+            {p.name}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+
   const settings = (
     <div className="setgrid">
+      <div className="card">
+        <div className="sec-head">
+          <div>
+            <h2>Zuständigkeiten</h2>
+            <p>Wer standardmäßig was macht. Je Position lässt sich das in der Schublade unter „Zuständig“ ändern. Daraus entsteht die Liste in „Mein Arbeitsplatz“.</p>
+          </div>
+        </div>
+        <div className="staffgrid" style={{ padding: "4px 18px 16px" }}>
+          {MACHINES.map((m) => staffRow(`machine:${m.id}`, `Stammbediener ${m.name}`))}
+          {staffRow("role:programmierung", "Programmierung", true)}
+          {staffRow("role:qs", "QS")}
+          {staffRow("role:av", "Arbeitsvorbereitung")}
+          {staffRow("role:planung", "Produktionsplanung")}
+        </div>
+      </div>
       <div className="card">
         <div className="sec-head">
           <div>

@@ -3,6 +3,7 @@ import { Ico } from "./ui.jsx";
 import { useBdeTeam, TeamGrid } from "./Team.jsx";
 import { useNow, fmtTime, hm } from "./bdeLib.js";
 import { greetText, GreetTitle } from "./Greeting.jsx";
+import Avatar from "./Avatar.jsx";
 
 // Kiosk für Kommen und Gehen am Terminal (ersetzt den Odoo-Kiosk).
 // Zeigt die Team-Tafel. Der Chipleser tippt die Nummer wie eine Tastatur (Ziffern + Enter).
@@ -196,7 +197,10 @@ function HoursCard({ d }) {
   const g = greetText(d.action === "in" ? "in" : "out", d.name);
   return (
     <div className={`kbox card kcard ${d.action === "in" ? "in" : "out"}`}>
-      <GreetTitle text={g.title} className="kname" />
+      <div className="khead">
+        <Avatar id={d.employeeId} name={d.name} size={84} />
+        <GreetTitle text={g.title} className="kname" />
+      </div>
       <div className="kstate">{g.sub}</div>
       <div className="kgrid">
         <div>

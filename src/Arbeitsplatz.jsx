@@ -5,7 +5,10 @@ import { Clock, MachineRuns, OdooLink, Complaints, MachineGlyph, MachineStop } f
 import Maschinenzeit from "./Maschinenzeit.jsx";
 import Greeting, { berlinHour } from "./Greeting.jsx";
 import Aufgaben from "./Aufgaben.jsx";
-import { useNow, clock, since, fmtTime, hm, splitProduct, initials, act, isPhoneView } from "./bdeLib.js";
+import Teile from "./Teile.jsx";
+import { todayStr } from "./lib.js";
+import { useNow, clock, since, fmtTime, hm, splitProduct, act, isPhoneView } from "./bdeLib.js";
+import Avatar from "./Avatar.jsx";
 
 // Mein Arbeitsplatz: persönliche Seite nach Anmeldung mit PIN.
 // Oben groß die laufende Tätigkeit mit den drei Knöpfen Wechseln, Unterbrechen/Weiter, Stopp; darunter Zeiten der Woche, Resturlaub,
@@ -20,18 +23,18 @@ const TABLET_IDLE_MS = 2 * 60 * 1000;
 const SHOW_MASCHINENZEIT = false;
 
 // Begrüßung beim Anmelden und Verabschiedung beim Abmelden liegen über der Seite
-export default function Arbeitsplatz() {
+export default function Arbeitsplatz({ goTo }) {
   const [greet, setGreet] = useState(null);
   const done = useCallback(() => setGreet(null), []);
   return (
     <>
-      <ArbeitsplatzInner onGreet={setGreet} />
-      {greet && <Greeting name={greet.name} kind={greet.kind} onDone={done} />}
+      <ArbeitsplatzInner onGreet={setGreet} goTo={goTo} />
+      {greet && <Greeting name={greet.name} id={greet.id} kind={greet.kind} onDone={done} />}
     </>
   );
 }
 
-function ArbeitsplatzInner({ onGreet }) {
+function ArbeitsplatzInner({ onGreet, goTo }) {
   const [state, setState] = useState("loading"); // loading | login | ok | error
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
@@ -69,8 +72,8 @@ function ArbeitsplatzInner({ onGreet }) {
 
   // Abmelden; mit Knopf verabschiedet die Seite den Mitarbeiter (schon ausgestempelt oder ab 12 Uhr: Feierabend, sonst "Bis später"),
   // beim automatischen Abmelden am Tablet nicht
-  const logout = useCallback((name, present) => {
-    if (typeof name === "string" && name) onGreet({ name, kind: !present || berlinHour() >= 12 ? "out" : "bye" });
+  const logout = useCallback((name, present, id) => {
+    if (typeof name === "string" && name) onGreet({ name, id, kind: !present || berlinHour() >= 12 ? "out" : "bye" });
     fetch("/api/bde/logout", { method: "POST" }).finally(() => {
       setViewId(null);
       setData(null);
@@ -164,7 +167,7 @@ function ArbeitsplatzInner({ onGreet }) {
     return (
       <Login
         onDone={(who) => {
-          onGreet({ name: who.name, kind: "in" });
+          onGreet({ name: who.name, id: who.id, kind: "in" });
           load();
         }}
       />
@@ -193,9 +196,12 @@ function ArbeitsplatzInner({ onGreet }) {
   return (
     <div className="bde">
       <div className="page-head">
-        <div>
+        <div className="bme">
+          <Avatar id={data.viewing.id} name={data.viewing.name} size={52} />
+          <div>
           <h1>{own ? "Mein Arbeitsplatz" : data.viewing.name}</h1>
           <p>{own ? `Angemeldet als ${data.me.name}` : `Angesehen von ${data.me.name}`}</p>
+          </div>
         </div>
         <div className="actions">
           {data.people && (
@@ -218,7 +224,7 @@ function ArbeitsplatzInner({ onGreet }) {
               </div>
             </details>
           )}
-          <button type="button" className="btn" onClick={() => logout(data.me.name, own ? !!(data.card && data.card.present) : true)}>
+          <button type="button" className="btn" onClick={() => logout(data.me.name, own ? !!(data.card && data.card.present) : true, data.me.id)}>
             Abmelden
           </button>
         </div>
@@ -254,6 +260,8 @@ function ArbeitsplatzInner({ onGreet }) {
         {controls}
         <MachineRuns list={data.card && data.card.machine} now={now} odooUrl={data.odooUrl} canStop={operate || (data.me.leitung && data.write && !data.phone && !isPhoneView())} employeeId={own ? undefined : data.viewing.id} onChanged={load} />
       </section>
+
+      <Teile viewId={viewId} today={todayStr()} goTo={goTo} canStart={operate} onStart={(st) => run({ action: "start", workorderId: st.workorderId }, `${st.label} gestartet`)} />
 
       <Aufgaben viewId={viewId} canStamp={operate} onStamp={(fa) => setPicker({ tab: "suchen", q: fa })} />
 
@@ -653,7 +661,9 @@ function Login({ onDone }) {
                   setError(null);
                 }}
               >
-                <span className="bav">{initials(p.name)}</span>
+                <span className="bav">
+                  <Avatar id={p.id} name={p.name} size={56} />
+                </span>
                 <b>{p.name}</b>
               </button>
             ))}
