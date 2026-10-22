@@ -58,6 +58,7 @@ Im hPanel unter Websites → Website → Umgebungsvariablen:
 | `BDE_LEITUNG` | nein | Standard `3,1` |
 | `BDE_MACHINES` | nein | Arbeitsplatz → Maschine, z. B. `dmu40:15,m1:16,h800u:17` |
 | `BDE_REMINDER_KEY` | nein | Schlüssel für Erinnerungen über n8n/Talos |
+| `BDE_HIDE_ACTIVITY_TYPES` | nein | Aktivitätstypen, die in „Meine Aufgaben“ nicht erscheinen, Standard `6` (Odoos „Ausnahme“) |
 
 ```bash
 node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"

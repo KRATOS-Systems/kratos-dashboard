@@ -7,6 +7,12 @@
 import { m2o, berlinDate, isPhone } from "./bde.js";
 
 const CACHE_MS = 60 * 1000;
+// Ausgeblendete Aktivitätstypen: 6 = "Ausnahme" (legt Odoo selbst an, wenn bei Verkauf, Fertigung oder Lieferung etwas nicht passt)
+// (hier selbst eingelesen: Werte aus bde.js stehen beim Laden dieses Moduls noch nicht bereit)
+const HIDDEN_TYPES = String(process.env.BDE_HIDE_ACTIVITY_TYPES || "6")
+  .split(",")
+  .map((x) => parseInt(x, 10))
+  .filter(Number.isInteger);
 const MODEL_LABELS = {
   "mrp.production": "Fertigungsauftrag",
   "sale.order": "Verkauf",
@@ -42,7 +48,7 @@ export default function registerBdeTasks(app, ctx) {
 
   async function load(userId) {
     const rows = await odoo.read("mail.activity", "search_read", {
-      domain: [["user_id", "=", userId], ["date_done", "=", false]],
+      domain: [["user_id", "=", userId], ["date_done", "=", false], ["activity_type_id", "not in", HIDDEN_TYPES]],
       fields: ["activity_type_id", "summary", "note", "date_deadline", "res_model", "res_id", "res_name"],
       order: "date_deadline asc, id asc",
       limit: 100,
