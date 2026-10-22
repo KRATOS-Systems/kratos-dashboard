@@ -13,6 +13,7 @@ const now = () => Date.now();
 const fmt = (ms) => new Date(ms).toISOString().slice(0, 19).replace("T", " ");
 const parse = (s) => Date.parse(s.replace(" ", "T") + "Z");
 const ago = (h) => fmt(now() - h * 3600000);
+const day = (n) => new Date(now() + n * 86400000).toISOString().slice(0, 10);
 
 // Welche Felder verweisen auf welches Modell (für [id, Name] und Pfade wie production_id.name)
 const M2O = {
@@ -24,6 +25,7 @@ const M2O = {
   "hr.leave.allocation": { employee_id: "hr.employee" },
   "quality.alert": { product_id: "product.product", product_tmpl_id: "product.template", production_id: "mrp.production" },
   "product.product": { product_tmpl_id: "product.template" },
+  "mail.activity": { activity_type_id: "mail.activity.type", user_id: "res.users" },
 };
 const O2M = { "product.template": { product_variant_ids: ["product.product", "product_tmpl_id"] } };
 
@@ -76,6 +78,13 @@ const T = {
   "hr.leave.allocation": [
     { id: 14, employee_id: 2, number_of_days: 30, leaves_taken: 23, state: "validate", date_from: "2026-01-01", date_to: "2027-03-31" },
     { id: 8, employee_id: 3, number_of_days: 30, leaves_taken: 24, state: "validate", date_from: "2026-01-01", date_to: "2026-12-31" },
+  ],
+  "mail.activity.type": [{ id: 1, name: "To-do" }, { id: 2, name: "Anruf" }, { id: 4, name: "E-Mail" }],
+  "mail.activity": [
+    { id: 501, activity_type_id: 1, user_id: 30, summary: "Programm für Grundplatte prüfen", note: "<p>Bohrbild mit <b>Zeichnung</b> abgleichen</p>", date_deadline: day(-2), res_model: "mrp.production", res_id: 1307, res_name: "FA01307", date_done: false },
+    { id: 502, activity_type_id: 2, user_id: 30, summary: "Lieferant wegen Material anrufen", note: false, date_deadline: day(0), res_model: "purchase.order", res_id: 77, res_name: "P00077", date_done: false },
+    { id: 503, activity_type_id: 1, user_id: 30, summary: false, note: false, date_deadline: day(3), res_model: "knowledge.article", res_id: 5, res_name: "Arbeitsanweisung Rüsten", date_done: false },
+    { id: 504, activity_type_id: 1, user_id: 25, summary: "Prüfplan freigeben", note: false, date_deadline: day(1), res_model: "mrp.production", res_id: 1070, res_name: "FA01070", date_done: false },
   ],
   "quality.alert": [{ id: 1, name: "QA001", title: "Bohrung Ø8 außer Toleranz", product_id: false, product_tmpl_id: 70, production_id: false, date_close: false }],
 };
@@ -211,6 +220,11 @@ function call(model, method, p) {
       T["mrp.workcenter.productivity"].filter((x) => x.workorder_id === woId && !x.date_end && p.employee_ids.includes(x.employee_id)).forEach((x) => (x.date_end = fmt(now())));
       recomputeWo(woId);
       log.push({ at: fmt(now()), call: `mrp.workorder.stop_employee(${woId}, employees ${p.employee_ids})` });
+      return true;
+    }
+    case "action_feedback": {
+      p.ids.forEach((id) => (byId(model, id).date_done = new Date().toISOString().slice(0, 10)));
+      log.push({ at: fmt(now()), call: `${model}.action_feedback(${p.ids}, "${p.feedback}")` });
       return true;
     }
     case "write": {

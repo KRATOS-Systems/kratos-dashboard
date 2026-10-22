@@ -17,6 +17,8 @@ Neue Bereiche im Produktionsdashboard. Odoo bleibt die einzige Wahrheit: Die App
 - Offene Reklamationen zum Artikel stehen auf der Karte.
 - Mein Arbeitsplatz: laufende Tätigkeit mit Uhr, Woche (anwesend, auf Aufträge gebucht, nicht gebucht), Resturlaub, Zuletzt.
 - Leitung (Frank, Alex): Hinweise (vergessen, doppelt, Maschine zu lang), Daten der anderen ansehen, Maschinenzeit prüfen.
+- Meine Aufgaben: offene Odoo-Aktivitäten des Angemeldeten nach Frist (rot überfällig, gelb heute), mit Verweis in Odoo; bei Fertigungsaufträgen „Stempeln“ (öffnet die Auswahl mit dem Auftrag). „Erledigt“ nur mit `BDE_WRITE=1`, nur eigene, über `mail.activity.action_feedback` mit Vermerk „Erledigt über Kratos BDE von …“. Ohne Odoo-Benutzer keine Aufgaben.
+- Begrüßung beim Anmelden/Kommen („Guten Morgen, Aurel!“) und Verabschiedung beim Abmelden/Gehen („Schönen Feierabend“, freitags/samstags „Schönes Wochenende“, mitten am Tag „Bis später“).
 
 **Version 2 (Bedienen, nur mit `BDE_WRITE=1`)**
 - Knöpfe Wechseln (Zuletzt, Als Nächstes, Helfen, Suchen), Unterbrechen/Weiter, Stopp; auf der eigenen Karte der Tafel Unterbrechen und Stopp.
@@ -38,6 +40,7 @@ Neue Bereiche im Produktionsdashboard. Odoo bleibt die einzige Wahrheit: Die App
 | Beenden / Unterbrechen | `mrp.workorder.stop_employee(employee_ids)` |
 | Endzeit Maschinenlauf | `mrp.workcenter.productivity.write`, nur `date_end` und `description` |
 | Kommen / Gehen | Kiosk-Weg `/hr_attendance/attendance_barcode_scanned` mit dem Kiosk-Schlüssel der Firma |
+| Aufgabe erledigt | `mail.activity.action_feedback(feedback)` |
 
 Alles andere ist in `server/odooClient.js` gesperrt. Ohne `BDE_WRITE=1` schreibt die App nichts.
 

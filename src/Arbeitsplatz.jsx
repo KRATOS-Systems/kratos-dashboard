@@ -4,6 +4,7 @@ import { Ico, useToast } from "./ui.jsx";
 import { Clock, MachineRuns, OdooLink, Complaints, MachineGlyph, MachineStop } from "./Team.jsx";
 import Maschinenzeit from "./Maschinenzeit.jsx";
 import Greeting, { berlinHour } from "./Greeting.jsx";
+import Aufgaben from "./Aufgaben.jsx";
 import { useNow, clock, since, fmtTime, hm, splitProduct, initials, act, isPhoneView } from "./bdeLib.js";
 
 // Mein Arbeitsplatz: persönliche Seite nach Anmeldung mit PIN.
@@ -32,7 +33,7 @@ function ArbeitsplatzInner({ onGreet }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const [viewId, setViewId] = useState(null);
-  const [picker, setPicker] = useState(false);
+  const [picker, setPicker] = useState(false); // false oder { tab, q }
   const [pip, setPip] = useState(null);
   const [busy, setBusy] = useState(false);
   const toast = useToast();
@@ -251,6 +252,8 @@ function ArbeitsplatzInner({ onGreet }) {
         <MachineRuns list={data.card && data.card.machine} now={now} odooUrl={data.odooUrl} canStop={operate || (data.me.leitung && data.write && !data.phone && !isPhoneView())} employeeId={own ? undefined : data.viewing.id} onChanged={load} />
       </section>
 
+      <Aufgaben viewId={viewId} canStamp={operate} onStamp={(fa) => setPicker({ tab: "suchen", q: fa })} />
+
       <div className="btiles">
         <div className="card btile">
           <span className="lab">Anwesend diese Woche</span>
@@ -297,7 +300,7 @@ function ArbeitsplatzInner({ onGreet }) {
       {data.me.leitung && own && <Maschinenzeit />}
       <p className="bfoot">Stand {data.at ? fmtTime(data.at) : "–"} · Zeiten aus Odoo, Woche ab Montag</p>
 
-      {picker && <Picker data={data} now={now} busy={busy} onClose={() => setPicker(false)} onPick={(r) => run({ action: "start", workorderId: r.workorderId }, `${r.label} ${r.fa} gestartet`)} />}
+      {picker && <Picker data={data} now={now} busy={busy} initial={picker === true ? null : picker} onClose={() => setPicker(false)} onPick={(r) => run({ action: "start", workorderId: r.workorderId }, `${r.label} ${r.fa} gestartet`)} />}
       {pip &&
         createPortal(
           <MiniView
@@ -370,10 +373,10 @@ function PickRow({ r, now, odooUrl, onPick, busy }) {
 }
 
 // Schnellauswahl: Zuletzt, Als Nächstes, Bei Kollegen (helfen), Suchen
-function Picker({ data, now, busy, onClose, onPick }) {
-  const [tab, setTab] = useState("zuletzt");
+function Picker({ data, now, busy, initial, onClose, onPick }) {
+  const [tab, setTab] = useState((initial && initial.tab) || "zuletzt");
   const [items, setItems] = useState(null);
-  const [q, setQ] = useState("");
+  const [q, setQ] = useState((initial && initial.q) || "");
   const [err, setErr] = useState(null);
   const [colleagues, setColleagues] = useState(null);
   useEffect(() => {

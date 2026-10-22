@@ -2,7 +2,7 @@
 //
 // - Lesen: nur search_read, read, search_count, fields_get.
 // - Schreiben: nur die freigegebenen Odoo-Methoden der Werkstatt (Mitarbeiter am Arbeitsgang starten/stoppen, Endzeit eines
-//   Maschinenlaufs nachtragen) und das Kommen/Gehen über den Weg des Odoo-Kiosks. Alles andere wird abgewiesen, bevor eine Anfrage
+//   Maschinenlaufs nachtragen, eigene Aktivität als erledigt melden) und das Kommen/Gehen über den Weg des Odoo-Kiosks. Alles andere wird abgewiesen, bevor eine Anfrage
 //   an Odoo geht. Schreiben ist nur aktiv, wenn BDE_WRITE=1 gesetzt ist.
 // - Anfragen laufen nacheinander mit kleiner Pause, damit das Anfragelimit von Odoo (HTTP 429) nicht greift. Meldet Odoo trotzdem
 //   429, pausiert der Zugang eine Minute; die App zeigt so lange die letzten Daten.
@@ -13,6 +13,7 @@ const READ_METHODS = new Set(["search_read", "read", "search_count", "fields_get
 const WRITE_METHODS = {
   "mrp.workorder": new Set(["start_employee", "stop_employee"]),
   "mrp.workcenter.productivity": new Set(["write"]),
+  "mail.activity": new Set(["action_feedback"]),
 };
 // Beim Nachtragen der Endzeit darf nur Ende und Beschreibung geändert werden
 const PRODUCTIVITY_FIELDS = new Set(["date_end", "description"]);

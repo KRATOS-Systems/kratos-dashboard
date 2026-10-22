@@ -6,7 +6,7 @@
 //   Die Leitung darf auch die Daten der anderen ansehen und bekommt die Hinweise (vergessen, doppelt, Maschine zu lang).
 // - Die PIN wird nie aus Odoo gelesen. Der Server fragt Odoo nur, ob Mitarbeiter und PIN zusammenpassen (search_count).
 // - Bedienen (Version 2) steht in bdeActions.js, der Kiosk für Kommen und Gehen (Version 3) in bdeKiosk.js,
-//   die Prüfung der Maschinenzeit gegen die Zählerstände in bdeMachines.js.
+//   die Prüfung der Maschinenzeit gegen die Zählerstände in bdeMachines.js, Meine Aufgaben (Odoo-Aktivitäten) in bdeTasks.js.
 // Zeiten speichert Odoo in UTC, gerechnet und angezeigt wird in Europe/Berlin.
 
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
@@ -14,6 +14,7 @@ import { createOdooClient } from "./odooClient.js";
 import registerBdeActions from "./bdeActions.js";
 import registerBdeKiosk from "./bdeKiosk.js";
 import registerBdeMachines from "./bdeMachines.js";
+import registerBdeTasks from "./bdeTasks.js";
 
 const TZ = "Europe/Berlin";
 const TEAM_TTL = 25 * 1000;
@@ -563,6 +564,7 @@ export default function registerBde(app, db) {
   registerBdeActions(app, db, ctx);
   registerBdeKiosk(app, ctx);
   registerBdeMachines(app, db, ctx);
+  registerBdeTasks(app, ctx);
 
   // Für Erinnerungen über Talos (n8n): offene Hinweise mit Odoo-Benutzer, nur mit eigenem Schlüssel
   app.get("/api/bde/reminders", async (req, res) => {

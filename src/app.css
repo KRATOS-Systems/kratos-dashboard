@@ -968,6 +968,26 @@ a.btn { text-decoration: none; }
 .greet.out .greet-line::after, .greet.bye .greet-line::after { background: var(--brand); }
 @keyframes greetline { from { transform: scaleX(0); } to { transform: scaleX(1); } }
 .kname.gt { font: 600 40px/1.1 var(--f-display); }
+
+/* Meine Aufgaben: Frist über Farbe (rot überfällig, gelb heute) */
+.task { display: flex; align-items: center; gap: 14px; padding: 12px 16px 12px 20px; position: relative; overflow: hidden; min-height: 60px; flex-wrap: wrap; }
+.task::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 5px; background: var(--line-strong); }
+.task.due-over::before { background: var(--bad); }
+.task.due-today::before { background: var(--warn); }
+.task.due-over .task-due { color: var(--bad); font-weight: 600; }
+.task.due-today .task-due { color: var(--warn); font-weight: 600; }
+.task-main { flex: 1; min-width: 220px; display: flex; flex-direction: column; gap: 3px; }
+.task-top { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
+.task-type { font: 600 12px/1 var(--f-display); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); flex: none; }
+.task-sum { font-size: 15px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.task-meta { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 13px; color: var(--muted); }
+.task-meta b { color: var(--ink); font-weight: 500; }
+.task-note { font-size: 12.5px; color: var(--faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.task-act { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.task-act .btn.sm { min-height: 40px; padding: 6px 12px; }
+.btn.ok { background: var(--ok); color: #fff; border-color: var(--ok); }
+.task-more { margin-top: 6px; }
+.cntb.quiet { background: var(--sunken); color: var(--muted); border: 1px solid var(--line); }
 @media (prefers-reduced-motion: reduce) {
   .gt-w, .greet-sub, .greet-mark { animation: none; opacity: 1; transform: none; filter: none; }
   .greet { animation: none; }
