@@ -1005,11 +1005,12 @@ a.btn { text-decoration: none; }
 .greet-avt { box-shadow: 0 0 0 4px var(--bg), 0 0 0 6px var(--line-strong); }
 .who { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--muted); white-space: nowrap; }
 .who b { color: var(--ink); font-weight: 600; }
-.lane .lab .who { margin-top: 3px; font-size: 12px; }
-.bar-who { position: absolute; right: 4px; bottom: 4px; display: inline-flex; }
-.bar-who .avt { border: 2px solid var(--surface); box-shadow: 0 1px 2px rgba(0,0,0,.25); }
-.bar-who .avt + .avt { margin-left: -7px; }
-.bar.sel .bar-who, .bar:hover .bar-who { z-index: 2; }
+/* Wer an einer Position arbeitet: Fotos links im Balken, der Text rückt nach rechts (nichts wird verdeckt) */
+.bar-who { position: absolute; left: 9px; top: 50%; transform: translateY(-50%); display: inline-flex; pointer-events: none; }
+.bar-who .avt { border: 1.5px solid var(--surface); }
+.bar-who .avt + .avt { margin-left: -8px; }
+.bar:has(.bar-who) { padding-left: 38px; }
+.bar:has(.bar-who .avt + .avt) { padding-left: 52px; }
 .staffgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 8px 16px; }
 .staffrow { display: grid; grid-template-columns: auto 120px minmax(0, 1fr); align-items: center; gap: 10px; font-size: 13px; }
 .staffrow .sl { color: var(--muted); font-weight: 500; }

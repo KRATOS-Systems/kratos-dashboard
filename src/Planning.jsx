@@ -2221,6 +2221,18 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
                 const w = ((Math.min(part.pastEnd, ce) - cs) / (ce - cs)) * 100;
                 return w > 0 ? <div className="pastrun" title="schon gelaufen (ab dem eingetragenen Start)" style={{ width: `${Math.min(100, w)}%` }} /> : null;
               })()}
+            {(() => {
+              // Wer an dieser Position arbeitet (Programmierung, Rüsten, Fräsen): kleine Fotos links, der Text rückt nach rechts
+              const o0 = orders.find((x) => x.id === part.ids[0]);
+              const names = o0 ? [...new Set(["programmierung", "ruesten", "fraesen"].map((a) => whoOf(o0, a)).filter(Boolean))] : [];
+              return names.length ? (
+                <span className="bar-who" title={names.join(", ")}>
+                  {names.slice(0, 2).map((n) => (
+                    <Avatar key={n} name={n} size={22} />
+                  ))}
+                </span>
+              ) : null;
+            })()}
             <b>
               {cutL ? "◀ " : ""}
               {part.label}
@@ -2235,18 +2247,6 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
                 <i style={{ width: `${part.percent}%` }} />
               </div>
             )}
-            {(() => {
-              // Wer an dieser Position arbeitet (Programmierung, Rüsten, Fräsen), klein im Balken
-              const o0 = orders.find((x) => x.id === part.ids[0]);
-              const names = o0 ? [...new Set(["programmierung", "ruesten", "fraesen"].map((a) => whoOf(o0, a)).filter(Boolean))] : [];
-              return names.length ? (
-                <span className="bar-who" title={names.join(", ")}>
-                  {names.slice(0, 2).map((n) => (
-                    <Avatar key={n} name={n} size={20} />
-                  ))}
-                </span>
-              ) : null;
-            })()}
           </div>
         );
       });
@@ -2271,12 +2271,7 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
           <div className="lt">
             <b>{p.m.name}</b>
             <small>{p.rate ? `${fmtH(p.rate)} h/Woche` : "keine Wochenleistung"}</small>
-            {staff.defaults[`machine:${p.m.id}`] && (
-              <span className="who" title="Stammbediener">
-                <Avatar name={staff.defaults[`machine:${p.m.id}`]} size={18} />
-                <b>{staff.defaults[`machine:${p.m.id}`]}</b>
-              </span>
-            )}
+
           </div>
           <button type="button" className="btn icon quiet addb" title="Auftrag von Hand hinzufügen" aria-label={`Auftrag zu ${p.m.short} hinzufügen`} onClick={() => addOrder(p.m.id)}>
             <Ico n="plus" s={15} />
@@ -2344,12 +2339,7 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
         <div className="lt">
           <b>{lane.name}</b>
           <small>{lane.cap}</small>
-          {lane.id === "qs" && staff.defaults["role:qs"] && (
-            <span className="who" title="Zuständig für die QS">
-              <Avatar name={staff.defaults["role:qs"]} size={18} />
-              <b>{staff.defaults["role:qs"]}</b>
-            </span>
-          )}
+
         </div>
         {lane.id !== "qs" && (
           <button type="button" className="btn icon quiet addb" title="Auftrag von Hand hinzufügen" aria-label={`Auftrag zu ${lane.name} hinzufügen`} onClick={() => addLaneOrder(lane)}>
@@ -2398,21 +2388,21 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
               onMouseMove={(e) => onBarMove(e, tipHtml)}
               onMouseLeave={hideTip}
             >
-              <b>{b.label}</b>
-              <span>
-                {b.ids.length > 1 ? `${b.ids.length} Pos. · ` : ""}
-                {tags.length ? tags.join(", ") : fmtDuration(b.duration)}
-              </span>
               {lane.id === "qs" &&
                 (() => {
                   const o0 = orders.find((x) => x.id === b.ids[0]);
                   const n = o0 && whoOf(o0, "qs");
                   return n ? (
                     <span className="bar-who" title={`QS: ${n}`}>
-                      <Avatar name={n} size={20} />
+                      <Avatar name={n} size={22} />
                     </span>
                   ) : null;
                 })()}
+              <b>{b.label}</b>
+              <span>
+                {b.ids.length > 1 ? `${b.ids.length} Pos. · ` : ""}
+                {tags.length ? tags.join(", ") : fmtDuration(b.duration)}
+              </span>
             </div>
           );
         })}
