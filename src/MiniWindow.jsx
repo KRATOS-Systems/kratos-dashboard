@@ -1,0 +1,201 @@
+import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { MachineGlyph, Clock } from "./Team.jsx";
+import { useNow, act, isPhoneView } from "./bdeLib.js";
+import Avatar from "./Avatar.jsx";
+
+// Kleines schwebendes Fenster (Document Picture-in-Picture, Chrome/Edge am PC): laufende Tätigkeit mit Uhr, darunter
+// Unterbrechen/Weiter, Stopp, Wechseln (nur wenn Bedienen freigeschaltet ist). Es hängt an der App, nicht an einer Seite,
+// und bleibt deshalb offen, solange der Tab offen ist, auch beim Wechsel in Planung oder Dashboard.
+// Es öffnet sich automatisch nach der Anmeldung in "Mein Arbeitsplatz" und beim Stempeln (der Browser erlaubt das nur direkt
+// nach einem Klick). Abschaltbar unter "Mehr"; die Wahl merkt sich der PC.
+
+const PREF_KEY = "kratos-bde-mini";
+const REFRESH_MS = 30 * 1000;
+export const BDE_CHANGED = "bde-changed"; // Ereignis: es wurde gebucht, Anzeigen neu laden
+export const BDE_OPEN_PICKER = "bde-open-picker"; // Ereignis: Auswahl "Wechseln" in Mein Arbeitsplatz öffnen
+
+const readPref = () => {
+  try {
+    return window.localStorage.getItem(PREF_KEY) !== "off";
+  } catch {
+    return true;
+  }
+};
+export const notifyChanged = () => window.dispatchEvent(new Event(BDE_CHANGED));
+
+const MiniCtx = createContext(null);
+export const useMini = () => useContext(MiniCtx);
+
+export function MiniProvider({ goTo, children }) {
+  const supported = typeof window !== "undefined" && "documentPictureInPicture" in window && !window.matchMedia("(pointer: coarse)").matches && !isPhoneView();
+  const [win, setWin] = useState(null);
+  const [auto, setAutoState] = useState(readPref);
+  const opening = useRef(false);
+
+  const open = useCallback(async () => {
+    if (!supported || opening.current) return false;
+    if (window.documentPictureInPicture.window) return true;
+    opening.current = true;
+    try {
+      const w = await window.documentPictureInPicture.requestWindow({ width: 340, height: 220 });
+      [...document.styleSheets].forEach((sheet) => {
+        try {
+          const style = w.document.createElement("style");
+          style.textContent = [...sheet.cssRules].map((r) => r.cssText).join("\n");
+          w.document.head.appendChild(style);
+        } catch {
+          if (sheet.href) {
+            const link = w.document.createElement("link");
+            link.rel = "stylesheet";
+            link.href = sheet.href;
+            w.document.head.appendChild(link);
+          }
+        }
+      });
+      w.document.documentElement.setAttribute("data-theme", document.documentElement.getAttribute("data-theme") || "dark");
+      w.document.title = "Kratos";
+      w.addEventListener("pagehide", () => setWin(null));
+      setWin(w);
+      return true;
+    } catch {
+      return false;
+    } finally {
+      opening.current = false;
+    }
+  }, [supported]);
+
+  // Automatisch öffnen (nur aufrufen direkt nach einem Klick des Mitarbeiters)
+  const openAuto = useCallback(() => {
+    if (auto) open();
+  }, [auto, open]);
+  const close = useCallback(() => {
+    if (window.documentPictureInPicture && window.documentPictureInPicture.window) window.documentPictureInPicture.window.close();
+    setWin(null);
+  }, []);
+  const setAuto = useCallback((on) => {
+    try {
+      window.localStorage.setItem(PREF_KEY, on ? "on" : "off");
+    } catch {
+      /* ohne Speicher gilt die Wahl nur bis zum Neuladen */
+    }
+    setAutoState(on);
+  }, []);
+
+  // Farbschema mitnehmen, wenn es in der App umgeschaltet wird
+  useEffect(() => {
+    if (!win) return undefined;
+    const obs = new MutationObserver(() => win.document.documentElement.setAttribute("data-theme", document.documentElement.getAttribute("data-theme") || "dark"));
+    obs.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+    return () => obs.disconnect();
+  }, [win]);
+
+  return (
+    <MiniCtx.Provider value={{ supported, isOpen: !!win, open, openAuto, close, auto, setAuto }}>
+      {children}
+      {win && createPortal(<MiniContent goTo={goTo} onGone={close} />, win.document.body)}
+    </MiniCtx.Provider>
+  );
+}
+
+// Inhalt des kleinen Fensters: liest selbst (Anmeldung + Team-Tafel), damit es auf jeder Seite der App aktuell bleibt
+function MiniContent({ goTo, onGone }) {
+  const [session, setSession] = useState(null);
+  const [card, setCard] = useState(null);
+  const [msg, setMsg] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const now = useNow();
+
+  const load = useCallback(async () => {
+    try {
+      const s = await fetch("/api/bde/session").then((r) => r.json());
+      setSession(s);
+      if (!s.id) return setCard(null);
+      const t = await fetch("/api/bde/team").then((r) => r.json());
+      setCard((t.cards || []).find((c) => c.id === s.id) || { id: s.id, persons: [], machine: [], name: "" });
+    } catch {
+      /* nächster Versuch beim nächsten Takt */
+    }
+  }, []);
+  useEffect(() => {
+    load();
+    const t = setInterval(load, REFRESH_MS);
+    window.addEventListener(BDE_CHANGED, load);
+    return () => {
+      clearInterval(t);
+      window.removeEventListener(BDE_CHANGED, load);
+    };
+  }, [load]);
+
+  // Nach dem Abmelden schließt sich das Fenster
+  useEffect(() => {
+    if (session && !session.id) onGone();
+  }, [session, onGone]);
+
+  async function run(body) {
+    setBusy(true);
+    setMsg(null);
+    try {
+      await act(body);
+      notifyChanged();
+    } catch (err) {
+      setMsg(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  const switchTo = () => {
+    window.focus();
+    if (goTo) goTo("platz");
+    setTimeout(() => window.dispatchEvent(new Event(BDE_OPEN_PICKER)), 300);
+  };
+
+  if (!session || !card) return <div className="bmini">…</div>;
+  const b = card.persons && card.persons[0];
+  const canAct = session.write;
+  return (
+    <div className="bmini">
+      <div className="bmini-top">
+        <Avatar id={session.id} name={card.name} size={22} />
+        {b ? (
+          <>
+            <span className="bact">{b.label}</span>
+            <b className="mono">{b.fa}</b>
+          </>
+        ) : (
+          <span className="bmini-none">Nichts gebucht</span>
+        )}
+      </div>
+      {b && <Clock start={b.start} now={now} />}
+      {card.machine && card.machine.length > 0 && (
+        <div className="bmini-m">
+          <MachineGlyph s={14} /> {card.machine.map((m) => `${m.label} ${m.fa}`).join(", ")}
+        </div>
+      )}
+      {msg && <div className="bmini-msg">{msg}</div>}
+      {canAct ? (
+        <div className="bctl">
+          <button type="button" className="bbtn primary" disabled={busy} onClick={switchTo}>
+            Wechseln
+          </button>
+          {b ? (
+            <button type="button" className="bbtn" disabled={busy} onClick={() => run({ action: "pause" })}>
+              Unterbrechen
+            </button>
+          ) : (
+            <button type="button" className="bbtn" disabled={busy} onClick={() => run({ action: "resume" })}>
+              Weiter
+            </button>
+          )}
+          <button type="button" className="bbtn" disabled={busy || !b} onClick={() => b && run({ action: "stop", workorderId: b.workorderId })}>
+            Stopp
+          </button>
+        </div>
+      ) : (
+        <button type="button" className="bbtn bmini-open" onClick={switchTo}>
+          Mein Arbeitsplatz
+        </button>
+      )}
+    </div>
+  );
+}

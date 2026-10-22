@@ -1,11 +1,11 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import { Ico, useToast } from "./ui.jsx";
 import { Clock, MachineRuns, OdooLink, Complaints, MachineGlyph, MachineStop } from "./Team.jsx";
 import Maschinenzeit from "./Maschinenzeit.jsx";
 import Greeting, { berlinHour } from "./Greeting.jsx";
 import Aufgaben from "./Aufgaben.jsx";
 import Teile from "./Teile.jsx";
+import { useMini, notifyChanged, BDE_CHANGED, BDE_OPEN_PICKER } from "./MiniWindow.jsx";
 import { todayStr } from "./lib.js";
 import { useNow, clock, since, fmtTime, hm, splitProduct, act, isPhoneView } from "./bdeLib.js";
 import Avatar from "./Avatar.jsx";
@@ -40,7 +40,7 @@ function ArbeitsplatzInner({ onGreet, goTo }) {
   const [error, setError] = useState(null);
   const [viewId, setViewId] = useState(null);
   const [picker, setPicker] = useState(false); // false oder { tab, q }
-  const [pip, setPip] = useState(null);
+  const mini = useMini();
   const [busy, setBusy] = useState(false);
   const toast = useToast();
   const now = useNow();
@@ -74,13 +74,14 @@ function ArbeitsplatzInner({ onGreet, goTo }) {
   // beim automatischen Abmelden am Tablet nicht
   const logout = useCallback((name, present, id) => {
     if (typeof name === "string" && name) onGreet({ name, id, kind: !present || berlinHour() >= 12 ? "out" : "bye" });
+    if (mini) mini.close();
     fetch("/api/bde/logout", { method: "POST" }).finally(() => {
       setViewId(null);
       setData(null);
       setPicker(false);
       setState("login");
     });
-  }, [onGreet]);
+  }, [onGreet, mini]);
 
   // Am Tablet (geteiltes Gerät) nach 2 Minuten ohne Berührung abmelden
   useEffect(() => {
@@ -114,48 +115,35 @@ function ArbeitsplatzInner({ onGreet, goTo }) {
 
   const run = useCallback(
     async (body, msg) => {
+      if (mini) mini.openAuto(); // direkt im Klick, sonst lässt der Browser das Fenster nicht zu
       setBusy(true);
       try {
         await act(body);
         if (msg) toast(msg);
         setPicker(false);
         load();
+        notifyChanged();
       } catch (err) {
         toast(err.message);
       } finally {
         setBusy(false);
       }
     },
-    [load, toast]
+    [load, toast, mini]
   );
 
-  async function openPip() {
-    if (!window.documentPictureInPicture) return toast("Das kleine Fenster gibt es nur in Chrome und Edge am PC");
-    try {
-      const w = await window.documentPictureInPicture.requestWindow({ width: 340, height: 200 });
-      [...document.styleSheets].forEach((sheet) => {
-        try {
-          const style = w.document.createElement("style");
-          style.textContent = [...sheet.cssRules].map((r) => r.cssText).join("\n");
-          w.document.head.appendChild(style);
-        } catch {
-          if (sheet.href) {
-            const link = w.document.createElement("link");
-            link.rel = "stylesheet";
-            link.href = sheet.href;
-            w.document.head.appendChild(link);
-          }
-        }
-      });
-      w.document.documentElement.setAttribute("data-theme", document.documentElement.getAttribute("data-theme") || "dark");
-      w.document.title = "Kratos";
-      w.addEventListener("pagehide", () => setPip(null));
-      setPip(w);
-    } catch {
-      toast("Das kleine Fenster konnte nicht geöffnet werden");
-    }
-  }
-  useEffect(() => () => pip && pip.close(), [pip]);
+  // Buchungen aus dem kleinen Fenster neu laden; "Wechseln" im kleinen Fenster öffnet hier die Auswahl
+  useEffect(() => {
+    const onChanged = () => load();
+    const onPicker = () => setPicker(true);
+    window.addEventListener(BDE_CHANGED, onChanged);
+    window.addEventListener(BDE_OPEN_PICKER, onPicker);
+    return () => {
+      window.removeEventListener(BDE_CHANGED, onChanged);
+      window.removeEventListener(BDE_OPEN_PICKER, onPicker);
+    };
+  }, [load]);
+
 
   if (state === "loading")
     return (
@@ -168,6 +156,7 @@ function ArbeitsplatzInner({ onGreet, goTo }) {
       <Login
         onDone={(who) => {
           onGreet({ name: who.name, id: who.id, kind: "in" });
+          if (mini) mini.openAuto();
           load();
         }}
       />
@@ -213,14 +202,18 @@ function ArbeitsplatzInner({ onGreet, goTo }) {
               ))}
             </select>
           )}
-          {operate && (
+          {own && mini && mini.supported && (
             <details className="more">
               <summary className="btn">Mehr</summary>
               <div className="more-menu card">
-                <button type="button" className="btn quiet" onClick={openPip}>
+                <button type="button" className="btn quiet" onClick={() => (mini.isOpen ? mini.close() : mini.open())}>
                   <Ico n="pip" s={16} />
-                  Kleines Fenster
+                  {mini.isOpen ? "Kleines Fenster schließen" : "Kleines Fenster öffnen"}
                 </button>
+                <label className="chk more-chk">
+                  <input type="checkbox" checked={mini.auto} onChange={(ev) => mini.setAuto(ev.target.checked)} />
+                  Automatisch öffnen
+                </label>
               </div>
             </details>
           )}
@@ -312,24 +305,6 @@ function ArbeitsplatzInner({ onGreet, goTo }) {
       <p className="bfoot">Stand {data.at ? fmtTime(data.at) : "–"} · Zeiten aus Odoo, Woche ab Montag</p>
 
       {picker && <Picker data={data} now={now} busy={busy} initial={picker === true ? null : picker} onClose={() => setPicker(false)} onPick={(r) => run({ action: "start", workorderId: r.workorderId }, `${r.label} ${r.fa} gestartet`)} />}
-      {pip &&
-        createPortal(
-          <MiniView
-            b={b}
-            machine={data.card ? data.card.machine : []}
-            resume={data.resume}
-            now={now}
-            busy={busy}
-            onPause={() => run({ action: "pause" }, null)}
-            onResume={() => run({ action: "resume" }, null)}
-            onStop={() => b && run({ action: "stop", workorderId: b.workorderId }, null)}
-            onSwitch={() => {
-              window.focus();
-              setPicker(true);
-            }}
-          />,
-          pip.document.body
-        )}
     </div>
   );
 }
@@ -466,31 +441,6 @@ function Picker({ data, now, busy, initial, onClose, onPick }) {
           {list && list.map((r) => <PickRow key={`${r.workorderId}-${r.who || ""}`} r={r} now={now} odooUrl={data.odooUrl} busy={busy} onPick={() => onPick(r)} />)}
         </div>
       </div>
-    </div>
-  );
-}
-
-// Kleines schwebendes Fenster (Document Picture-in-Picture): nur Tätigkeit, Uhr und die drei Knöpfe
-function MiniView({ b, machine, resume, now, busy, onPause, onResume, onStop, onSwitch }) {
-  return (
-    <div className="bmini">
-      {b ? (
-        <>
-          <div className="bmini-top">
-            <span className="bact">{b.label}</span>
-            <b className="mono">{b.fa}</b>
-          </div>
-          <Clock start={b.start} now={now} />
-        </>
-      ) : (
-        <div className="bmini-none">Nichts gebucht</div>
-      )}
-      {machine && machine.length > 0 && (
-        <div className="bmini-m">
-          <MachineGlyph s={14} /> {machine.map((m) => m.fa).join(", ")}
-        </div>
-      )}
-      <Controls b={b} resume={resume} busy={busy} onSwitch={onSwitch} onPause={onPause} onResume={onResume} onStop={onStop} />
     </div>
   );
 }
