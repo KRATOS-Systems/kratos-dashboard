@@ -117,8 +117,14 @@ export function SvgDefs() {
   );
 }
 
-// Maschinen-Piktogramm
-export function MTile({ c, size }) {
+// Maschinen-Piktogramm; mit Bild ein freigestelltes Foto der Maschine in der Kachel (Hintergrund in der Maschinenfarbe)
+export function MTile({ c, size, img, imgZoom, title }) {
+  if (img)
+    return (
+      <span className="mtile mpic" style={{ "--mc": c, ...(size ? { "--ps": `${size}px` } : {}) }} title={title}>
+        <img src={img} alt="" loading="lazy" style={imgZoom ? { width: `calc((100% - 8px) * ${imgZoom})`, height: `calc((100% - 8px) * ${imgZoom})` } : undefined} />
+      </span>
+    );
   return (
     <span className="mtile" style={{ "--mc": c, ...(size ? { width: size, height: size } : {}) }}>
       <svg width="24" height="24" viewBox="0 0 32 32" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">

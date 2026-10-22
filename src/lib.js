@@ -1,7 +1,7 @@
 export const MACHINES = [
-  { id: "dmu40", name: "DMG DMU 40 eVo", short: "DMU 40", colorKey: "blue", c: "var(--dmu)" },
-  { id: "m1", name: "DMG M1", short: "M1", colorKey: "yellow", c: "var(--org)" },
-  { id: "h800u", name: "POS Mill H800U", short: "H800U", colorKey: "red", c: "var(--mag)" },
+  { id: "dmu40", name: "DMG DMU 40 eVo", short: "DMU 40", colorKey: "blue", c: "var(--dmu)", img: "/machines/dmu40.webp" },
+  { id: "m1", name: "DMG M1", short: "M1", colorKey: "yellow", c: "var(--org)", img: "/machines/m1.webp" },
+  { id: "h800u", name: "POS Mill H800U", short: "H800U", colorKey: "red", c: "var(--mag)", img: "/machines/h800u.webp", imgZoom: 0.93 },
 ];
 
 export const DAY = 86400000;

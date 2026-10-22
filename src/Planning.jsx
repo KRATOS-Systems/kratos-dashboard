@@ -2267,7 +2267,7 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
     return (
       <div className="lane" key={p.m.id}>
         <div className="lab">
-          <MTile c={p.m.c} />
+          <MTile c={p.m.c} img={p.m.img} imgZoom={p.m.imgZoom} title={p.m.name} />
           <div className="lt">
             <b>{p.m.name}</b>
             <small>{p.rate ? `${fmtH(p.rate)} h/Woche` : "keine Wochenleistung"}</small>
@@ -3083,7 +3083,7 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
             const own = rates[m.id] > 0;
             return (
               <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 0", borderTop: "1px solid var(--line)", flexWrap: "wrap" }}>
-                <MTile c={m.c} size={30} />
+                <MTile c={m.c} img={m.img} imgZoom={m.imgZoom} size={40} />
                 <b style={{ font: "600 15px var(--f-display)", minWidth: 120 }}>{m.name}</b>
                 <input type="number" min={0} step="any" placeholder={fmtH(defaults.now)} value={rates[m.id] ?? ""} onChange={(ev) => setRate(m.id, ev.target.value)} style={{ width: 90 }} aria-label={`Wochenleistung ${m.short}`} />
                 <span style={{ color: "var(--muted)", fontSize: 12.5 }}>h pro Woche · {own ? `eigener Wert (leer = ${shift.label} ${fmtH(shift.hours)} h × ${utilization} %)` : `${shift.label} ${fmtH(shift.hours)} h × ${utilization} %`}</span>

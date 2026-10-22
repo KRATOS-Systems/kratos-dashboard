@@ -13,7 +13,7 @@ export const MARKER_TOP = 76;
 export const MARKER_LANE = 22;
 export const TRACK_PX = 720; // geschätzte Breite der Zeitleiste, um Texte zu stapeln
 // Vorschläge für die externe Weiterverarbeitung; eigene Stichpunkte sind möglich
-export const EXTERN_SUGGESTIONS = ["Eloxieren", "Pulverbeschichten", "Härten"];
+export const EXTERN_SUGGESTIONS = ["Eloxieren", "Pulverbeschichten"];
 export const MAX_WEEKS_WITH_DAYS = 8; // ab mehr Wochen sind die Tage zu schmal für eine Beschriftung
 
 export const byPosition = (a, b) => a.position - b.position || a.id - b.id;
@@ -204,7 +204,7 @@ export const EXTERN = "extern";
 export const LANES = [
   { id: "qs", name: "QS", colorKey: "green", c: "var(--qs)", cap: "Prüfung", defaultDays: 2, tags: false },
   { id: "extern_fert", name: "FERTIGUNG EXTERN", c: "var(--ext)", cap: "Fremdfertigung", defaultDays: 7, tags: false },
-  { id: EXTERN, name: "OBERFLÄCHE EXTERN", c: "var(--ext)", cap: "Eloxieren, Pulvern, Härten", defaultDays: 7, tags: true },
+  { id: EXTERN, name: "OBERFLÄCHE EXTERN", c: "var(--ext)", cap: "Eloxieren, Pulvern", defaultDays: 7, tags: true },
 ];
 export const LANE_IDS = LANES.map((l) => l.id);
 export const laneOf = (id) => LANES.find((l) => l.id === id);

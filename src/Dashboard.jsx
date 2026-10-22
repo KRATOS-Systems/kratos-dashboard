@@ -631,7 +631,7 @@ export default function Dashboard({ weekCap, saveCapacity, today, openTalos }) {
               return (
                 <div className="card mcard2" key={m.id}>
                   <header>
-                    <MTile c={m.c} />
+                    <MTile c={m.c} img={m.img} imgZoom={m.imgZoom} />
                     {m.name}
                     {stp && <span className={`pill ${stp[0]}`}>{stp[1]}</span>}
                   </header>
@@ -833,7 +833,7 @@ export default function Dashboard({ weekCap, saveCapacity, today, openTalos }) {
               return (
                 <div className="card" key={m.id} style={{ padding: 14, boxShadow: "none", marginBottom: 10 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10, font: "600 16px var(--f-display)" }}>
-                    <MTile c={m.c} size={30} />
+                    <MTile c={m.c} img={m.img} imgZoom={m.imgZoom} size={40} />
                     {m.name}
                   </div>
                   <div className="fgrid">

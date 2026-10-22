@@ -1075,6 +1075,19 @@ a.btn { text-decoration: none; }
 .bmini-hint { font-size: 12px; color: var(--muted); }
 @media (prefers-reduced-motion: reduce) { .bhero-none::before, .bmini.st-idle .bmini-none::before { animation: none; } }
 
+/* Maschinenfoto: in der Kachel wie QS & Co., aber größer; Hintergrund schimmert leicht in der Maschinenfarbe */
+.mtile.mpic { --s: var(--ps, 56px); width: var(--s); height: var(--s); padding: 3px; border-radius: calc(var(--s) * .24); overflow: hidden;
+  background: radial-gradient(circle at 50% 30%, color-mix(in srgb, var(--mc) 34%, transparent), color-mix(in srgb, var(--mc) 10%, transparent) 75%);
+  border: 1px solid color-mix(in srgb, var(--mc) 45%, var(--line)); box-shadow: inset 0 0 0 1px color-mix(in srgb, #fff 6%, transparent); }
+.mtile.mpic { display: block; position: relative; }
+.mtile.mpic img { position: absolute; inset: 0; margin: auto; width: calc(100% - 8px); height: calc(100% - 8px); object-fit: contain; object-position: center; display: block; filter: drop-shadow(0 2px 2px rgba(0,0,0,.35)); }
+.lane .lab .mtile.mpic { --ps: 60px; width: var(--s); height: var(--s); border-radius: 14px; }
+.lane .lab .lt small { white-space: nowrap; }
+/* QS, Fertigung extern, Oberfläche extern: gleiche Kachelgröße wie die Maschinen */
+.lane.minor .lab .mtile { width: 60px; height: 60px; border-radius: 14px; }
+.lane.minor .lab .mtile svg { width: 32px; height: 32px; }
+.mcard2 header .mtile.mpic { --ps: 76px; width: var(--s); height: var(--s); border-radius: 18px; }
+
 /* Aufgabe vergeben */
 .task-new { margin-left: auto; font: 500 13px var(--f-body); }
 .task-sent { margin-top: 10px; }
