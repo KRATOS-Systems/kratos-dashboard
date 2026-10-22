@@ -344,7 +344,7 @@ function AssignDialog({ people, today, onClose, onDone }) {
     ["Morgen", addDays(today, 1)],
     ["Freitag", addDays(today, (5 - dow + 7) % 7)],
     ["In 1 Woche", addDays(today, 7)],
-  ];
+  ].filter(([, d], i, all) => all.findIndex(([, x]) => x === d) === i); // gleicher Tag nur einmal (Donnerstag: Morgen = Freitag)
   useEffect(() => {
     const onKey = (e) => e.key === "Escape" && onClose();
     window.addEventListener("keydown", onKey);
@@ -390,7 +390,14 @@ function AssignDialog({ people, today, onClose, onDone }) {
               </button>
             ))}
             <input type="date" min={today} value={deadline} onChange={(e) => setDeadline(e.target.value)} />
-            <input type="time" value={time} onChange={(e) => setTime(e.target.value)} aria-label="Uhrzeit (freiwillig)" title="Uhrzeit (freiwillig)" />
+            <span className="assign-time">
+              <input type="time" value={time} onChange={(e) => setTime(e.target.value)} aria-label="Uhrzeit (freiwillig)" title="Uhrzeit (freiwillig)" />
+              {time && (
+                <button type="button" className="btn quiet icon sm" onClick={() => setTime("")} aria-label="Ohne Uhrzeit" title="Ohne Uhrzeit">
+                  <Ico n="x" s={14} />
+                </button>
+              )}
+            </span>
           </div>
         </div>
         <button type="button" className={`chipf assign-urgent${urgent ? " on" : ""}`} aria-pressed={urgent} onClick={() => setUrgent((v) => !v)}>

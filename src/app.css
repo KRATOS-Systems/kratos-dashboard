@@ -1147,6 +1147,7 @@ a.btn { text-decoration: none; }
 .assign-p.on { border-color: var(--ok); box-shadow: 0 0 0 2px var(--ok); background: var(--ok-soft); }
 .assign-due { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-top: 4px; }
 .assign-due .chipf { min-height: 36px; }
+.assign-time { display: inline-flex; align-items: center; gap: 2px; }
 
 /* Zur Info: Arbeit anderer, nur ansehen */
 .info-h { font-size: 15px !important; color: var(--muted); }
