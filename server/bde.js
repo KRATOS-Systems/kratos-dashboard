@@ -156,6 +156,13 @@ export default function registerBde(app, db, staff) {
     const woIds = [...new Set(prods.map((p) => m2o(p.workorder_id)?.id).filter(Boolean))];
     const wos = woIds.length ? await odoo.read("mrp.workorder", "read", { ids: woIds, fields: ["name", "product_id", "duration_expected", "duration", "state"] }) : [];
     const woMap = new Map(wos.map((w) => [w.id, w]));
+    // Auftrag (A-Nummer aus dem Verkauf) zu den Fertigungsaufträgen
+    const prodIds = [...new Set(prods.map((p) => m2o(p.production_id)?.id).filter(Boolean))];
+    const origins = new Map();
+    if (prodIds.length) {
+      const pr = await odoo.read("mrp.production", "read", { ids: prodIds, fields: ["origin"] });
+      pr.forEach((x) => x.origin && origins.set(x.id, String(x.origin).trim().slice(0, 40)));
+    }
     // Offene Reklamationen zu den Artikeln, an denen gerade gearbeitet wird
     const productIds = [...new Set(wos.map((w) => m2o(w.product_id)?.id).filter(Boolean))];
     let alerts = [];
@@ -197,6 +204,7 @@ export default function registerBde(app, db, staff) {
         label: labelOf(wc?.name),
         workcenter: wc ? wc.name : null,
         fa: prod ? prod.name : null,
+        order: prod ? origins.get(prod.id) || null : null,
         productionId: prod ? prod.id : null,
         product: wo && Array.isArray(wo.product_id) ? String(wo.product_id[1]) : null,
         start: parseOdoo(p.date_start),
@@ -249,6 +257,7 @@ export default function registerBde(app, db, staff) {
     label: b.label,
     kind: b.kind,
     fa: b.fa,
+    order: b.order,
     productionId: b.productionId,
     product: b.product,
     start: b.start,

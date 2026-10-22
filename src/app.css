@@ -1041,6 +1041,39 @@ a.btn { text-decoration: none; }
 .quiet-sec { opacity: .9; }
 .quiet-sec > .btn { padding-left: 0; }
 
+/* Bedienknöpfe als Symbole mit Farbakzent, laufende Zeit grün, keine Zeit fällt gelb auf */
+.actbtns { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 12px; }
+.actbtn { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; min-height: 72px; border-radius: 14px; border: 1px solid var(--line-strong); background: var(--surface); color: var(--ink); font: 600 13px var(--f-body); touch-action: manipulation; --ac: var(--ink); }
+.actbtn svg { color: var(--ac); }
+.actbtn:hover { background: color-mix(in srgb, var(--ac) 10%, var(--surface)); border-color: color-mix(in srgb, var(--ac) 45%, var(--line-strong)); }
+.actbtn:active { transform: translateY(1px); }
+.actbtn:disabled { opacity: .35; cursor: not-allowed; }
+.actbtn.swap { --ac: var(--dmu); }
+.actbtn.play { --ac: var(--ok); background: color-mix(in srgb, var(--ok) 14%, var(--surface)); border-color: color-mix(in srgb, var(--ok) 55%, var(--line-strong)); }
+.actbtn.pause { --ac: var(--warn); }
+.actbtn.stop { --ac: var(--bad); }
+.actbtns.compact { gap: 6px; margin-top: auto; }
+.actbtns.compact .actbtn { min-height: 50px; border-radius: 10px; font-size: 11.5px; gap: 2px; }
+.jobref { display: inline-flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
+.jobref .ord { font-size: .85em; color: var(--muted); border: 1px solid var(--line-strong); border-radius: 6px; padding: 0 5px; }
+.bhero .bclock.big { color: var(--ok); }
+.bhero.st-alarm .bclock.big { color: var(--bad); }
+.bhero.st-idle-warn { --st: var(--warn); border-color: color-mix(in srgb, var(--warn) 45%, var(--line)); }
+.bhero-none { color: var(--warn); display: flex; align-items: center; gap: 14px; }
+.bhero-none::before, .bmini.st-idle .bmini-none::before { content: ""; width: .5em; height: .5em; border-radius: 50%; background: var(--warn); animation: pulse 1.6s ease-in-out infinite; flex: none; }
+@keyframes pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: .35; transform: scale(.8); } }
+.bmini { gap: 4px; }
+.bmini.st-run .bclock { color: var(--ok); }
+.bmini.st-alarm .bclock { color: var(--bad); }
+.bmini.st-idle { background: color-mix(in srgb, var(--warn) 12%, var(--bg)); box-shadow: inset 0 3px 0 var(--warn); }
+.bmini-top { align-items: center; gap: 10px; }
+.bmini-what { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.bmini-what .bact { font-size: 12.5px; }
+.bmini-what .jobref b { font-size: 15px; }
+.bmini.st-idle .bmini-none { display: inline-flex; align-items: center; gap: 8px; color: var(--warn); font: 600 20px var(--f-display); }
+.bmini-hint { font-size: 12px; color: var(--muted); }
+@media (prefers-reduced-motion: reduce) { .bhero-none::before, .bmini.st-idle .bmini-none::before { animation: none; } }
+
 /* Zur Info: Arbeit anderer, nur ansehen */
 .info-h { font-size: 15px !important; color: var(--muted); }
 .info-block { margin-bottom: 6px; }

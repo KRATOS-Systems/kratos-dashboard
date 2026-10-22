@@ -54,8 +54,8 @@ const T = {
     { id: 2902, name: "Motorplatte für RFID", default_code: "212-12-025_R4", product_tmpl_id: 71 },
   ],
   "mrp.production": [
-    { id: 1307, name: "FA01307", product_id: 2901, state: "confirmed" },
-    { id: 1070, name: "FA01070", product_id: 2902, state: "progress" },
+    { id: 1307, name: "FA01307", product_id: 2901, state: "confirmed", origin: "A01365" },
+    { id: 1070, name: "FA01070", product_id: 2902, state: "progress", origin: "A00958" },
   ],
   "mrp.workorder": [
     { id: 6531, name: "Programmierung", production_id: 1307, workcenter_id: 6, product_id: 2901, state: "ready", duration_expected: 900, duration: 0 },

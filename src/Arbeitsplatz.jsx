@@ -5,6 +5,7 @@ import Maschinenzeit from "./Maschinenzeit.jsx";
 import Greeting, { berlinHour } from "./Greeting.jsx";
 import Aufgaben from "./Aufgaben.jsx";
 import Teile from "./Teile.jsx";
+import { ActButtons, JobRef } from "./BdeControls.jsx";
 import { useMini, notifyChanged, BDE_CHANGED, BDE_OPEN_PICKER } from "./MiniWindow.jsx";
 import { todayStr } from "./lib.js";
 import { useNow, clock, since, fmtTime, hm, splitProduct, act, isPhoneView } from "./bdeLib.js";
@@ -225,7 +226,7 @@ function ArbeitsplatzInner({ onGreet, goTo }) {
       {(error || data.notice || data.stale) && <div className="bnote">{error || data.notice || "Odoo ist gerade nicht erreichbar, es werden die letzten Daten gezeigt."}</div>}
       {own && data.write === false && data.me.leitung && <div className="bnote quiet">Bedienen ist noch nicht freigeschaltet. Die Seite zeigt nur an.</div>}
 
-      <section className={`bhero card st-${data.card ? data.card.state : "away"}`}>
+      <section className={`bhero card st-${!b && own ? "idle-warn" : data.card ? data.card.state : "away"}`}>
         {data.card && data.card.double && <div className="bflag">Doppelt gestempelt</div>}
         {b ? (
           <>
@@ -235,7 +236,7 @@ function ArbeitsplatzInner({ onGreet, goTo }) {
             </div>
             <Clock start={b.start} now={now} big />
             <div className="bjob">
-              <b className="mono">{b.fa}</b>
+              <JobRef fa={b.fa} order={b.order} />
               {prod.name && <span>{prod.name}</span>}
               {prod.code && <span className="code mono">{prod.code}</span>}
             </div>
@@ -248,7 +249,7 @@ function ArbeitsplatzInner({ onGreet, goTo }) {
             ))}
           </>
         ) : (
-          <div className="bhero-none">Nichts gebucht</div>
+          <div className="bhero-none">Keine Zeit läuft</div>
         )}
         {controls}
         <MachineRuns list={data.card && data.card.machine} now={now} odooUrl={data.odooUrl} canStop={operate || (data.me.leitung && data.write && !data.phone && !isPhoneView())} employeeId={own ? undefined : data.viewing.id} onChanged={load} />
@@ -311,25 +312,7 @@ function ArbeitsplatzInner({ onGreet, goTo }) {
 
 // Die drei Knöpfe: Wechseln, Unterbrechen (oder Weiter), Stopp
 function Controls({ b, resume, busy, onSwitch, onPause, onResume, onStop }) {
-  return (
-    <div className="bctl">
-      <button type="button" className="bbtn primary" disabled={busy} onClick={onSwitch}>
-        Wechseln
-      </button>
-      {b ? (
-        <button type="button" className="bbtn" disabled={busy} onClick={onPause}>
-          Unterbrechen
-        </button>
-      ) : (
-        <button type="button" className="bbtn" disabled={busy || !resume} onClick={onResume} title={resume ? `${resume.label} ${resume.fa || ""}` : "Nichts zum Fortsetzen"}>
-          Weiter{resume ? ` · ${resume.label}` : ""}
-        </button>
-      )}
-      <button type="button" className="bbtn" disabled={busy || !b} onClick={onStop}>
-        Stopp
-      </button>
-    </div>
-  );
+  return <ActButtons running={!!b} busy={busy} onSwitch={onSwitch} onPause={onPause} onResume={onResume} onStop={onStop} resumeLabel={resume ? `${resume.label} ${resume.fa || ""}` : null} />;
 }
 
 function PickRow({ r, now, odooUrl, onPick, busy }) {

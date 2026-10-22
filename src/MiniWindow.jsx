@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { MachineGlyph, Clock } from "./Team.jsx";
 import { useNow, act, isPhoneView } from "./bdeLib.js";
 import Avatar from "./Avatar.jsx";
+import { ActButtons, JobRef } from "./BdeControls.jsx";
 
 // Kleines schwebendes Fenster (Document Picture-in-Picture, Chrome/Edge am PC): laufende Tätigkeit mit Uhr, darunter
 // Unterbrechen/Weiter, Stopp, Wechseln (nur wenn Bedienen freigeschaltet ist). Es hängt an der App, nicht an einer Seite,
@@ -38,7 +39,7 @@ export function MiniProvider({ goTo, children }) {
     if (window.documentPictureInPicture.window) return true;
     opening.current = true;
     try {
-      const w = await window.documentPictureInPicture.requestWindow({ width: 340, height: 220 });
+      const w = await window.documentPictureInPicture.requestWindow({ width: 340, height: 250 });
       [...document.styleSheets].forEach((sheet) => {
         try {
           const style = w.document.createElement("style");
@@ -153,44 +154,40 @@ function MiniContent({ goTo, onGone }) {
   if (!session || !card) return <div className="bmini">…</div>;
   const b = card.persons && card.persons[0];
   const canAct = session.write;
+  // Zustand über Farbe: grün = Zeit läuft, gelb = keine Zeit läuft (fällt auf), rot = Buchung vergessen
+  const state = b ? (b.forgotten ? "alarm" : "run") : "idle";
   return (
-    <div className="bmini">
+    <div className={`bmini st-${state}`}>
       <div className="bmini-top">
-        <Avatar id={session.id} name={card.name} size={22} />
+        <Avatar id={session.id} name={card.name} size={30} />
         {b ? (
-          <>
+          <div className="bmini-what">
             <span className="bact">{b.label}</span>
-            <b className="mono">{b.fa}</b>
-          </>
+            <JobRef fa={b.fa} order={b.order} />
+          </div>
         ) : (
-          <span className="bmini-none">Nichts gebucht</span>
+          <div className="bmini-what">
+            <span className="bmini-none">Keine Zeit läuft</span>
+          </div>
         )}
       </div>
-      {b && <Clock start={b.start} now={now} />}
+      {b ? <Clock start={b.start} now={now} /> : <div className="bmini-hint">{canAct ? "Mit ▶ weitermachen oder mit ⇄ eine Tätigkeit wählen" : "Bitte eine Tätigkeit starten"}</div>}
       {card.machine && card.machine.length > 0 && (
-        <div className="bmini-m">
-          <MachineGlyph s={14} /> {card.machine.map((m) => `${m.label} ${m.fa}`).join(", ")}
+        <div className="bmini-m" title="Maschinenlauf, läuft parallel">
+          <MachineGlyph s={14} /> Maschine: {card.machine.map((x) => `${x.label} ${x.fa}${x.order ? ` · ${x.order}` : ""}`).join(", ")}
         </div>
       )}
       {msg && <div className="bmini-msg">{msg}</div>}
       {canAct ? (
-        <div className="bctl">
-          <button type="button" className="bbtn primary" disabled={busy} onClick={switchTo}>
-            Wechseln
-          </button>
-          {b ? (
-            <button type="button" className="bbtn" disabled={busy} onClick={() => run({ action: "pause" })}>
-              Unterbrechen
-            </button>
-          ) : (
-            <button type="button" className="bbtn" disabled={busy} onClick={() => run({ action: "resume" })}>
-              Weiter
-            </button>
-          )}
-          <button type="button" className="bbtn" disabled={busy || !b} onClick={() => b && run({ action: "stop", workorderId: b.workorderId })}>
-            Stopp
-          </button>
-        </div>
+        <ActButtons
+          compact
+          running={!!b}
+          busy={busy}
+          onSwitch={switchTo}
+          onPause={() => run({ action: "pause" })}
+          onResume={() => run({ action: "resume" })}
+          onStop={() => b && run({ action: "stop", workorderId: b.workorderId })}
+        />
       ) : (
         <button type="button" className="bbtn bmini-open" onClick={switchTo}>
           Mein Arbeitsplatz

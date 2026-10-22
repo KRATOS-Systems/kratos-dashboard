@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import { Ico, useToast } from "./ui.jsx";
 import { useNow, clock, since, fmtTime, splitProduct, odooLink, act, useBdeSession, canOperate, toLocalInput, fromLocalInput } from "./bdeLib.js";
 import Avatar from "./Avatar.jsx";
+import { JobRef } from "./BdeControls.jsx";
 
 // Team-Tafel: eine Karte pro Mitarbeiter, wer ist da und woran wird gerade gearbeitet.
 // Farbe statt Text: grün = da und Buchung läuft, grau = da, nichts gebucht, orange = doppelt gestempelt, rot = Buchung vergessen,
@@ -124,6 +125,7 @@ export function MachineRuns({ list, now, odooUrl, canStop, employeeId, onChanged
             <MachineGlyph />
             <span className="t">
               {m.label} · <b>{m.fa}</b>
+              {m.order ? ` · ${m.order}` : ""}
             </span>
             <Clock start={m.start} now={now} />
             {canStop && (
@@ -158,7 +160,7 @@ function PersonLine({ b, now, main }) {
       <div className="bact">{b.label}</div>
       <Clock start={b.start} now={now} />
       <div className="bjob">
-        <b className="mono">{b.fa}</b>
+        <JobRef fa={b.fa} order={b.order} />
         {prod.name && <span title={prod.code || undefined}>{prod.name}</span>}
       </div>
       {b.forgotten && <div className="bsince">{since(b.start, now)}</div>}
