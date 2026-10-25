@@ -31,6 +31,7 @@ export function ActButtons({ running, busy, onSwitch, onPause, onResume, onStop,
 
 // Auftrag zur Tätigkeit: FA-Nummer und, falls bekannt, die Auftragsnummer aus dem Verkauf (A-Nummer)
 export function JobRef({ fa, order }) {
+  if (!fa) return <span className="jobref none">Ohne Auftrag</span>;
   return (
     <span className="jobref">
       <b className="mono">{fa}</b>

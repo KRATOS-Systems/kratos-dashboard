@@ -53,6 +53,9 @@ export function splitProduct(p) {
   return m ? { name: m[2] || m[1], code: m[1] } : { name: p, code: null };
 }
 
+// Eine Buchung ist entweder ein Arbeitsgang (workorderId) oder Zeit ohne Auftrag auf eine Gemeinkosten-Aufgabe (taskId)
+export const bookingRef = (b) => (b.overhead ? { taskId: b.taskId } : { workorderId: b.workorderId });
+export const bookingKey = (b) => (b.overhead ? `t${b.taskId}` : `w${b.workorderId}`);
 export const odooLink = (base, productionId) => (base && productionId ? `${base}/odoo/manufacturing/${productionId}` : null);
 
 // Buchen über den Server (Wechseln, Unterbrechen, Weiter, Stopp); wirft mit lesbarer Meldung

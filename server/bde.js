@@ -18,6 +18,7 @@ import registerBdeTasks from "./bdeTasks.js";
 import registerBdePhotos from "./bdePhotos.js";
 import registerBdeMessages from "./bdeMessages.js";
 import registerBdeParts from "./bdeParts.js";
+import { createOverhead } from "./bdeOverhead.js";
 
 const TZ = "Europe/Berlin";
 const TEAM_TTL = 25 * 1000;
@@ -126,6 +127,7 @@ export function isPhone(req) {
 
 export default function registerBde(app, db, staff) {
   const odoo = createOdooClient();
+  const overhead = createOverhead({ odoo, m2o, parseOdoo, berlinDate });
   const SECRET = process.env.BDE_SECRET || randomBytes(32).toString("hex");
   if (!process.env.BDE_SECRET) console.warn("BDE: BDE_SECRET fehlt, Anmeldungen gelten nur bis zum nächsten Neustart");
 
@@ -215,6 +217,36 @@ export default function registerBde(app, db, staff) {
         complaints: complaints.slice(0, 3).map((a) => String(a.title || a.name || "Reklamation").slice(0, 120)),
       };
     });
+    // Zeiten ohne Auftrag (Gemeinkosten) zählen wie eine Personentätigkeit
+    let ohRuns = [];
+    try {
+      ohRuns = await overhead.running();
+    } catch (err) {
+      if (err.busy) throw err;
+      console.error("BDE: Gemeinkosten nicht lesbar", err.message);
+    }
+    ohRuns.forEach((l) =>
+      bookings.push({
+        id: `gk${l.lineId}`,
+        employeeId: l.employeeId,
+        who: employees.get(l.employeeId)?.name || "Unbekannt",
+        workorderId: null,
+        taskId: l.taskId,
+        overhead: true,
+        kind: "person",
+        label: l.label,
+        workcenter: null,
+        fa: null,
+        order: null,
+        productionId: null,
+        product: null,
+        start: l.start,
+        expectedMin: 0,
+        doneMin: 0,
+        note: null,
+        complaints: [],
+      })
+    );
     const present = new Map(atts.map((a) => [m2o(a.employee_id)?.id, parseOdoo(a.check_in)]));
     return { bookings, present };
   }
@@ -255,6 +287,8 @@ export default function registerBde(app, db, staff) {
   }
   const publicBooking = (b, now) => ({
     workorderId: b.workorderId,
+    taskId: b.taskId ?? null,
+    overhead: !!b.overhead,
     label: b.label,
     kind: b.kind,
     fa: b.fa,
@@ -443,6 +477,7 @@ export default function registerBde(app, db, staff) {
       fields: ["number_of_days", "leaves_taken"],
       limit: 50,
     });
+    const oh = await overhead.personal(id, ws, now);
     const [me] = await odoo.read("hr.employee", "read", { ids: [id], fields: ["hours_today", "total_overtime", "resource_calendar_id"] });
     const cal = me && m2o(me.resource_calendar_id);
     if (cal && !calendarHours.has(cal.id)) {
@@ -470,7 +505,7 @@ export default function registerBde(app, db, staff) {
       if (!wo) continue;
       const wc = m2o(r.workcenter_id);
       const kind = kindOf(wc?.name);
-      if (!lastPerson && kind === "person") lastPerson = { workorderId: wo.id, closed: !!r.date_end };
+      if (!lastPerson && kind === "person") lastPerson = { workorderId: wo.id, closed: !!r.date_end, start: parseOdoo(r.date_start) };
       if (seen.has(wo.id) || recent.length === 3) continue;
       seen.add(wo.id);
       const prod = m2o(r.production_id);
@@ -493,16 +528,23 @@ export default function registerBde(app, db, staff) {
       }
     }
 
+    // Zeiten ohne Auftrag: unter "Zuletzt" einsortieren; "Weiter" setzt sie fort, wenn sie zuletzt liefen
+    const recentAll = [...recent, ...oh.recent].sort((a, b) => (b.last || 0) - (a.last || 0)).slice(0, 4);
+    if (oh.last && (!lastPerson || (oh.last.start || 0) > (lastPerson.start || 0))) {
+      resume = oh.last.closed && oh.last.taskId ? { taskId: oh.last.taskId, label: oh.last.label, fa: null, overhead: true } : null;
+    }
+
     const vacation = alloc.length ? Math.round(alloc.reduce((s, a) => s + (Number(a.number_of_days) || 0) - (Number(a.leaves_taken) || 0), 0) * 10) / 10 : null;
     return {
       weekFrom: ws,
       attendanceH: attendanceMs / 3600000,
       personH: personMs / 3600000,
+      overheadH: oh.ms / 3600000,
       todayH: me && typeof me.hours_today === "number" ? me.hours_today : null,
       overtimeH: me && typeof me.total_overtime === "number" ? me.total_overtime : null,
       weekTargetH: cal ? calendarHours.get(cal.id) ?? null : null,
       vacation,
-      recent,
+      recent: recentAll,
       resume,
     };
   }
@@ -560,6 +602,7 @@ export default function registerBde(app, db, staff) {
 
   const ctx = {
     odoo,
+    overhead,
     TEAM,
     LEITUNG,
     PEOPLE,

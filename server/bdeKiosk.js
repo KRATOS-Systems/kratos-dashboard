@@ -2,7 +2,7 @@
 //
 // Ablauf: Chip an den Leser (er tippt die Nummer wie eine Tastatur) -> /scan erkennt den Mitarbeiter über hr.employee.barcode und sagt,
 // ob es Kommen oder Gehen ist, und welche Maschinenläufe noch laufen. -> /confirm bucht:
-//   Gehen: alle laufenden Personentätigkeiten enden jetzt, Maschinenläufe enden nur, wenn "Beenden" gewählt wurde, dann ausstempeln.
+//   Gehen: alle laufenden Personentätigkeiten (auch Zeiten ohne Auftrag) enden jetzt, Maschinenläufe enden nur, wenn "Beenden" gewählt wurde, dann ausstempeln.
 //   Kommen: einstempeln.
 // Kommen/Gehen läuft über denselben Weg wie der Odoo-Kiosk (/hr_attendance/attendance_barcode_scanned mit dem Kiosk-Schlüssel der Firma),
 // nicht durch direktes Schreiben in hr.attendance. Danach zeigt der Kiosk 5 Sekunden die persönliche Stundenkarte.
@@ -94,6 +94,7 @@ export default function registerBdeKiosk(app, ctx) {
       if (t.action === "out") {
         // a) Personentätigkeiten enden zur Ausstempelzeit
         for (const wo of t.persons) await odoo.write("mrp.workorder", "stop_employee", { ids: [wo], employee_ids: [t.employeeId] });
+        for (const l of await ctx.overhead.running(t.employeeId)) await ctx.overhead.stop(l);
         // b) Maschinenläufe nur, wenn "Beenden" gewählt wurde
         for (const wo of t.machine) if (keep[wo] === false) await odoo.write("mrp.workorder", "stop_employee", { ids: [wo], employee_ids: [t.employeeId] });
       }

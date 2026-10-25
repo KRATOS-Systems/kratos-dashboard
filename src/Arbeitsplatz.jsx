@@ -8,7 +8,7 @@ import Teile from "./Teile.jsx";
 import { ActButtons, JobRef } from "./BdeControls.jsx";
 import { useMini, notifyChanged, BDE_CHANGED, BDE_OPEN_PICKER } from "./MiniWindow.jsx";
 import { todayStr } from "./lib.js";
-import { useNow, clock, since, fmtTime, hm, splitProduct, act, isPhoneView } from "./bdeLib.js";
+import { useNow, clock, since, fmtTime, hm, splitProduct, act, isPhoneView, bookingRef, bookingKey } from "./bdeLib.js";
 import Avatar from "./Avatar.jsx";
 
 // Mein Arbeitsplatz: persönliche Seite nach Anmeldung mit PIN.
@@ -112,7 +112,7 @@ function ArbeitsplatzInner({ onGreet, goTo }) {
     return () => {
       document.title = prev.startsWith("⏱") ? "Kratos Mein Arbeitsplatz" : prev;
     };
-  }, [own, b && b.workorderId, b && b.start, minute]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [own, b && bookingKey(b), b && b.start, minute]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const run = useCallback(
     async (body, msg) => {
@@ -170,7 +170,8 @@ function ArbeitsplatzInner({ onGreet, goTo }) {
     );
 
   const prod = splitProduct(b && b.product);
-  const diff = data.attendanceH - data.personH;
+  const diff = data.attendanceH - data.personH - (data.overheadH || 0);
+  const startMsg = (r) => `${r.label}${r.fa ? ` ${r.fa}` : ""} gestartet`;
   const controls = operate && (
     <Controls
       b={b}
@@ -179,7 +180,7 @@ function ArbeitsplatzInner({ onGreet, goTo }) {
       onSwitch={() => setPicker(true)}
       onPause={() => run({ action: "pause" }, "Unterbrochen")}
       onResume={() => run({ action: "resume" }, data.resume ? `Weiter: ${data.resume.label} ${data.resume.fa || ""}` : null)}
-      onStop={() => b && run({ action: "stop", workorderId: b.workorderId }, "Gestoppt")}
+      onStop={() => b && run({ action: "stop", ...bookingRef(b) }, "Gestoppt")}
     />
   );
 
@@ -243,7 +244,7 @@ function ArbeitsplatzInner({ onGreet, goTo }) {
             <div className="bsince">{since(b.start, now)}</div>
             <Complaints list={b.complaints} />
             {data.card.persons.slice(1).map((x) => (
-              <div className="bextra" key={x.workorderId}>
+              <div className="bextra" key={bookingKey(x)}>
                 Außerdem: <b>{x.label}</b> {x.fa} · <Clock start={x.start} now={now} />
               </div>
             ))}
@@ -275,12 +276,20 @@ function ArbeitsplatzInner({ onGreet, goTo }) {
           </span>
         </div>
         <div className="card btile">
+          <span className="lab">Ohne Auftrag gebucht</span>
+          <span className="val mono">
+            {hm(data.overheadH || 0)}
+            <small>h</small>
+          </span>
+          <span className="sub">AV, QS, Instandhaltung, Unterbrechung</span>
+        </div>
+        <div className="card btile">
           <span className="lab">Nicht gebucht</span>
           <span className="val mono">
             {hm(diff)}
             <small>h</small>
           </span>
-          <span className="sub">Planung, Aufräumen, Besprechung</span>
+          <span className="sub">Anwesend, aber nirgends gebucht</span>
         </div>
         <div className="card btile">
           <span className="lab">Resturlaub</span>
@@ -296,7 +305,7 @@ function ArbeitsplatzInner({ onGreet, goTo }) {
         {data.recent.length === 0 && <div className="bnote quiet">Noch keine Buchungen</div>}
         <div className="brecent">
           {data.recent.map((r) => (
-            <PickRow key={r.workorderId} r={r} now={now} odooUrl={data.odooUrl} onPick={operate && r.open ? () => run({ action: "start", workorderId: r.workorderId }, `${r.label} ${r.fa} gestartet`) : null} />
+            <PickRow key={bookingKey(r)} r={r} now={now} odooUrl={data.odooUrl} onPick={operate && r.open ? () => run({ action: "start", ...bookingRef(r) }, startMsg(r)) : null} />
           ))}
         </div>
       </section>
@@ -305,7 +314,7 @@ function ArbeitsplatzInner({ onGreet, goTo }) {
       {SHOW_MASCHINENZEIT && data.me.leitung && own && <Maschinenzeit />}
       <p className="bfoot">Stand {data.at ? fmtTime(data.at) : "–"} · Zeiten aus Odoo, Woche ab Montag</p>
 
-      {picker && <Picker data={data} now={now} busy={busy} initial={picker === true ? null : picker} onClose={() => setPicker(false)} onPick={(r) => run({ action: "start", workorderId: r.workorderId }, `${r.label} ${r.fa} gestartet`)} />}
+      {picker && <Picker data={data} now={now} busy={busy} initial={picker === true ? null : picker} onClose={() => setPicker(false)} onPick={(r) => run({ action: "start", ...bookingRef(r) }, startMsg(r))} />}
     </div>
   );
 }
@@ -322,7 +331,7 @@ function PickRow({ r, now, odooUrl, onPick, busy }) {
       <span className="bact">
         {r.kind === "maschine" && <MachineGlyph s={15} />} {r.label}
       </span>
-      <b className="mono">{r.fa}</b>
+      {r.overhead ? <span className="ohtag">Ohne Auftrag</span> : <b className="mono">{r.fa}</b>}
       <span className="t">{p.name}</span>
       <span className="when">{r.state === "blocked" ? "wartet auf Vorgänger" : r.who ? r.who : r.last ? since(r.last, now).replace("seit", "zuletzt") : ""}</span>
     </>
@@ -355,6 +364,13 @@ function Picker({ data, now, busy, initial, onClose, onPick }) {
       fetch("/api/bde/next")
         .then((r) => r.json())
         .then((d) => (d.error ? setErr(d.error) : setItems(d.items)))
+        .catch(() => setErr("Odoo ist gerade nicht erreichbar"));
+    }
+    if (tab === "ohne") {
+      setItems(null);
+      fetch("/api/bde/gemeinkosten")
+        .then((r) => r.json())
+        .then((d) => (d.error ? setErr(d.error) : d.project ? setItems(d.items) : setErr("Das Projekt „Gemeinkosten“ gibt es in Odoo nicht")))
         .catch(() => setErr("Odoo ist gerade nicht erreichbar"));
     }
     if (tab === "kollegen" && !colleagues) {
@@ -400,6 +416,7 @@ function Picker({ data, now, busy, initial, onClose, onPick }) {
           {[
             ["zuletzt", "Zuletzt"],
             ["next", "Als Nächstes"],
+            ["ohne", "Ohne Auftrag"],
             ["kollegen", "Helfen"],
             ["suchen", "Suchen"],
           ].map(([id, l]) => (
@@ -421,7 +438,18 @@ function Picker({ data, now, busy, initial, onClose, onPick }) {
         <div className="brecent bpick-list">
           {list == null && !err && (tab !== "suchen" || q.trim().length >= 2) && <div className="bnote quiet">Lade …</div>}
           {list && list.length === 0 && <div className="bnote quiet">{tab === "kollegen" ? "Gerade arbeitet niemand sonst an einem Auftrag." : "Nichts gefunden"}</div>}
-          {list && list.map((r) => <PickRow key={`${r.workorderId}-${r.who || ""}`} r={r} now={now} odooUrl={data.odooUrl} busy={busy} onPick={() => onPick(r)} />)}
+          {list &&
+            (tab === "ohne" ? (
+              <div className="ohgrid">
+                {list.map((r) => (
+                  <button key={r.taskId} type="button" className="ohbtn" disabled={busy} onClick={() => onPick(r)}>
+                    {r.label}
+                  </button>
+                ))}
+              </div>
+            ) : (
+              list.map((r) => <PickRow key={`${bookingKey(r)}-${r.who || ""}`} r={r} now={now} odooUrl={data.odooUrl} busy={busy} onPick={() => onPick(r)} />)
+            ))}
         </div>
       </div>
     </div>
@@ -485,7 +513,7 @@ function LeitungHints({ hints, now, odooUrl, canStop, onChanged }) {
   const [confirm, setConfirm] = useState(null);
   async function stopPerson(h) {
     try {
-      await act({ action: "stop", workorderId: h.workorderId, employeeId: h.employeeId });
+      await act({ action: "stop", ...bookingRef(h), employeeId: h.employeeId });
       toast(`${h.label} von ${h.who} beendet`);
       setConfirm(null);
       onChanged();

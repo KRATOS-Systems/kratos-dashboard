@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { Ico, useToast } from "./ui.jsx";
-import { useNow, clock, since, fmtTime, splitProduct, odooLink, act, useBdeSession, canOperate, toLocalInput, fromLocalInput } from "./bdeLib.js";
+import { useNow, clock, since, fmtTime, splitProduct, odooLink, act, useBdeSession, canOperate, toLocalInput, fromLocalInput, bookingRef, bookingKey } from "./bdeLib.js";
 import Avatar from "./Avatar.jsx";
 import { JobRef } from "./BdeControls.jsx";
 
@@ -199,7 +199,7 @@ export function TeamCard({ c, now, odooUrl, session, onChanged }) {
       </header>
       {c.double && <div className="bflag">Doppelt gestempelt</div>}
       {c.persons.length ? (
-        c.persons.map((b, i) => <PersonLine key={b.workorderId || i} b={b} now={now} main={i === 0} />)
+        c.persons.map((b, i) => <PersonLine key={bookingKey(b)} b={b} now={now} main={i === 0} />)
       ) : (
         <div className="bnow none">{c.present && !c.machine.length ? "Nichts gebucht" : ""}</div>
       )}
@@ -215,7 +215,7 @@ export function TeamCard({ c, now, odooUrl, session, onChanged }) {
             type="button"
             className="bbtn"
             disabled={busy}
-            onClick={() => run({ action: "stop", workorderId: c.persons[0].workorderId, employeeId: own ? undefined : c.id }, own ? "Gestoppt" : `${c.persons[0].label} von ${c.name} beendet`)}
+            onClick={() => run({ action: "stop", ...bookingRef(c.persons[0]), employeeId: own ? undefined : c.id }, own ? "Gestoppt" : `${c.persons[0].label} von ${c.name} beendet`)}
           >
             {own ? "Stopp" : "Beenden"}
           </button>

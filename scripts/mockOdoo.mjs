@@ -27,6 +27,8 @@ const M2O = {
   "product.product": { product_tmpl_id: "product.template" },
   "mail.activity": { activity_type_id: "mail.activity.type", user_id: "res.users", create_uid: "res.users" },
   "res.users": { partner_id: "res.partner" },
+  "project.task": { project_id: "project.project" },
+  "account.analytic.line": { project_id: "project.project", task_id: "project.task", employee_id: "hr.employee" },
   "discuss.channel.member": { partner_id: "res.partner", channel_id: "discuss.channel" },
   "mail.message": { author_id: "res.partner" },
   "mail.notification": { res_partner_id: "res.partner", mail_message_id: "mail.message" },
@@ -35,6 +37,18 @@ const O2M = { "product.template": { product_variant_ids: ["product.product", "pr
 
 const T = {
   "res.users": [{ id: 2, name: "Alexander Meimeteas", partner_id: 3 }, { id: 25, name: "Frank Häckl", partner_id: 41 }, { id: 30, name: "Aurel Rama", partner_id: 42 }, { id: 29, name: "Nino Posset", partner_id: 43 }],
+  // Zeiten ohne Auftrag: Projekt Gemeinkosten mit Aufgaben, Stundenzettel
+  "project.project": [{ id: 1, name: "Internal" }, { id: 18, name: "Gemeinkosten" }],
+  "project.task": [
+    { id: 3, name: "Time Off", project_id: 1, sequence: 10 },
+    { id: 699, name: "AV / Planung allgemein", project_id: 18, sequence: 10 },
+    { id: 700, name: "QS allgemein", project_id: 18, sequence: 10 },
+    { id: 701, name: "Instandhaltung", project_id: 18, sequence: 10 },
+    { id: 702, name: "Unterbrechung", project_id: 18, sequence: 10 },
+  ],
+  "account.analytic.line": [
+    { id: 2600, name: "07:00–07:30 · Kratos BDE", date: day(0), unit_amount: 0.5, employee_id: 1, project_id: 18, task_id: 701, create_date: ago(3) },
+  ],
   // Odoo-Nachrichten: Chats und Posteingang (für das kleine Fenster)
   "res.partner": [{ id: 3, name: "Alexander Meimeteas" }, { id: 41, name: "Frank Häckl" }, { id: 42, name: "Aurel Rama" }, { id: 43, name: "Nino Posset" }],
   "discuss.channel": [
@@ -257,6 +271,15 @@ function call(model, method, p) {
       T["mail.activity"].push({ id: nextId("mail.activity"), activity_type_id: 1, create_uid: API_USER, user_id: p.user_id, summary: p.summary, note: p.note, date_deadline: p.date_deadline, res_model: model, res_id: rec.id, res_name: rec.name, date_done: false });
       log.push({ at: fmt(now()), call: `${model}.activity_schedule(${rec.name}, user ${p.user_id}, "${p.summary}", ${p.date_deadline})` });
       return true;
+    }
+    case "create": {
+      const ids = p.vals_list.map((v) => {
+        const id = nextId(model);
+        T[model].push({ ...v, id, create_date: fmt(now()) });
+        return id;
+      });
+      log.push({ at: fmt(now()), call: `${model}.create(${JSON.stringify(p.vals_list)}) -> ${ids}` });
+      return ids;
     }
     case "message_post": {
       log.push({ at: fmt(now()), call: `${model}.message_post(${p.ids}, ${p.subtype_xmlid}): ${String(p.body).replace(/<[^>]+>/g, " ").slice(0, 120)}` });

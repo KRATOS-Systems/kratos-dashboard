@@ -1163,3 +1163,12 @@ a.btn { text-decoration: none; }
   .greet { animation: none; }
   .greet-line { display: none; }
 }
+
+/* Zeiten ohne Auftrag (Gemeinkosten) */
+.jobref.none { color: var(--muted); font-size: 13px; font-weight: 500; }
+.ohtag { font-size: 12.5px; color: var(--muted); }
+.ohgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px; }
+.ohbtn { min-height: 72px; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--line-strong); background: var(--surface); color: var(--ink); font: 600 16px var(--f-display); letter-spacing: .03em; text-transform: uppercase; cursor: pointer; text-align: center; }
+.ohbtn:hover { border-color: var(--ok); }
+.ohbtn:disabled { opacity: .6; cursor: wait; }
+.bmini-tabs button { font-size: 12px; padding: 0 4px; }

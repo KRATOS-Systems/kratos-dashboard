@@ -14,6 +14,8 @@ const READ_METHODS = new Set(["search_read", "read", "search_count", "fields_get
 const WRITE_METHODS = {
   "mrp.workorder": new Set(["start_employee", "stop_employee"]),
   "mrp.workcenter.productivity": new Set(["write"]),
+  // Zeiten ohne Auftrag: Stundenzettel im Projekt Gemeinkosten anlegen und beim Stopp die Dauer eintragen
+  "account.analytic.line": new Set(["create", "write"]),
   "mail.activity": new Set(["action_feedback"]),
   // Aufgabe vergeben: Odoo-Aktivität am Fertigungsauftrag, Verkaufsauftrag oder Mitarbeiter anlegen
   // und Rückfragen dazu als interne Notiz (message_post mit Untertyp Notiz, keine E-Mail)

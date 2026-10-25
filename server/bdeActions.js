@@ -18,7 +18,7 @@ export const END_MARK = "Endzeit nachgetragen";
 const fmtBerlin = new Intl.DateTimeFormat("de-DE", { timeZone: "Europe/Berlin", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
 
 export default function registerBdeActions(app, db, ctx) {
-  const { odoo } = ctx;
+  const { odoo, overhead } = ctx;
 
   async function running(employeeId) {
     const rows = await odoo.read("mrp.workcenter.productivity", "search_read", {
@@ -38,31 +38,62 @@ export default function registerBdeActions(app, db, ctx) {
     return { ...w, kind: kindOf(m2o(w.workcenter_id)?.name) };
   }
 
+  // Es läuft immer nur eine Personentätigkeit: Arbeitsgang am Auftrag oder Zeit ohne Auftrag (Gemeinkosten).
+  // Maschinenläufe laufen davon unberührt parallel weiter.
+  async function stopOverhead(emp, exceptTaskId = null) {
+    for (const l of await overhead.running(emp)) if (l.taskId !== exceptTaskId) await overhead.stop(l);
+  }
+
   // Tätigkeit starten (Wechseln, Helfen, Schnellauswahl)
   async function doStart(emp, workorderId) {
     const w = await workorder(workorderId);
     if (w.kind === "extern") throw userErr("Externe Arbeitsgänge werden nicht gestempelt");
     const runs = await running(emp);
     if (runs.some((r) => r.workorderId === workorderId)) return { already: true };
-    if (w.kind === "person") for (const r of runs.filter((x) => x.kind === "person")) await stop(r.workorderId, emp);
+    if (w.kind === "person") {
+      for (const r of runs.filter((x) => x.kind === "person")) await stop(r.workorderId, emp);
+      await stopOverhead(emp);
+    }
     await start(workorderId, emp);
     return { started: workorderId };
   }
+  // Zeit ohne Auftrag starten: beendet die laufende Personentätigkeit (Auftrag oder andere Gemeinkosten-Aufgabe)
+  async function doStartTask(emp, taskId) {
+    if (!Number.isInteger(taskId) || taskId <= 0) throw userErr("Unbekannte Aufgabe");
+    const oh = await overhead.running(emp);
+    if (oh.some((l) => l.taskId === taskId)) return { already: true };
+    for (const r of (await running(emp)).filter((x) => x.kind === "person")) await stop(r.workorderId, emp);
+    await stopOverhead(emp, taskId);
+    await overhead.start(emp, taskId);
+    return { startedTask: taskId };
+  }
   async function doPause(emp) {
     const runs = (await running(emp)).filter((r) => r.kind === "person");
-    if (!runs.length) throw userErr("Es läuft keine Tätigkeit");
+    const oh = await overhead.running(emp);
+    if (!runs.length && !oh.length) throw userErr("Es läuft keine Tätigkeit");
     for (const r of runs) await stop(r.workorderId, emp);
-    return { paused: runs.map((r) => r.workorderId) };
+    for (const l of oh) await overhead.stop(l);
+    return { paused: runs.map((r) => r.workorderId), pausedTasks: oh.map((l) => l.taskId) };
   }
+  // Weiter: das, was zuletzt lief (Auftrag oder Zeit ohne Auftrag)
   async function doResume(emp) {
     const [last] = await odoo.read("mrp.workcenter.productivity", "search_read", {
       domain: [["employee_id", "=", emp], ["date_end", "!=", false]],
-      fields: ["workorder_id", "workcenter_id"],
+      fields: ["workorder_id", "workcenter_id", "date_end"],
       order: "date_end desc",
       limit: 20,
     }).then((rows) => rows.filter((r) => kindOf(m2o(r.workcenter_id)?.name) === "person"));
+    const oh = (await overhead.personal(emp, Date.now(), Date.now())).last;
+    const woEnd = last ? parseOdoo(last.date_end) : 0;
+    if (oh && oh.closed && oh.taskId && (oh.end || 0) > (woEnd || 0)) return doStartTask(emp, oh.taskId);
     if (!last || !m2o(last.workorder_id)) throw userErr("Keine unterbrochene Tätigkeit gefunden");
     return doStart(emp, m2o(last.workorder_id).id);
+  }
+  async function doStopTask(emp, taskId) {
+    const l = (await overhead.running(emp)).find((x) => x.taskId === taskId);
+    if (!l) throw userErr("Diese Buchung läuft nicht mehr");
+    await overhead.stop(l);
+    return { stoppedTask: taskId };
   }
   // Stoppen; bei Maschinenlauf optional mit echter Endzeit
   async function doStop(emp, workorderId, endAt, byName) {
@@ -99,7 +130,8 @@ export default function registerBdeActions(app, db, ctx) {
     if (!s) return res.status(401).json({ error: "Bitte anmelden" });
     if (isPhone(req)) return res.status(403).json({ error: "Am Handy gibt es nur die Anzeige. Bitte am Tablet oder PC stempeln." });
     if (!odoo.writeEnabled) return res.status(403).json({ error: "Bedienen ist noch nicht freigeschaltet (BDE_WRITE)" });
-    const { action, workorderId, employeeId, endAt } = req.body || {};
+    const { action, workorderId, taskId, employeeId, endAt } = req.body || {};
+    const task = taskId != null ? Number(taskId) : null; // Zeit ohne Auftrag (Aufgabe im Projekt Gemeinkosten)
     const target = employeeId != null ? Number(employeeId) : s.e;
     try {
       if (target !== s.e) {
@@ -110,10 +142,10 @@ export default function registerBdeActions(app, db, ctx) {
       await ctx.ensureEmployees();
       const byName = target !== s.e ? ctx.employees().get(s.e)?.name : null;
       let out;
-      if (action === "start") out = await doStart(target, Number(workorderId));
+      if (action === "start") out = task != null ? await doStartTask(target, task) : await doStart(target, Number(workorderId));
       else if (action === "pause") out = await doPause(target);
       else if (action === "resume") out = await doResume(target);
-      else if (action === "stop") out = await doStop(target, Number(workorderId), endAt != null ? Number(endAt) : null, byName);
+      else if (action === "stop") out = task != null ? await doStopTask(target, task) : await doStop(target, Number(workorderId), endAt != null ? Number(endAt) : null, byName);
       else throw userErr("Unbekannte Aktion");
       ctx.invalidate(target);
       res.json({ ok: true, ...out });
@@ -145,6 +177,27 @@ export default function registerBdeActions(app, db, ctx) {
     const origin = new Map(prods.map((p) => [p.id, p.origin || null]));
     return items.map((p) => ({ ...p, order: origin.get(p.productionId) || null }));
   }
+  // Reiter "Ohne Auftrag": Aufgaben des Projekts Gemeinkosten
+  app.get("/api/bde/gemeinkosten", async (req, res) => {
+    if (!ctx.readSession(req)) return res.status(401).json({ error: "Bitte anmelden" });
+    try {
+      const c = await overhead.load();
+      res.json({ project: c.projectId ? overhead.PROJECT_NAME : null, items: c.tasks.map((t) => ({ ...t, kind: "person", overhead: true, fa: null })) });
+    } catch (err) {
+      ctx.fail(res, err);
+    }
+  });
+  const taskHits = async (q) => {
+    try {
+      const c = await overhead.load();
+      const needle = q.toLocaleLowerCase("de-DE");
+      return c.tasks.filter((t) => t.label.toLocaleLowerCase("de-DE").includes(needle)).map((t) => ({ ...t, kind: "person", overhead: true, fa: null }));
+    } catch (err) {
+      if (err.busy) throw err;
+      return [];
+    }
+  };
+
   app.get("/api/bde/next", async (req, res) => {
     if (!ctx.readSession(req)) return res.status(401).json({ error: "Bitte anmelden" });
     try {
@@ -192,7 +245,7 @@ export default function registerBdeActions(app, db, ctx) {
         order: "production_id desc, id asc",
         limit: 40,
       });
-      res.json({ items: await withOrder(rows.map(pickOf).filter((p) => p.kind !== "extern")) });
+      res.json({ items: [...(await taskHits(q)), ...(await withOrder(rows.map(pickOf).filter((p) => p.kind !== "extern")))] });
     } catch (err) {
       ctx.fail(res, err);
     }

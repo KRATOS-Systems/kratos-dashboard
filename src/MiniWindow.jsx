@@ -1,7 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { MachineGlyph, Clock } from "./Team.jsx";
-import { useNow, act, isPhoneView } from "./bdeLib.js";
+import { useNow, act, isPhoneView, bookingRef, bookingKey } from "./bdeLib.js";
 import Avatar from "./Avatar.jsx";
 import { ActButtons, JobRef } from "./BdeControls.jsx";
 
@@ -192,7 +192,7 @@ function MiniContent({ goTo, onGone, win }) {
           switchTo();
         }}
         onPick={async (r) => {
-          if (await run({ action: "start", workorderId: r.workorderId })) closePick();
+          if (await run({ action: "start", ...bookingRef(r) })) closePick();
         }}
       />
     );
@@ -229,7 +229,7 @@ function MiniContent({ goTo, onGone, win }) {
           onSwitch={openPick}
           onPause={() => run({ action: "pause" })}
           onResume={() => run({ action: "resume" })}
-          onStop={() => b && run({ action: "stop", workorderId: b.workorderId })}
+          onStop={() => b && run({ action: "stop", ...bookingRef(b) })}
         />
       ) : (
         <button type="button" className="bbtn bmini-open" onClick={switchTo}>
@@ -240,10 +240,11 @@ function MiniContent({ goTo, onGone, win }) {
   );
 }
 
-// Auswahl im kleinen Fenster: Zuletzt (3), Nächste (die ersten 5 aus "Meine nächsten Teile"), Suchen nach FA oder Auftrag
+// Auswahl im kleinen Fenster: Zuletzt, Nächste (die ersten 5), Ohne Auftrag (Gemeinkosten), Suchen nach FA, Auftrag oder Aufgabe
 const MINI_TABS = [
   ["zuletzt", "Zuletzt"],
   ["next", "Nächste"],
+  ["ohne", "Ohne Auftrag"],
   ["suchen", "Suchen"],
 ];
 function MiniPicker({ busy, msg, onClose, onMore, onPick }) {
@@ -258,6 +259,11 @@ function MiniPicker({ busy, msg, onClose, onMore, onPick }) {
       fetch("/api/bde/me")
         .then((r) => r.json())
         .then((d) => (d.error ? setErr(d.error) : setItems((d.recent || []).filter((r) => r.open !== false))))
+        .catch(() => setErr("Odoo ist gerade nicht erreichbar"));
+    if (tab === "ohne")
+      fetch("/api/bde/gemeinkosten")
+        .then((r) => r.json())
+        .then((d) => (d.error ? setErr(d.error) : setItems(d.items || [])))
         .catch(() => setErr("Odoo ist gerade nicht erreichbar"));
     if (tab === "next")
       fetch("/api/bde/next")
@@ -298,7 +304,7 @@ function MiniPicker({ busy, msg, onClose, onMore, onPick }) {
         {items && items.length === 0 && <div className="bmini-hint">Nichts gefunden</div>}
         {items &&
           items.map((r) => (
-            <button key={r.workorderId} type="button" className="bmini-row" disabled={busy} onClick={() => onPick(r)}>
+            <button key={bookingKey(r)} type="button" className="bmini-row" disabled={busy} onClick={() => onPick(r)}>
               <span className="bact">{r.label}</span>
               <JobRef fa={r.fa} order={r.order} />
               {r.product && <span className="bmini-prod">{r.product}</span>}
