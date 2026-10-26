@@ -30,6 +30,14 @@ export const AV_STATUS = [
 
 export const avKey = (id, item) => `${id}|${item}`;
 export const avState = (checks, id, item) => checks.get(avKey(id, item)) || { status: AV_DEFAULT[item], due: null, note: "", assignee: null };
+// Wurde in der Checkliste schon etwas bearbeitet (Status geändert, Termin oder Notiz)? Der vorbelegte Zuständige zählt nicht.
+export const avStarted = (checks, id) =>
+  AV_ITEMS.some((it) => {
+    const s = avState(checks, id, it.id);
+    return s.status !== AV_DEFAULT[it.id] || !!s.due || !!(s.note && s.note.trim());
+  });
+// Aus Odoo neu übernommen: "NEU" in der Arbeitsvorbereitung, bis dort etwas bearbeitet wurde
+export const isNewAv = (o, checks) => !!o.new_since && !o.done && !avStarted(checks, o.id);
 export const avDone = (status) => status === "bereit" || status === "entfaellt";
 
 // offen -> in Arbeit -> bereit -> offen (ein nicht nötiger Punkt wird mit einem Klick offen)

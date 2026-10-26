@@ -1,6 +1,6 @@
 import React, { Suspense, lazy, useEffect, useMemo, useState } from "react";
-import { addDays, daysBetween, fmtShort, isNewOrder } from "./lib.js";
-import { AV_ITEMS, AV_STATUS, avCycle, avDone, avState, avSummary } from "./avLib.js";
+import { addDays, daysBetween, fmtShort } from "./lib.js";
+import { AV_ITEMS, isNewAv, AV_STATUS, avCycle, avDone, avState, avSummary } from "./avLib.js";
 import { AppTile, Ico, Thumb, partImg } from "./ui.jsx";
 import { ODOO_URL } from "./planLogic.js";
 
@@ -325,7 +325,7 @@ export default function AvView({ avStdOf = () => null, orders, checks, planStart
           )}
           <div className={showOrder ? "fano" : "fano plain"}>
             {posNo(o)}
-            {isNewOrder(o) && <span className="newpill" title="Neu aus Odoo übernommen">NEU</span>}
+            {isNewAv(o, checks) && <span className="newpill" title="Neu aus Odoo übernommen">NEU</span>}
           </div>
           <div style={{ color: "var(--muted)", fontSize: 12, maxWidth: 240, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={o.product || ""}>
             {[o.quantity != null ? `${o.quantity} Stück` : null, o.product].filter(Boolean).join(" · ")}

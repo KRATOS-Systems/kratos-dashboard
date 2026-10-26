@@ -52,5 +52,5 @@ export function weekInfo(monday) {
   return { key: `${year}-${week}`, label: `KW ${week}`, monday };
 }
 
-// Aus Odoo neu übernommen (letzte 3 Tage): wird in Planung und Arbeitsvorbereitung als "NEU" gezeigt
-export const isNewOrder = (o) => !!o.new_since && Date.now() - Date.parse(o.new_since) < 72 * 3600 * 1000;
+// Aus Odoo neu übernommen: "NEU" in der Planung, bis die Position einer Maschine zugeteilt ist
+export const isNewPlan = (o) => !!o.new_since && !o.done && !o.machine;

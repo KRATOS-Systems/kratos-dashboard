@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useLayoutEffect, useMemo, useRef } from "react";
-import { isNewOrder, DEFAULT_WEEK_CAPACITY, MACHINES, SHIFT_MODELS, addDays, daysBetween, fmtH, fmtShort, isoWeekOf, mondayOf } from "./lib.js";
+import { isNewPlan, DEFAULT_WEEK_CAPACITY, MACHINES, SHIFT_MODELS, addDays, daysBetween, fmtH, fmtShort, isoWeekOf, mondayOf } from "./lib.js";
 import { parseOdooExport } from "./odooImport.js";
 import { holidaysBavaria } from "./holidays.js";
 import AvView, { avUrgentCount } from "./Av.jsx";
-import { AV_ITEMS, AV_STATUS, AV_TEAM, avKey, avState, avSummary } from "./avLib.js";
+import { AV_ITEMS, AV_STATUS, AV_TEAM, isNewAv, avKey, avState, avSummary } from "./avLib.js";
 import { STAFF, ACTIVITIES, STAFF_DEFAULTS, responsible, avResponsible } from "./staffLib.js";
 import Avatar from "./Avatar.jsx";
 import { AppTile, Ico, LaneTile, MTile, Thumb, useToast, partImg } from "./ui.jsx";
@@ -305,8 +305,7 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
   useEffect(() => {
     if (onAvCount) onAvCount(avUrgentCount(orders, checks, planStart, today));
     if (onNewCount) {
-      const fresh = orders.filter((o) => !o.done && isNewOrder(o));
-      onNewCount({ plan: fresh.filter((o) => !o.machine).length, av: fresh.length });
+      onNewCount({ plan: orders.filter(isNewPlan).length, av: orders.filter((o) => isNewAv(o, checks)).length });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orders, checks, planStart]);
@@ -2728,7 +2727,7 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
                       </label>
                       <Thumb src={partImg(o)} size={38} />
                       <div>
-                        <b onClick={() => openDetail(o.id)}>{o.order_no || "ohne Nummer"}</b> <OdooLink o={o} />{isNewOrder(o) && <span className="newpill" title="Neu aus Odoo übernommen">NEU</span>}
+                        <b onClick={() => openDetail(o.id)}>{o.order_no || "ohne Nummer"}</b> <OdooLink o={o} />{isNewPlan(o) && <span className="newpill" title="Neu aus Odoo übernommen">NEU</span>}
                         <div title={metaLine(o, false)}>{metaLine(o, false)}</div>
                       </div>
                     </div>
