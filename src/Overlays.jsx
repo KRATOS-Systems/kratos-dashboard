@@ -201,19 +201,43 @@ function TalosPane({ shared, first, onBack, onOpenPosition }) {
   };
   const [local, setLocal] = useState(false); // Talos nicht erreichbar: Antworten nur aus der Planung
   // Fragt den echten Talos (Odoo, Wissensdatenbank, Planung, Postfächer); ohne Verbindung die Planungsantworten wie bisher
-  const fetchAnswer = async (q, verlauf) => {
+  // Antwort als Zeilenstrom: {"schritt"} während Talos arbeitet (onStep), am Ende {"antwort"} oder {"fehler"}
+  const fetchAnswer = async (q, verlauf, onStep) => {
     try {
-      const r = await fetch("/api/talos", {
+      const r = await fetch("/api/talos/stream", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ frage: q, verlauf, kontext: `Seite ${window.location.hash.replace(/^#/, "") || "planung"}` }),
       });
-      const d = await r.json().catch(() => ({}));
-      if (r.ok && d.antwort) {
+      if (r.ok && r.body) {
         setLocal(false);
-        const refs = findPositions(d.antwort.toLowerCase(), shared?.positions || []).slice(0, 6).map((p) => p.id);
-        return { text: d.antwort, refs };
+        const reader = r.body.pipeThrough(new TextDecoderStream()).getReader();
+        let buf = "";
+        let done = null;
+        while (!done) {
+          const { value, done: end } = await reader.read();
+          if (end) break;
+          buf += value;
+          const lines = buf.split("\n");
+          buf = lines.pop();
+          for (const line of lines) {
+            let ev;
+            try {
+              ev = JSON.parse(line);
+            } catch {
+              continue;
+            }
+            if (ev.schritt) onStep(ev.schritt);
+            if (ev.antwort || ev.fehler) done = ev;
+          }
+        }
+        if (done?.antwort) {
+          const refs = findPositions(done.antwort.toLowerCase(), shared?.positions || []).slice(0, 6).map((p) => p.id);
+          return { text: done.antwort, refs };
+        }
+        return { text: done?.fehler || "Talos ist gerade nicht erreichbar.", refs: [] };
       }
+      const d = await r.json().catch(() => ({}));
       if (r.status !== 503) return { text: d.error || "Talos ist gerade nicht erreichbar.", refs: [] };
     } catch {
       /* ohne Verbindung: Planungsantwort */
@@ -230,7 +254,10 @@ function TalosPane({ shared, first, onBack, onOpenPosition }) {
     const idx = msgs.length;
     setMsgs((m) => [...m, { me: true, text: q }, { me: false, text: "", full: "", refs: [], typing: true }]);
     setTimeout(scroll, 0);
-    const a = await fetchAnswer(q, verlauf);
+    const a = await fetchAnswer(q, verlauf, (step) => {
+      setMsgs((m) => m.map((x, k) => (k === idx + 1 ? { ...x, step } : x)));
+      scroll();
+    });
     setMsgs((m) => m.map((x, k) => (k === idx + 1 ? { ...x, full: a.text, refs: a.refs } : x)));
     const fast = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     const run = (i) => {
@@ -269,7 +296,14 @@ function TalosPane({ shared, first, onBack, onOpenPosition }) {
             <div className="msg" key={i}>
               <TalosAvatar />
               <div className="bub">
-                {m.text ? <TalosText text={m.text} /> : <span className="dots"><i /><i /><i /></span>}
+                {m.text ? (
+                  <TalosText text={m.text} />
+                ) : (
+                  <span className="tstep">
+                    <span className="dots"><i /><i /><i /></span>
+                    {m.step && <span key={m.step}>{m.step} …</span>}
+                  </span>
+                )}
                 {m.typing && m.text && <span className="caret" />}
                 {!m.typing && m.refs.length > 0 && (
                   <div className="refs">

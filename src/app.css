@@ -443,6 +443,8 @@ html.theming, html.theming * { transition: background-color .3s ease, color .3s 
 .tavatar:has(img) { background: #111; box-shadow: 0 0 0 2px color-mix(in srgb, var(--brand) 55%, transparent), 0 2px 8px rgba(0,0,0,.35); }
 .ttext { white-space: pre-wrap; }
 .ttext a { color: var(--brand); text-decoration: underline; text-underline-offset: 2px; }
+/* Fortschritt: was Talos gerade tut */
+.tstep { display: inline-flex; align-items: center; gap: 10px; color: var(--muted); font-size: 13px; }
 
 /* Runde 7: Dashboard */
 @keyframes growy { from { transform: scaleY(.02); opacity: .3; } to { transform: none; opacity: 1; } }

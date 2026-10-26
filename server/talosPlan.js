@@ -8,7 +8,7 @@ import express from "express";
 import { timingSafeEqual } from "node:crypto";
 import { MACHINES, addDays, mondayOf, daysBetween, todayStr, DEFAULT_WEEK_CAPACITY } from "../src/lib.js";
 import { buildPlanDeps, buildGroups, applyMove, byPosition, groupKeyOf, groupLabelOf } from "../src/planLogic.js";
-import { avKey, avSummary } from "../src/avLib.js";
+import { avKey, avSummary, AV_STATUS } from "../src/avLib.js";
 
 const MAX_TEXT = 60000;
 const round1 = (x) => (x == null ? null : Math.round(x * 10) / 10);
@@ -55,7 +55,20 @@ export function makeContext({ rates, weekCap, freeDays, checks, settings, today 
     const groups = buildGroups(orders, plan, monday0, settings.tight_days);
     return { plan, groups };
   };
-  return { monday0, todayOff, free, rates, defaults, dateOf, endDateOf, compute, freeDays, today };
+  return { monday0, todayOff, free, rates, defaults, dateOf, endDateOf, compute, freeDays, today, checks };
+}
+
+// Arbeitsvorbereitung einer Position kurz: bereit oder die offenen Punkte (Material, Programm, Werkzeuge …)
+const statusLabel = (id) => AV_STATUS.find((s) => s.id === id)?.label || id;
+export function avOut(checks, o) {
+  const s = avSummary(checks, o.id);
+  const odooMaterial = /nicht verf/i.test(o.component_status || "") ? "Komponenten laut Odoo nicht verfügbar" : undefined;
+  if (s.ready) return { bereit: true, ...(odooMaterial ? { odoo: odooMaterial } : {}) };
+  return {
+    bereit: false,
+    offen: s.open.map((x) => [x.label, statusLabel(x.status), x.due ? `bis ${x.due}` : null, x.assignee, x.note ? `„${String(x.note).slice(0, 80)}“` : null].filter(Boolean).join(", ")),
+    ...(odooMaterial ? { odoo: odooMaterial } : {}),
+  };
 }
 
 const WAIT = { av: "Arbeitsvorbereitung (offene Punkte)", dep: "vorheriger Arbeitsgang", earliest: "Start frühestens (Material/Werkzeug)" };
@@ -73,6 +86,7 @@ function itemOut(ctx, i, index) {
     stunden_gesamt: round1(o.hours),
     stunden_rest: round1(i.remaining),
     fortschritt_prozent: i.percent ?? undefined,
+    av: ctx.checks ? avOut(ctx.checks, o) : undefined,
     ...(i.scheduled
       ? {
           start: ctx.dateOf(i.pastStart ?? i.start),
@@ -206,6 +220,56 @@ export function planTools(getInputs) {
               }),
           auftraege: groups.map((g) => groupOut(ctx, g)),
           ...(unplanned.length ? { noch_keiner_maschine_zugeordnet: unplanned.map((o) => ({ id: o.id, auftrag: groupLabelOf(o), fa: o.order_no, stunden: o.hours, liefertermin: o.due })) } : {}),
+        };
+      },
+    },
+    {
+      name: "plan_av_material",
+      description:
+        "Arbeitsvorbereitung und Material auf einen Blick: alle offenen Positionen, bei denen Material, Programm, Werkzeuge, Spannmittel, Prüfplan oder EMPB noch offen sind oder Odoo fehlende Komponenten meldet – mit Maschine, geplantem Start, Liefertermin, Zuständigem und Termin des offenen Punkts. Sortiert nach Start (dringendste zuerst). Erste Wahl für Fragen wie „Wo fehlt Material?“, „Was ist nicht bereit?“, „Was muss die AV als Nächstes erledigen?“.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          nur_material: { type: "boolean", description: "nur Positionen, bei denen das Material offen ist oder in Odoo fehlt" },
+          tage: { type: "integer", minimum: 1, maximum: 120, description: "nur Positionen mit Start in den nächsten N Tagen (Standard: alle)" },
+        },
+        additionalProperties: false,
+      },
+      run: ({ nur_material, tage } = {}) => {
+        const inp = getInputs();
+        const ctx = makeContext(inp);
+        const { plan } = ctx.compute(inp.orders);
+        const sched = new Map();
+        plan.forEach((p) => p.items.forEach((i, idx) => i.scheduled && sched.set(i.o.id, { maschine: p.m.short, platz: idx + 1, start: ctx.dateOf(i.pastStart ?? i.start), ende: ctx.endDateOf(i.end), status: i.status })));
+        const limit = tage ? addDays(inp.today, tage) : null;
+        const rows = inp.orders
+          .filter((o) => !o.done)
+          .map((o) => {
+            const av = avOut(inp.checks, o);
+            const materialOffen = !av.bereit && av.offen.some((x) => x.startsWith("Material")) ;
+            return { o, av, materialOffen: materialOffen || !!av.odoo, plan: sched.get(o.id) };
+          })
+          .filter((r) => !r.av.bereit || r.av.odoo)
+          .filter((r) => !nur_material || r.materialOffen)
+          .filter((r) => !limit || (r.plan && r.plan.start <= limit))
+          .sort((a, b) => (a.plan?.start || "9999").localeCompare(b.plan?.start || "9999"));
+        return {
+          stand: new Date().toISOString(),
+          heute: inp.today,
+          anzahl: rows.length,
+          davon_material_offen: rows.filter((r) => r.materialOffen).length,
+          positionen: rows.slice(0, 60).map((r) => ({
+            auftrag: groupLabelOf(r.o),
+            fa: r.o.order_no || undefined,
+            produkt: r.o.product || undefined,
+            menge: r.o.quantity ?? undefined,
+            ...(r.plan ? { maschine: r.plan.maschine, platz: r.plan.platz, start: r.plan.start, ende: r.plan.ende } : { maschine: r.o.machine || "noch keine", nicht_eingeplant: true }),
+            liefertermin: r.o.due || undefined,
+            material_offen: r.materialOffen,
+            offen: r.av.offen,
+            odoo: r.av.odoo,
+          })),
+          ...(rows.length > 60 ? { hinweis: `${rows.length - 60} weitere – mit tage eingrenzen` } : {}),
         };
       },
     },

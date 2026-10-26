@@ -65,3 +65,22 @@ test("Unbekannte Maschine und fehlende Angaben werden abgelehnt", () => {
   assert.throws(() => tool("plan_simulieren").run({ maschine: "M1", platz: 1 }), /Entweder/);
   assert.throws(() => tool("plan_simulieren").run({ maschine: "M1", platz: 1, position: "FA99" }), /Keine offene Position/);
 });
+
+test("AV und Material: offene Punkte je Position, dringendste zuerst", () => {
+  const ready = (id) => ["material", "programm", "werkzeuge", "spannmittel"].map((item) => [`${id}|${item}`, { status: "bereit" }]);
+  const checks = new Map([
+    ...ready(1),
+    ...ready(2).filter(([k]) => !k.endsWith("material")),
+    ["2|material", { status: "in_arbeit", due: "2026-10-27", assignee: "Nino", note: "bei EHG bestellt" }],
+    ...ready(3),
+  ]);
+  const tools = planTools(() => ({ ...inputs(base)(), checks }));
+  const r = tools.find((t) => t.name === "plan_av_material").run({ nur_material: true });
+  assert.equal(r.anzahl, 1);
+  assert.equal(r.positionen[0].fa, "FA02");
+  assert.equal(r.positionen[0].start, "2026-10-28");
+  assert.match(r.positionen[0].offen[0], /^Material, in Arbeit, bis 2026-10-27, Nino, „bei EHG bestellt“$/);
+  const u = tools.find((t) => t.name === "plan_uebersicht").run({ maschine: "DMU 40" });
+  assert.equal(u.maschinen[0].reihenfolge[0].av.bereit, true);
+  assert.equal(u.maschinen[0].reihenfolge[1].av.bereit, false);
+});
