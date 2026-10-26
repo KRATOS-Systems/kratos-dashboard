@@ -1,16 +1,18 @@
 // Abgleich der Fertigungsaufträge mit Odoo (nur lesen).
 //
 // Regeln:
-// - Beim ersten Abgleich merkt sich die App alle heute offenen Fertigungsaufträge als "bekannt". Nichts wird importiert oder geändert.
+// - Beim ersten Abgleich merkt sich die App alle alten offenen Fertigungsaufträge als "bekannt" (nichts wird geändert). Was in den
+//   letzten drei Tagen angelegt wurde und der App noch fehlt, kommt gleich als neu in die Liste.
 // - Danach kommt jeder neu bestätigte Fertigungsauftrag (FA-Nummer) automatisch in die Liste "noch nicht eingeplant", sofern der
-//   Verkaufsauftrag noch nicht vollständig ausgeliefert ist. Der Abgleich läuft stündlich und auf Knopfdruck.
+//   Verkaufsauftrag noch nicht vollständig ausgeliefert ist. Der Abgleich läuft alle 10 Minuten und auf Knopfdruck.
 // - Bei Aufträgen, die die App schon kennt, werden Menge, Produkt und Materialstatus aktualisiert (der Liefertermin bleibt).
 // - Schließen schlägt die App nur vor: Der Fertigungsauftrag ist in Odoo nicht mehr offen oder der Verkaufsauftrag ist vollständig
 //   ausgeliefert. Geschlossen wird erst nach Bestätigung.
 // Odoo wird nur gelesen, und nur wenn ODOO_URL und ODOO_API_KEY gesetzt sind.
 
 const OPEN_STATES = ["confirmed", "progress", "to_close"];
-const HOURLY = 60 * 60 * 1000;
+const EVERY = 10 * 60 * 1000;
+const FRESH_DAYS = 3; // beim ersten Abgleich gelten Aufträge, die in den letzten Tagen angelegt wurden, als neu
 
 export default function registerOdooSync(app, db, { isDate, nextPosition }) {
   db.exec(`
@@ -45,7 +47,7 @@ export default function registerOdooSync(app, db, { isDate, nextPosition }) {
   async function fetchOpen() {
     const prods = await odoo("mrp.production", "search_read", {
       domain: [["state", "in", OPEN_STATES], ["name", "=like", "FA%"]],
-      fields: ["name", "state", "origin", "product_id", "product_qty", "date_deadline", "components_availability"],
+      fields: ["name", "state", "origin", "product_id", "product_qty", "date_deadline", "components_availability", "create_date"],
       limit: 2000,
     });
     const origins = [...new Set(prods.map((p) => (p.origin || "").trim()).filter((o) => /^[A-Z]\d{3,}$/.test(o)))];
@@ -67,6 +69,7 @@ export default function registerOdooSync(app, db, { isDate, nextPosition }) {
         quantity: typeof p.product_qty === "number" ? p.product_qty : null,
         due: due && isDate(due) ? due : null,
         component_status: p.components_availability ? String(p.components_availability).slice(0, 60) : null,
+        created: typeof p.create_date === "string" ? p.create_date.replace(" ", "T") + "Z" : null,
         delivered: !!sale && sale.delivery_status === "full",
         saleCancelled: !!sale && sale.state === "cancel",
       };
@@ -102,6 +105,7 @@ export default function registerOdooSync(app, db, { isDate, nextPosition }) {
     );
     const close = db.prepare("UPDATE orders SET done = 1, done_date = COALESCE(done_date, date('now')) WHERE odoo_ref = ? OR parent_ref = ?");
     const seen = db.prepare("INSERT OR IGNORE INTO odoo_seen (odoo_id, first_seen) VALUES (?, ?)");
+    const seenOld = db.prepare("INSERT OR IGNORE INTO odoo_seen (odoo_id, first_seen) VALUES (?, 'baseline')");
     // Neue Positionen eines bekannten Auftrags übernehmen dessen aktuellen Liefertermin (den frühesten der offenen Positionen)
     const dueBySource = new Map(
       db
@@ -119,7 +123,7 @@ export default function registerOdooSync(app, db, { isDate, nextPosition }) {
       });
       plan.updated.forEach((i) => update.run(i.source, i.product, i.quantity, i.odoo_id, i.component_status, i.odoo_ref));
       closeRefs.forEach((ref) => close.run(ref, ref));
-      if (markAllSeen) plan.all.forEach((i) => seen.run(i.odoo_id, now));
+      if (markAllSeen) plan.all.forEach((i) => seenOld.run(i.odoo_id));
       db.exec("COMMIT");
     } catch (err) {
       db.exec("ROLLBACK");
@@ -138,15 +142,28 @@ export default function registerOdooSync(app, db, { isDate, nextPosition }) {
       const plan = computePlan(items);
       plan.all = items;
       if (baseline) {
-        // Erster Abgleich: alle heute offenen Aufträge sind "bekannt", es wird nichts importiert oder geschlossen
+        // Erster Abgleich: alle alten offenen Aufträge sind "bekannt". Was in den letzten Tagen neu angelegt wurde, kommt als neu in die Liste.
+        const cutoff = Date.now() - FRESH_DAYS * 24 * 3600 * 1000;
+        const inApp = new Set(db.prepare("SELECT odoo_ref FROM orders WHERE odoo_ref IS NOT NULL").all().map((r) => r.odoo_ref));
+        const isFresh = (i) => !inApp.has(i.odoo_ref) && !i.delivered && !i.saleCancelled && i.created && Date.parse(i.created) >= cutoff;
+        const fresh = items.filter(isFresh);
+        const old = items.filter((i) => !isFresh(i));
         if (!dryRun) {
-          applyPlan({ created: [], updated: [], closing: [], all: items }, { markAllSeen: true });
+          applyPlan({ created: fresh, updated: [], closing: [], all: old }, { markAllSeen: true });
           setState("baseline_done", "1");
           setState("last_sync", new Date().toISOString());
           setState("last_error", null);
           setState("pending_closing", "[]");
+          if (fresh.length) setState("last_change", new Date().toISOString());
         }
-        return { baseline: true, openCount: plan.openCount, knownInApp: plan.knownInApp, updated: 0, created: [], closing: [] };
+        return {
+          baseline: true,
+          openCount: plan.openCount,
+          knownInApp: plan.knownInApp,
+          updated: 0,
+          created: fresh.map((i) => ({ ref: i.odoo_ref, source: i.source, product: i.product, quantity: i.quantity, due: i.due })),
+          closing: [],
+        };
       }
       if (!dryRun) {
         // Nur Vorschläge, die die App gerade selbst berechnet hat, dürfen geschlossen werden
@@ -204,7 +221,7 @@ export default function registerOdooSync(app, db, { isDate, nextPosition }) {
     }
   });
 
-  // Stündlicher Abgleich im Hintergrund: übernimmt neue Aufträge und aktualisiert bekannte, schließt nie von selbst
+  // Abgleich im Hintergrund (alle 10 Minuten): übernimmt neue Aufträge und aktualisiert bekannte, schließt nie von selbst
   async function auto() {
     if (!enabled || getState("baseline_done") !== "1") return;
     try {
@@ -216,6 +233,6 @@ export default function registerOdooSync(app, db, { isDate, nextPosition }) {
   }
   if (enabled) {
     setTimeout(auto, 45 * 1000);
-    setInterval(auto, HOURLY);
+    setInterval(auto, EVERY);
   }
 }

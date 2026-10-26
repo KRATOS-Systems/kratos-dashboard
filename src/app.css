@@ -1182,3 +1182,11 @@ a.btn { text-decoration: none; }
 .ohbtn:hover { border-color: var(--ok); }
 .ohbtn:disabled { opacity: .6; cursor: wait; }
 .bmini-tabs button { font-size: 12px; padding: 0 4px; }
+
+/* Neu aus Odoo übernommen */
+.newpill { display: inline-block; margin-left: 8px; padding: 0 7px; border-radius: 6px; font: 700 10.5px/17px var(--f-display); letter-spacing: .08em; color: #fff; background: var(--dmu); vertical-align: 1px; animation: newblink 1.4s ease-in-out 6; }
+@keyframes newblink { 0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--dmu) 0%, transparent); } 50% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--dmu) 35%, transparent); } }
+.nav .badges { margin-left: auto; display: flex; gap: 5px; }
+.nav .badges .badge { margin-left: 0; }
+.nav .badge.new { background: var(--dmu); animation: newblink 1.4s ease-in-out infinite; }
+.nav .badge { white-space: nowrap; }

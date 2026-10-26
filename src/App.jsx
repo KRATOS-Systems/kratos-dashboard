@@ -125,6 +125,7 @@ export default function App() {
   // Daten der Planung für Suche, Hinweise und Talos
   const [shared, setShared] = useState(null);
   const [avCount, setAvCount] = useState(0);
+  const [newCount, setNewCount] = useState({ plan: 0, av: 0 }); // neu aus Odoo übernommene Positionen
   const [openReq, setOpenReq] = useState(null);
   const openPosition = useCallback(
     (id, p) => {
@@ -163,7 +164,7 @@ export default function App() {
     const nav = navRef.current;
     const on = nav && nav.querySelector("button.on");
     if (on) setIndY(on.offsetTop + (on.offsetHeight - 20) / 2);
-  }, [page, avCount]);
+  }, [page, avCount, newCount]);
 
   return (
     <ToastProvider>
@@ -184,11 +185,25 @@ export default function App() {
               <button key={p.id} type="button" className={page === p.id ? "on" : ""} onClick={() => goTo(p.id)}>
                 <Ico n={p.icon} />
                 <span>{p.label}</span>
-                {p.id === "av" && avCount > 0 && (
-                  <span className="badge" title={`${avCount} Position(en) starten in den nächsten 7 Tagen und sind noch nicht bereit`}>
-                    {avCount}
-                  </span>
-                )}
+                {(() => {
+                  const nNew = p.id === "av" ? newCount.av : p.id === "planung" ? newCount.plan : 0;
+                  const urgent = p.id === "av" ? avCount : 0;
+                  if (!nNew && !urgent) return null;
+                  return (
+                    <span className="badges">
+                      {nNew > 0 && (
+                        <span className="badge new" title={`${nNew} neu aus Odoo übernommen`}>
+                          +{nNew}
+                        </span>
+                      )}
+                      {urgent > 0 && (
+                        <span className="badge" title={`${urgent} Position(en) starten in den nächsten 7 Tagen und sind noch nicht bereit`}>
+                          {urgent}
+                        </span>
+                      )}
+                    </span>
+                  );
+                })()}
               </button>
             ))}
           </nav>
@@ -235,6 +250,7 @@ export default function App() {
               onSaveShift={saveCapacity}
               onDeleteShift={deleteCapacity}
               onAvCount={setAvCount}
+              onNewCount={setNewCount}
               onShared={setShared}
               openReq={openReq}
               onOpenHandled={() => setOpenReq(null)}

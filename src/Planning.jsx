@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useLayoutEffect, useMemo, useRef } from "react";
-import { DEFAULT_WEEK_CAPACITY, MACHINES, SHIFT_MODELS, addDays, daysBetween, fmtH, fmtShort, isoWeekOf, mondayOf } from "./lib.js";
+import { isNewOrder, DEFAULT_WEEK_CAPACITY, MACHINES, SHIFT_MODELS, addDays, daysBetween, fmtH, fmtShort, isoWeekOf, mondayOf } from "./lib.js";
 import { parseOdooExport } from "./odooImport.js";
 import { holidaysBavaria } from "./holidays.js";
 import AvView, { avUrgentCount } from "./Av.jsx";
@@ -101,7 +101,7 @@ function RestInput({ value, onCommit, title }) {
   );
 }
 
-export default function Planning({ section = "planung", today, shift, weekCap, onSaveShift, onDeleteShift, onAvCount, onShared, openReq, onOpenHandled, goTo, openTalos }) {
+export default function Planning({ section = "planung", today, shift, weekCap, onSaveShift, onDeleteShift, onAvCount, onNewCount, onShared, openReq, onOpenHandled, goTo, openTalos }) {
   const toast = useToast();
   const [orders, setOrders] = useState([]);
   const [checks, setChecks] = useState(() => new Map()); // Arbeitsvorbereitung: Position|Punkt -> { status, due, note }
@@ -198,7 +198,7 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
     })().catch((err) => console.error("Freie Tage laden fehlgeschlagen", err));
   }, []);
 
-  // Odoo-Abgleich: Status regelmäßig holen; hat der Server (stündlich) neue Aufträge übernommen, die Liste neu laden
+  // Odoo-Abgleich: Status regelmäßig holen; hat der Server neue Aufträge übernommen, die Liste neu laden
   useEffect(() => {
     let stop = false;
     const load = () =>
@@ -214,7 +214,7 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
         })
         .catch(() => {});
     load();
-    const t = setInterval(load, 5 * 60 * 1000);
+    const t = setInterval(load, 2 * 60 * 1000);
     return () => {
       stop = true;
       clearInterval(t);
@@ -304,6 +304,10 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
   }, [plan, monday0]);
   useEffect(() => {
     if (onAvCount) onAvCount(avUrgentCount(orders, checks, planStart, today));
+    if (onNewCount) {
+      const fresh = orders.filter((o) => !o.done && isNewOrder(o));
+      onNewCount({ plan: fresh.filter((o) => !o.machine).length, av: fresh.length });
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orders, checks, planStart]);
 
@@ -782,7 +786,7 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
       setOdooStatus(s);
       lastChangeSeen.current = s.lastChange || "";
       setSyncDlg(null);
-      toast(data.baseline ? "Erster Abgleich fertig: Ab jetzt kommen neue Fertigungsaufträge von selbst." : "Abgleich fertig: " + data.created.length + " neu übernommen" + (sel.length ? ", " + sel.length + " geschlossen" : "") + ".");
+      toast(data.baseline ? "Erster Abgleich fertig" + (data.created.length ? ": " + data.created.length + " neu übernommen. " : ". ") + "Ab jetzt kommen neue Fertigungsaufträge von selbst." : "Abgleich fertig: " + data.created.length + " neu übernommen" + (sel.length ? ", " + sel.length + " geschlossen" : "") + ".");
     } catch (err) {
       setSyncDlg({ ...syncDlg, saving: false, error: err.message });
     }
@@ -1905,9 +1909,14 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
           {r && r.baseline && (
             <>
               <p>
-                Erster Abgleich: Odoo hat <b>{r.openCount}</b> offene Fertigungsaufträge, davon kennt die App schon <b>{r.knownInApp}</b>. Die übrigen {r.openCount - r.knownInApp} (meist alte) werden nur als „bekannt“ gemerkt und
-                <b> nicht</b> importiert. Es wird nichts geändert. Ab jetzt kommen neu bestätigte Fertigungsaufträge von selbst in „Noch nicht eingeplant“.
+                Erster Abgleich: Odoo hat <b>{r.openCount}</b> offene Fertigungsaufträge, davon kennt die App schon <b>{r.knownInApp}</b>. Die alten übrigen werden nur als „bekannt“ gemerkt und <b>nicht</b> importiert.
+                {r.created.length > 0 ? " Neu angelegte (letzte 3 Tage) kommen jetzt in „Noch nicht eingeplant“:" : " Ab jetzt kommen neu bestätigte Fertigungsaufträge von selbst in „Noch nicht eingeplant“."}
               </p>
+              {r.created.map((c) => (
+                <div key={c.ref} style={{ fontSize: 13, padding: "3px 0" }}>
+                  <b className="mono">{c.ref}</b> · {c.source || "ohne Auftrag"} · {c.quantity != null ? fmtH(c.quantity) + " Stück · " : ""}{c.product}
+                </div>
+              ))}
               <div className="actions" style={{ justifyContent: "flex-end" }}>
                 <button type="button" className="btn" onClick={close}>Abbrechen</button>
                 <button type="button" className="btn primary" disabled={syncDlg.saving} onClick={applySync}>Verstanden, starten</button>
@@ -2719,7 +2728,7 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
                       </label>
                       <Thumb src={partImg(o)} size={38} />
                       <div>
-                        <b onClick={() => openDetail(o.id)}>{o.order_no || "ohne Nummer"}</b> <OdooLink o={o} />
+                        <b onClick={() => openDetail(o.id)}>{o.order_no || "ohne Nummer"}</b> <OdooLink o={o} />{isNewOrder(o) && <span className="newpill" title="Neu aus Odoo übernommen">NEU</span>}
                         <div title={metaLine(o, false)}>{metaLine(o, false)}</div>
                       </div>
                     </div>

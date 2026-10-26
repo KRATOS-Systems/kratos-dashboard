@@ -385,13 +385,16 @@ const orderOut = (r) => ({
   extern_tags: JSON.parse(r.extern_tags || "[]"),
   extern_days: r.extern_days,
   extern_start: r.extern_start,
+  new_since: r.new_since && /^\d{4}-/.test(r.new_since) ? r.new_since : null,
 });
 
 const nextPosition = (machine) =>
   db.prepare("SELECT COALESCE(MAX(position), -1) + 1 AS p FROM orders WHERE machine = ?").get(machine).p;
 
 app.get("/api/orders", (req, res) => {
-  const rows = db.prepare("SELECT * FROM orders ORDER BY machine, position, id").all();
+  const rows = db
+    .prepare("SELECT orders.*, s.first_seen AS new_since FROM orders LEFT JOIN odoo_seen s ON s.odoo_id = orders.odoo_id ORDER BY orders.machine, orders.position, orders.id")
+    .all();
   res.json({ orders: rows.map(orderOut) });
 });
 
