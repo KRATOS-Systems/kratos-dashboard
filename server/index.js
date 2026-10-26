@@ -10,6 +10,7 @@ import registerOdooSync from "./odooSync.js";
 import registerOdooFiles from "./odooFiles.js";
 import registerBde from "./bde.js";
 import registerStaff from "./staff.js";
+import registerTalosPlan from "./talosPlan.js";
 
 // Lokal dürfen Umgebungsvariablen in einer Datei .env stehen (nicht im Repository). Bei Hostinger gibt es sie nicht.
 try {
@@ -196,6 +197,9 @@ const isDate = (s) =>
 const isTotal = (v) => v === null || (typeof v === "number" && Number.isFinite(v) && v >= 0);
 
 const app = express();
+
+// Planung für Talos als MCP-Server (nur lesen); vor dem Passwortschutz, eigener Schutz über TALOS_PLAN_SECRET
+registerTalosPlan(app, db, { orderOut: (r) => orderOut(r), planSettingsOut: () => planSettingsOut() });
 
 // Passwortschutz: Ist APP_PASSWORD gesetzt (z. B. in den Umgebungsvariablen bei Hostinger),
 // fragt der Browser beim Öffnen nach Benutzername und Passwort. Ohne Variable (lokal) ist alles offen.
