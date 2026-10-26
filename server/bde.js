@@ -364,6 +364,8 @@ export default function registerBde(app, db, staff) {
       return null;
     }
   }
+  // Für andere Teile der App (z. B. Talos): wer ist angemeldet? Nur lesen, nichts setzen
+  app.locals.bdeSession = readSession;
   function writeSession(req, res, value, maxAgeMs) {
     const secure = req.secure || String(req.headers["x-forwarded-proto"] || "").includes("https");
     res.append("Set-Cookie", `bde=${value}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${Math.floor(maxAgeMs / 1000)}${secure ? "; Secure" : ""}`);

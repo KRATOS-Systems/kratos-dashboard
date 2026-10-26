@@ -166,6 +166,27 @@ export function talosAnswer(q, shared) {
   return { text: "Dazu habe ich in der Planung nichts Passendes gefunden. Die Anbindung an Talos mit Odoo und den anderen Systemen folgt, dann kann ich auch Kunden, Einkäufe und Lieferscheine abfragen. Probier eine der Fragen unten.", refs: [] };
 }
 
+// Talos-Bild (Spartaner); ohne Bild der Funke wie bisher
+function TalosAvatar() {
+  const [ok, setOk] = useState(true);
+  return <span className="tavatar">{ok ? <img src="/talos.jpg" alt="" onError={() => setOk(false)} /> : <SparkIcon />}</span>;
+}
+
+// Antworttext mit einfachem Markdown: **fett**, [Titel](Link), Zeilenumbrüche
+function TalosText({ text }) {
+  const parts = [];
+  const re = /\*\*([^*]+)\*\*|\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g;
+  let last = 0;
+  let m;
+  while ((m = re.exec(text))) {
+    if (m.index > last) parts.push(text.slice(last, m.index));
+    parts.push(m[1] ? <b key={m.index}>{m[1]}</b> : <a key={m.index} href={m[3]} target="_blank" rel="noreferrer">{m[2]}</a>);
+    last = re.lastIndex;
+  }
+  if (last < text.length) parts.push(text.slice(last));
+  return <span className="ttext">{parts}</span>;
+}
+
 function TalosPane({ shared, first, onBack, onOpenPosition }) {
   const [msgs, setMsgs] = useState([]);
   const [busy, setBusy] = useState(false);
@@ -178,18 +199,43 @@ function TalosPane({ shared, first, onBack, onOpenPosition }) {
   const scroll = () => {
     if (boxRef.current) boxRef.current.scrollTop = boxRef.current.scrollHeight;
   };
-  const ask = (q) => {
+  const [local, setLocal] = useState(false); // Talos nicht erreichbar: Antworten nur aus der Planung
+  // Fragt den echten Talos (Odoo, Wissensdatenbank, Planung, Postfächer); ohne Verbindung die Planungsantworten wie bisher
+  const fetchAnswer = async (q, verlauf) => {
+    try {
+      const r = await fetch("/api/talos", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ frage: q, verlauf, kontext: `Seite ${window.location.hash.replace(/^#/, "") || "planung"}` }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (r.ok && d.antwort) {
+        setLocal(false);
+        const refs = findPositions(d.antwort.toLowerCase(), shared?.positions || []).slice(0, 6).map((p) => p.id);
+        return { text: d.antwort, refs };
+      }
+      if (r.status !== 503) return { text: d.error || "Talos ist gerade nicht erreichbar.", refs: [] };
+    } catch {
+      /* ohne Verbindung: Planungsantwort */
+    }
+    setLocal(true);
+    return talosAnswer(q, shared);
+  };
+  const ask = async (q) => {
     q = (q || "").trim();
     if (!q || busy) return;
     setBusy(true);
     setVal("");
-    const a = talosAnswer(q, shared);
+    const verlauf = msgs.filter((m) => !m.typing).map((m) => ({ rolle: m.me ? "nutzer" : "talos", text: m.full ?? m.text }));
     const idx = msgs.length;
-    setMsgs((m) => [...m, { me: true, text: q }, { me: false, text: "", full: a.text, refs: a.refs, typing: true }]);
+    setMsgs((m) => [...m, { me: true, text: q }, { me: false, text: "", full: "", refs: [], typing: true }]);
     setTimeout(scroll, 0);
+    const a = await fetchAnswer(q, verlauf);
+    setMsgs((m) => m.map((x, k) => (k === idx + 1 ? { ...x, full: a.text, refs: a.refs } : x)));
     const fast = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     const run = (i) => {
-      i = fast ? a.text.length : Math.min(a.text.length, i + 2);
+      // lange Antworten schneller schreiben (fertig nach etwa 2 Sekunden)
+      i = fast ? a.text.length : Math.min(a.text.length, i + Math.max(2, Math.ceil(a.text.length / 120)));
       setMsgs((m) => m.map((x, k) => (k === idx + 1 ? { ...x, text: a.text.slice(0, i), typing: i < a.text.length } : x)));
       scroll();
       if (i < a.text.length) timers.current.push(setTimeout(() => run(i), 16));
@@ -198,7 +244,7 @@ function TalosPane({ shared, first, onBack, onOpenPosition }) {
         setTimeout(() => inRef.current && inRef.current.focus(), 0);
       }
     };
-    timers.current.push(setTimeout(() => run(0), 750));
+    run(0);
   };
   useEffect(() => {
     if (first) ask(first);
@@ -208,10 +254,10 @@ function TalosPane({ shared, first, onBack, onOpenPosition }) {
   return (
     <>
       <div className="th">
-        <span className="tavatar"><SparkIcon /></span>
+        <TalosAvatar />
         <div className="tt">
           <b>Talos</b>
-          <small>KI-Agent von Kratos, verbunden mit Odoo und den Systemen</small>
+          <small>KI-Assistent von Kratos: Odoo, Wissensdatenbank, Planung, Einkauf</small>
         </div>
         <button className="back" type="button" onClick={onBack}>Zur Suche</button>
       </div>
@@ -221,9 +267,9 @@ function TalosPane({ shared, first, onBack, onOpenPosition }) {
             <div className="msg me" key={i}><div className="bub">{m.text}</div></div>
           ) : (
             <div className="msg" key={i}>
-              <span className="tavatar"><SparkIcon /></span>
+              <TalosAvatar />
               <div className="bub">
-                {m.text ? m.text : <span className="dots"><i /><i /><i /></span>}
+                {m.text ? <TalosText text={m.text} /> : <span className="dots"><i /><i /><i /></span>}
                 {m.typing && m.text && <span className="caret" />}
                 {!m.typing && m.refs.length > 0 && (
                   <div className="refs">
@@ -265,7 +311,7 @@ function TalosPane({ shared, first, onBack, onOpenPosition }) {
         }}
       />
       <div className="foot">
-        <span>Antworten aus den Planungsdaten. Die Anbindung an Talos (Odoo, weitere Systeme) folgt.</span>
+        <span>{local ? "Talos nicht erreichbar: Antworten nur aus der Planung." : "Antworten mit Quellen. Talos ändert nichts, er schlägt nur vor."}</span>
         <span style={{ marginLeft: "auto" }}><kbd>Enter</kbd> senden · <kbd>Esc</kbd> schließen</span>
       </div>
     </>
@@ -369,10 +415,10 @@ export function Palette({ shared, initialTalos, onClose, onOpenPosition, onGoPag
                     )}
                     {it.t === "talos" && (
                       <li className={`talos-item ${it.sug ? "sug " : ""}${on}`} onMouseEnter={() => setSel(i)} onClick={() => go(i)}>
-                        <span className="tavatar"><SparkIcon /></span>
+                        <TalosAvatar />
                         <div className="t">
                           <b>{it.sug ? it.q : "Talos fragen"}</b>
-                          <div>{it.sug ? "Frage an Talos, mit Antwort aus der Planung" : `"${it.q}"`}</div>
+                          <div>{it.sug ? "Frage an Talos, mit Quellen" : `"${it.q}"`}</div>
                         </div>
                         <kbd>Enter</kbd>
                       </li>

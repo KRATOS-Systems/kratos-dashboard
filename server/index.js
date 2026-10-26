@@ -11,6 +11,7 @@ import registerOdooFiles from "./odooFiles.js";
 import registerBde from "./bde.js";
 import registerStaff from "./staff.js";
 import registerTalosPlan from "./talosPlan.js";
+import registerTalosChat from "./talosChat.js";
 
 // Lokal dürfen Umgebungsvariablen in einer Datei .env stehen (nicht im Repository). Bei Hostinger gibt es sie nicht.
 try {
@@ -1085,6 +1086,7 @@ registerOdooSync(app, db, { isDate, nextPosition });
 registerOdooFiles(app, db);
 const staff = registerStaff(app, db);
 registerBde(app, db, staff);
+registerTalosChat(app);
 
 if (existsSync(DIST_PATH)) {
   app.use(express.static(DIST_PATH));
