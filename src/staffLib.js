@@ -55,7 +55,7 @@ export function responsible(order, activity, defaults, overrides) {
   const own = overrides.get(`${order.id}|${activity}`);
   if (own) return own;
   if (activity === "qs") return defaults["role:qs"] || null;
-  const machine = ["dmu40", "m1", "h800u"].includes(order.machine) ? order.machine : order.from_machine || null;
+  const machine = ["dmu40", "dmu50", "m1", "h800u"].includes(order.machine) ? order.machine : order.from_machine || null;
   const owner = machine ? defaults[`machine:${machine}`] || null : null;
   if (activity === "programmierung") return defaults["role:programmierung"] || owner;
   return owner;

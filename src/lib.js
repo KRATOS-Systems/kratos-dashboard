@@ -1,5 +1,6 @@
 export const MACHINES = [
   { id: "dmu40", name: "DMG DMU 40 eVo", short: "DMU 40", colorKey: "blue", c: "var(--dmu)", img: "/machines/dmu40.webp" },
+  { id: "dmu50", name: "DMG DMU 50", short: "DMU 50", colorKey: "teal", c: "var(--teal)", img: "/machines/dmu50.webp" },
   { id: "m1", name: "DMG M1", short: "M1", colorKey: "yellow", c: "var(--org)", img: "/machines/m1.webp" },
   { id: "h800u", name: "POS Mill H800U", short: "H800U", colorKey: "red", c: "var(--mag)", img: "/machines/h800u.webp", imgZoom: 0.93 },
 ];

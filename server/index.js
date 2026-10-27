@@ -24,7 +24,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PORT || 3001;
 const DIST_PATH = path.join(__dirname, "..", "dist");
 
-const MACHINES = ["dmu40", "m1", "h800u"];
+const MACHINES = ["dmu40", "dmu50", "m1", "h800u"];
 // Orte neben den Maschinen: QS, Extern Fertigung, Extern Oberfläche ("extern")
 const LANES = ["qs", "extern_fert", "extern"];
 const DEFAULT_CAPACITY = 40;

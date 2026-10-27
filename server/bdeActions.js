@@ -11,7 +11,7 @@
 
 import { kindOf, labelOf, m2o, parseOdoo, toOdoo, isPhone } from "./bde.js";
 
-const PLAN_MACHINES = ["dmu40", "m1", "h800u"];
+const PLAN_MACHINES = ["dmu40", "dmu50", "m1", "h800u"];
 const userErr = (msg) => Object.assign(new Error(msg), { user: true });
 export const END_MARK = "Endzeit nachgetragen";
 

@@ -96,7 +96,7 @@ export function talosAnswer(q, shared) {
   const pos = shared?.positions || [];
   const fehlt = (p) => (p.av.open.length ? p.av.open.map((x) => x.label).join(", ") : null);
   const found = findPositions(t, pos);
-  const mach = /dmu/.test(t) ? "dmu40" : /\bm1\b/.test(t) ? "m1" : /h800|\bpos\b/.test(t) ? "h800u" : null;
+  const mach = /dmu\s*-?50/.test(t) ? "dmu50" : /dmu/.test(t) ? "dmu40" : /\bm1\b/.test(t) ? "m1" : /h800|\bpos\b/.test(t) ? "h800u" : null;
   if (found.length) {
     const list = found.slice(0, 6);
     const text = list

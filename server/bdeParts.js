@@ -15,6 +15,7 @@ import { labelOf, m2o } from "./bde.js";
 
 const MACHINES = [
   { id: "dmu40", name: "DMU 40 eVo" },
+  { id: "dmu50", name: "DMU 50" },
   { id: "m1", name: "M1" },
   { id: "h800u", name: "POS H800U" },
 ];
