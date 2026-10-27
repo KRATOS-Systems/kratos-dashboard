@@ -128,6 +128,7 @@ export default function registerOdooSync(app, db, { isDate, nextPosition }) {
       out.push({
         odoo_ref: String(po.name) + "-" + l.id,
         line_id: l.id,
+        po_id: po.id,
         po: String(po.name),
         source,
         supplier: Array.isArray(po.partner_id) ? String(po.partner_id[1]).slice(0, 120) : null,
@@ -175,7 +176,7 @@ export default function registerOdooSync(app, db, { isDate, nextPosition }) {
   function applyExternal(x, ext, closeRefs) {
     const now = new Date().toISOString();
     const insert = db.prepare(
-      "INSERT INTO orders (machine, order_no, due_date, position, odoo_ref, source, product, quantity, extern_start, extern_days, supplier) VALUES ('extern_fert', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+      "INSERT INTO orders (machine, order_no, due_date, position, odoo_ref, source, product, quantity, extern_start, extern_days, supplier, po_id) VALUES ('extern_fert', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
     );
     const seenNew = db.prepare("INSERT OR IGNORE INTO odoo_seen (odoo_id, first_seen) VALUES (?, ?)");
     const seenOld = db.prepare("INSERT OR IGNORE INTO odoo_seen (odoo_id, first_seen) VALUES (?, 'baseline')");
@@ -190,13 +191,16 @@ export default function registerOdooSync(app, db, { isDate, nextPosition }) {
     try {
       let position = nextPosition("extern_fert");
       x.created.forEach((e) => {
-        insert.run(e.po, e.due || dueBySource.get(e.source) || null, position++, e.odoo_ref, e.source, e.product, e.quantity, e.start || new Date().toISOString().slice(0, 10), extDays(e), e.supplier);
+        insert.run(e.po, e.due || dueBySource.get(e.source) || null, position++, e.odoo_ref, e.source, e.product, e.quantity, e.start || new Date().toISOString().slice(0, 10), extDays(e), e.supplier, e.po_id);
         seenNew.run(x.seenKey(e), now);
       });
       if (x.baseline) {
         const made = new Set(x.created.map((e) => e.odoo_ref));
         ext.filter((e) => !made.has(e.odoo_ref)).forEach((e) => seenOld.run(x.seenKey(e)));
       }
+      // Bereits übernommene Positionen: Link zur Bestellung nachtragen
+      const link = db.prepare("UPDATE orders SET po_id = ?, supplier = COALESCE(supplier, ?) WHERE odoo_ref = ? AND po_id IS NULL");
+      ext.forEach((e) => link.run(e.po_id, e.supplier, e.odoo_ref));
       closeRefs.forEach((ref) => close.run(ref));
       db.exec("COMMIT");
     } catch (err) {

@@ -25,6 +25,7 @@ export const metaLine = (o, withSource = true) =>
     .filter(Boolean)
     .join(" · ");
 export const ODOO_URL = "https://kratosdata.odoo.com/odoo/manufacturing";
+export const ODOO_PO_URL = "https://kratosdata.odoo.com/odoo/purchase-orders";
 export const round1 = (x) => Math.round(x * 10) / 10;
 // Nummer einer Position, bei Teillieferungen mit "Teil 1" bzw. "Rest"
 export const posNo = (o) => (o.order_no || "ohne Nummer") + (o.part_label ? ` · ${o.part_label}` : "");

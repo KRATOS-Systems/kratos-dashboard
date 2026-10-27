@@ -19,6 +19,7 @@ import {
   doneHoursOf,
   metaLine,
   ODOO_URL,
+  ODOO_PO_URL,
   round1,
   posNo,
   groupKeyOf,
@@ -50,17 +51,18 @@ const ampel = (g) => (!g || g.dueEnd == null || g.end == null ? "none" : g.statu
 
 // Öffnet den Fertigungsauftrag in Odoo (nur wenn der Export die ID enthielt)
 function OdooLink({ o, btn }) {
-  if (!o.odoo_id) return null;
+  if (!o.odoo_id && !o.po_id) return null;
+  const po = !o.odoo_id;
   return (
     <a
-      href={`${ODOO_URL}/${o.odoo_id}`}
+      href={po ? `${ODOO_PO_URL}/${o.po_id}` : `${ODOO_URL}/${o.odoo_id}`}
       target="_blank"
       rel="noopener noreferrer"
-      title={`${o.order_no} in Odoo öffnen`}
+      title={po ? `Bestellung ${o.order_no} beim Lieferanten in Odoo öffnen` : `${o.order_no} in Odoo öffnen`}
       className={btn ? "btn odoo" : "olink"}
       onClick={(ev) => ev.stopPropagation()}
     >
-      {btn ? "In Odoo öffnen" : "Odoo"} <Ico n="ext" s={btn ? 15 : 12} />
+      {btn ? (po ? "Bestellung in Odoo öffnen" : "In Odoo öffnen") : "Odoo"} <Ico n="ext" s={btn ? 15 : 12} />
     </a>
   );
 }
