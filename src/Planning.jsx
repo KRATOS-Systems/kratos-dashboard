@@ -4,7 +4,7 @@ import { parseOdooExport } from "./odooImport.js";
 import { holidaysBavaria } from "./holidays.js";
 import AvView, { avUrgentCount } from "./Av.jsx";
 import { AV_ITEMS, AV_STATUS, AV_TEAM, isNewAv, avKey, avState, avSummary } from "./avLib.js";
-import { STAFF, ACTIVITIES, STAFF_DEFAULTS, responsible, avResponsible } from "./staffLib.js";
+import { STAFF, ACTIVITIES, STAFF_DEFAULTS, responsible, avResponsible, sharedMachine } from "./staffLib.js";
 import Avatar from "./Avatar.jsx";
 import { AppTile, Ico, LaneTile, MTile, Thumb, useToast, partImg } from "./ui.jsx";
 import {
@@ -1509,7 +1509,7 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
                     <Avatar name={name || "?"} size={30} />
                     <span className="sl">{a.label}</span>
                     <select value={own} onChange={(ev) => setOrderStaff(o.id, a.id, ev.target.value || null)} aria-label={`${a.label} zuständig`} className={own ? "own" : ""}>
-                      <option value="">{std ? `Standard: ${std}` : "Standard: noch offen (keine Maschine)"}</option>
+                      <option value="">{std ? `Standard: ${std}` : a.id !== "qs" && sharedMachine(staff.defaults, o.machine) ? "Standard: alle gleich" : "Standard: noch offen (keine Maschine)"}</option>
                       {STAFF.map((p) => (
                         <option key={p.name} value={p.name}>
                           {p.name}
@@ -2994,7 +2994,7 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
           </div>
         </div>
         <div className="staffgrid" style={{ padding: "4px 18px 16px" }}>
-          {MACHINES.map((m) => staffRow(`machine:${m.id}`, `Stammbediener ${m.name}`))}
+          {MACHINES.map((m) => staffRow(`machine:${m.id}`, `Stammbediener ${m.name}`, sharedMachine(STAFF_DEFAULTS, m.id) ? "Alle gleich (kein Stammbediener)" : undefined))}
           {staffRow("role:programmierung", "Programmierung", true)}
           {staffRow("role:qs", "QS")}
           {staffRow("role:av", "Arbeitsvorbereitung (sonst)")}

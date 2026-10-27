@@ -33,6 +33,7 @@ export const STAFF_DEFAULTS = {
   "machine:dmu40": "Nino",
   "machine:m1": "Frank",
   "machine:h800u": "Aurel",
+  "machine:dmu50": "", // leer = kein Stammbediener, die Maschine nutzen alle gleich (Nutzerentscheidung 27.10.2026)
   "role:qs": "Aurel",
   "role:av": "Nino",
   "role:planung": "Frank",
@@ -46,7 +47,9 @@ export const STAFF_DEFAULTS = {
   "av:empb": "Aurel",
 };
 // Schlüssel, bei denen "leer" eine Bedeutung hat (Stammbediener / wie Programmierung)
-export const STAFF_EMPTY_OK = ["role:programmierung", "av:programm"];
+export const STAFF_EMPTY_OK = ["role:programmierung", "av:programm", "machine:dmu50"];
+// Maschinen ohne Stammbediener: Rüsten, Fräsen und Programmieren sind dort für alle gleich zuständig
+export const sharedMachine = (defaults, machine) => !!machine && `machine:${machine}` in defaults && !defaults[`machine:${machine}`];
 export const STAFF_KEYS = Object.keys(STAFF_DEFAULTS);
 
 // Wer ist für eine Tätigkeit an einer Position zuständig? (null = noch niemand, z. B. ohne Maschine)

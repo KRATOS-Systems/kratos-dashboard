@@ -9,7 +9,7 @@
 // - Zur Info: Arbeit anderer, die in den Einstellungen der Planung jemandem zur Information zugeordnet ist
 //   (z. B. "Arbeitsvorbereitung von Nino zur Info an Frank" während der Einarbeitung); nur ansehen, keine Knöpfe.
 
-import { ACTIVITIES, responsible, avResponsible, staffName } from "../src/staffLib.js";
+import { ACTIVITIES, responsible, avResponsible, staffName, sharedMachine } from "../src/staffLib.js";
 import { avKey, avSummary } from "../src/avLib.js";
 import { labelOf, m2o } from "./bde.js";
 
@@ -104,7 +104,10 @@ export default function registerBdeParts(app, db, ctx, staff) {
       .map((o) => {
         const onMachine = MACHINE_IDS.includes(o.machine);
         const acts = ACTIVITIES.filter((a) => {
-          if (responsible(o, a.id, data.defaults, data.overrides) !== name) return false;
+          const who = responsible(o, a.id, data.defaults, data.overrides);
+          // Maschine ohne Stammbediener (DMU 50): Rüsten, Fräsen und Programmieren zeigt jedem
+          const shared = !who && a.id !== "qs" && onMachine && sharedMachine(data.defaults, o.machine);
+          if (who !== name && !shared) return false;
           if (a.id === "qs") return o.machine === "qs";
           return onMachine || (!o.machine && ownSet(o, a.id));
         }).map((a) => a.id);
