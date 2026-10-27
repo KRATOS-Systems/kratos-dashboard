@@ -1938,7 +1938,7 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
                   <div style={{ font: "600 12px var(--f-display)", letterSpacing: ".1em", textTransform: "uppercase", color: "var(--muted)", marginBottom: 6 }}>Neu</div>
                   {r.created.map((c) => (
                     <div key={c.ref} style={{ fontSize: 13, padding: "3px 0" }}>
-                      <b className="mono">{c.ref}</b> · {c.source || "ohne Auftrag"} · {c.quantity != null ? fmtH(c.quantity) + " Stück · " : ""}{c.product}
+                      <b className="mono">{c.ref}</b> · {c.source || "ohne Auftrag"} · {c.quantity != null ? fmtH(c.quantity) + " Stück · " : ""}{c.product}{c.supplier ? " · extern bei " + c.supplier : ""}
                     </div>
                   ))}
                 </div>
@@ -2373,10 +2373,12 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
           const overdue = lane.id === "qs" && b.end <= todayOff; // Prüfung länger als geplant
           const isDragged = dragActive && b.ids.some((id) => drag.ids.includes(id));
           const tags = [...b.tags];
+          const sup = (orders.find((x) => x.id === b.ids[0]) || {}).supplier || "";
           const { cs, ce } = span(b.start, b.end);
           if (ce <= cs) return null;
           const tipHtml = tipFor(`${b.label} · ${b.ids.length} ${b.ids.length === 1 ? "Position" : "Positionen"} in ${lane.name}`, [
             tags.length ? tags.join(", ") : "",
+            sup ? `Lieferant: ${sup}` : "",
             `${fmtDuration(b.duration)}, ab ${fmtShort(dateOf(b.start))} bis ca. ${fmtShort(endDateOf(b.end))}${overdue ? " – Prüfung überfällig" : ""}`,
             g && g.due ? `Liefertermin ${fmtShort(g.due)}` : "",
             g && g.status === "late" ? `Achtung: Auftrag ${days(g.lateDays)} zu spät (Ende: ${g.endMachine})` : "",
@@ -2409,6 +2411,7 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
               <b>{b.label}</b>
               <span>
                 {b.ids.length > 1 ? `${b.ids.length} Pos. · ` : ""}
+                {sup ? `${sup} · ` : ""}
                 {tags.length ? tags.join(", ") : fmtDuration(b.duration)}
               </span>
             </div>

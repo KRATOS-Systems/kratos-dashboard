@@ -165,6 +165,7 @@ const orderColumns = columnsOf();
   ["progress_date", "TEXT"],
   ["extern_start", "TEXT"],
   ["after_id", "INTEGER"],
+  ["supplier", "TEXT"],
 ].forEach(([name, type]) => {
   if (!orderColumns.includes(name)) db.exec(`ALTER TABLE orders ADD COLUMN ${name} ${type}`);
 });
@@ -385,6 +386,7 @@ const orderOut = (r) => ({
   extern_tags: JSON.parse(r.extern_tags || "[]"),
   extern_days: r.extern_days,
   extern_start: r.extern_start,
+  supplier: r.supplier,
   new_since: r.new_since && /^\d{4}-/.test(r.new_since) ? r.new_since : null,
 });
 

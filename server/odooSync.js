@@ -8,10 +8,14 @@
 // - Bei Aufträgen, die die App schon kennt, werden Menge, Produkt und Materialstatus aktualisiert (der Liefertermin bleibt).
 // - Schließen schlägt die App nur vor: Der Fertigungsauftrag ist in Odoo nicht mehr offen oder der Verkaufsauftrag ist vollständig
 //   ausgeliefert. Geschlossen wird erst nach Bestätigung.
+// - Fremdfertigung: Eine bestätigte Einkaufsbestellung zu einem Kundenauftrag (A-Nummer), bei der das bestellte Teil das verkaufte Teil ist,
+//   kommt automatisch in die Spur "Fertigung extern" (Beginn = Bestätigung, Ende = Liefertermin des Lieferanten). Zum Schließen
+//   vorgeschlagen, sobald die Ware eingegangen ist.
 // Odoo wird nur gelesen, und nur wenn ODOO_URL und ODOO_API_KEY gesetzt sind.
 
 const OPEN_STATES = ["confirmed", "progress", "to_close"];
 const EVERY = 10 * 60 * 1000;
+const EXT_OFFSET = 1000000000; // Einkaufspositionen liegen in odoo_seen oberhalb dieser Zahl, getrennt von den Fertigungsaufträgen
 const FRESH_DAYS = 3; // beim ersten Abgleich gelten Aufträge, die in den letzten Tagen angelegt wurden, als neu
 
 export default function registerOdooSync(app, db, { isDate, nextPosition }) {
@@ -76,10 +80,136 @@ export default function registerOdooSync(app, db, { isDate, nextPosition }) {
     });
   }
 
+  // Fremdgefertigte Teile: Einkaufsbestellungen zu Kundenaufträgen, bei denen das bestellte Teil das verkaufte ist (kein Materialeinkauf)
+  const dayOf = (v) => (typeof v === "string" && /^\d{4}-\d{2}-\d{2}/.test(v) ? v.slice(0, 10) : null);
+  async function fetchExternal() {
+    const since = new Date(Date.now() - 150 * 24 * 3600 * 1000).toISOString().slice(0, 10);
+    const lines = await odoo("purchase.order.line", "search_read", {
+      domain: [["order_id.state", "in", ["purchase", "done"]], ["order_id.origin", "=like", "A%"], ["order_id.date_order", ">=", since], ["display_type", "=", false]],
+      fields: ["order_id", "product_id", "product_qty", "qty_received", "date_planned", "name"],
+      limit: 2000,
+    });
+    if (!lines.length) return [];
+    const poIds = [...new Set(lines.map((l) => (Array.isArray(l.order_id) ? l.order_id[0] : null)).filter(Boolean))];
+    const pos = new Map();
+    for (let i = 0; i < poIds.length; i += 150) {
+      const recs = await odoo("purchase.order", "read", { ids: poIds.slice(i, i + 150), fields: ["name", "origin", "partner_id", "date_approve", "date_order", "date_planned", "create_date"] });
+      recs.forEach((p) => pos.set(p.id, p));
+    }
+    const sourceOf = (p) => {
+      const m = /\bA\d{4,}\b/.exec(p.origin || "");
+      return m ? m[0] : null;
+    };
+    const sources = [...new Set([...pos.values()].map(sourceOf).filter(Boolean))];
+    const sales = new Map();
+    const sold = new Map(); // Kundenauftrag -> Artikel, die verkauft wurden
+    for (let i = 0; i < sources.length; i += 100) {
+      const chunk = sources.slice(i, i + 100);
+      const so = await odoo("sale.order", "search_read", { domain: [["name", "in", chunk]], fields: ["name", "state", "delivery_status", "commitment_date"], limit: 300 });
+      so.forEach((r) => sales.set(r.name, r));
+      const sl = await odoo("sale.order.line", "search_read", { domain: [["order_id.name", "in", chunk], ["display_type", "=", false]], fields: ["order_id", "product_id"], limit: 3000 });
+      sl.forEach((r) => {
+        const n = Array.isArray(r.order_id) ? r.order_id[1] : null;
+        const pid = Array.isArray(r.product_id) ? r.product_id[0] : null;
+        if (!n || !pid) return;
+        if (!sold.has(n)) sold.set(n, new Set());
+        sold.get(n).add(pid);
+      });
+    }
+    const out = [];
+    lines.forEach((l) => {
+      const po = pos.get(Array.isArray(l.order_id) ? l.order_id[0] : null);
+      const pid = Array.isArray(l.product_id) ? l.product_id[0] : null;
+      const source = po && sourceOf(po);
+      if (!po || !pid || !source || !sold.has(source) || !sold.get(source).has(pid)) return;
+      const sale = sales.get(source);
+      const created = typeof po.create_date === "string" ? po.create_date.replace(" ", "T") + "Z" : null;
+      const planned = dayOf(l.date_planned) || dayOf(po.date_planned);
+      out.push({
+        odoo_ref: String(po.name) + "-" + l.id,
+        line_id: l.id,
+        po: String(po.name),
+        source,
+        supplier: Array.isArray(po.partner_id) ? String(po.partner_id[1]).slice(0, 120) : null,
+        product: Array.isArray(l.product_id) ? String(l.product_id[1]).slice(0, 200) : String(l.name || "").slice(0, 200),
+        quantity: typeof l.product_qty === "number" ? l.product_qty : null,
+        received: (l.product_qty || 0) > 0 && (l.qty_received || 0) >= l.product_qty,
+        start: dayOf(po.date_approve) || dayOf(po.date_order) || (created && created.slice(0, 10)),
+        planned,
+        due: sale ? dayOf(sale.commitment_date) : null,
+        delivered: !!sale && sale.delivery_status === "full",
+        saleCancelled: !!sale && sale.state === "cancel",
+        created,
+      });
+    });
+    return out;
+  }
+  const extDays = (e) => {
+    if (!e.start || !e.planned) return 7;
+    const d = Math.round((Date.parse(e.planned) - Date.parse(e.start)) / 86400000);
+    return Math.min(120, Math.max(1, d));
+  };
+  // Fremdfertigung: neue Positionen und Schließvorschläge (beim ersten Mal gelten nur frisch angelegte Bestellungen als neu)
+  function computeExternal(ext) {
+    const seenKey = (e) => EXT_OFFSET + e.line_id;
+    const seen = new Set(db.prepare("SELECT odoo_id FROM odoo_seen WHERE odoo_id >= ?").all(EXT_OFFSET).map((r) => r.odoo_id));
+    const inApp = new Map(db.prepare("SELECT odoo_ref, done, source, product FROM orders WHERE odoo_ref LIKE 'P%-%'").all().map((r) => [r.odoo_ref, r]));
+    const manual = db.prepare("SELECT id FROM orders WHERE source = ? AND product = ? AND done = 0 AND odoo_ref IS NULL");
+    const baseline = getState("ext_baseline_done") !== "1";
+    const cutoff = Date.now() - FRESH_DAYS * 24 * 3600 * 1000;
+    const isNew = (e) =>
+      !inApp.has(e.odoo_ref) && !e.received && !e.delivered && !e.saleCancelled && !manual.get(e.source, e.product) && (baseline ? e.created && Date.parse(e.created) >= cutoff : !seen.has(seenKey(e)));
+    const created = ext.filter(isNew);
+    const byRef = new Map(ext.map((e) => [e.odoo_ref, e]));
+    const closing = [];
+    inApp.forEach((r, ref) => {
+      if (r.done !== 0) return;
+      const e = byRef.get(ref);
+      if (!e) closing.push({ ref, source: r.source, product: r.product, reason: "Bestellung in Odoo nicht mehr offen (storniert oder zurückgesetzt)" });
+      else if (e.received) closing.push({ ref, source: r.source, product: r.product, reason: "Ware vom Lieferanten laut Odoo eingegangen" });
+      else if (e.delivered) closing.push({ ref, source: r.source, product: r.product, reason: "Ware laut Odoo vollständig an den Kunden ausgeliefert" });
+      else if (e.saleCancelled) closing.push({ ref, source: r.source, product: r.product, reason: "Verkaufsauftrag in Odoo storniert" });
+    });
+    return { created, closing, baseline, seenKey };
+  }
+  function applyExternal(x, ext, closeRefs) {
+    const now = new Date().toISOString();
+    const insert = db.prepare(
+      "INSERT INTO orders (machine, order_no, due_date, position, odoo_ref, source, product, quantity, extern_start, extern_days, supplier) VALUES ('extern_fert', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+    );
+    const seenNew = db.prepare("INSERT OR IGNORE INTO odoo_seen (odoo_id, first_seen) VALUES (?, ?)");
+    const seenOld = db.prepare("INSERT OR IGNORE INTO odoo_seen (odoo_id, first_seen) VALUES (?, 'baseline')");
+    const close = db.prepare("UPDATE orders SET done = 1, done_date = COALESCE(done_date, date('now')) WHERE odoo_ref = ?");
+    const dueBySource = new Map(
+      db
+        .prepare("SELECT source, MIN(due_date) AS d FROM orders WHERE source IS NOT NULL AND done = 0 AND due_date IS NOT NULL GROUP BY source")
+        .all()
+        .map((r) => [r.source, r.d])
+    );
+    db.exec("BEGIN");
+    try {
+      let position = nextPosition("extern_fert");
+      x.created.forEach((e) => {
+        insert.run(e.po, e.due || dueBySource.get(e.source) || null, position++, e.odoo_ref, e.source, e.product, e.quantity, e.start || new Date().toISOString().slice(0, 10), extDays(e), e.supplier);
+        seenNew.run(x.seenKey(e), now);
+      });
+      if (x.baseline) {
+        const made = new Set(x.created.map((e) => e.odoo_ref));
+        ext.filter((e) => !made.has(e.odoo_ref)).forEach((e) => seenOld.run(x.seenKey(e)));
+      }
+      closeRefs.forEach((ref) => close.run(ref));
+      db.exec("COMMIT");
+    } catch (err) {
+      db.exec("ROLLBACK");
+      throw err;
+    }
+    if (x.baseline) setState("ext_baseline_done", "1");
+  }
+
   // Was würde passieren? (ohne etwas zu schreiben)
   function computePlan(items) {
     const seen = new Set(db.prepare("SELECT odoo_id FROM odoo_seen").all().map((r) => r.odoo_id));
-    const inApp = new Map(db.prepare("SELECT id, odoo_ref, odoo_id, done, source, product FROM orders WHERE odoo_ref IS NOT NULL").all().map((r) => [r.odoo_ref, r]));
+    const inApp = new Map(db.prepare("SELECT id, odoo_ref, odoo_id, done, source, product FROM orders WHERE odoo_ref LIKE 'FA%'").all().map((r) => [r.odoo_ref, r]));
     const openIds = new Set(items.map((i) => i.odoo_ref));
     const byRef = new Map(items.map((i) => [i.odoo_ref, i]));
     const created = items.filter((i) => !inApp.has(i.odoo_ref) && !seen.has(i.odoo_id) && !i.delivered && !i.saleCancelled);
@@ -138,51 +268,65 @@ export default function registerOdooSync(app, db, { isDate, nextPosition }) {
     running = true;
     try {
       const items = await fetchOpen();
+      let ext = null;
+      let extX = null;
+      try {
+        ext = await fetchExternal();
+        extX = computeExternal(ext);
+        setState("ext_error", null);
+      } catch (err) {
+        setState("ext_error", err.message);
+      }
+      const extCreated = () => (extX ? extX.created.map((e) => ({ ref: e.odoo_ref, source: e.source, product: e.product, quantity: e.quantity, due: e.due, supplier: e.supplier })) : []);
       const baseline = getState("baseline_done") !== "1";
       const plan = computePlan(items);
       plan.all = items;
       if (baseline) {
         // Erster Abgleich: alle alten offenen Aufträge sind "bekannt". Was in den letzten Tagen neu angelegt wurde, kommt als neu in die Liste.
         const cutoff = Date.now() - FRESH_DAYS * 24 * 3600 * 1000;
-        const inApp = new Set(db.prepare("SELECT odoo_ref FROM orders WHERE odoo_ref IS NOT NULL").all().map((r) => r.odoo_ref));
+        const inApp = new Set(db.prepare("SELECT odoo_ref FROM orders WHERE odoo_ref LIKE 'FA%'").all().map((r) => r.odoo_ref));
         const isFresh = (i) => !inApp.has(i.odoo_ref) && !i.delivered && !i.saleCancelled && i.created && Date.parse(i.created) >= cutoff;
         const fresh = items.filter(isFresh);
         const old = items.filter((i) => !isFresh(i));
         if (!dryRun) {
           applyPlan({ created: fresh, updated: [], closing: [], all: old }, { markAllSeen: true });
+          if (extX) applyExternal(extX, ext, []);
           setState("baseline_done", "1");
           setState("last_sync", new Date().toISOString());
           setState("last_error", null);
           setState("pending_closing", "[]");
-          if (fresh.length) setState("last_change", new Date().toISOString());
+          if (fresh.length || (extX && extX.created.length)) setState("last_change", new Date().toISOString());
         }
         return {
           baseline: true,
           openCount: plan.openCount,
           knownInApp: plan.knownInApp,
           updated: 0,
-          created: fresh.map((i) => ({ ref: i.odoo_ref, source: i.source, product: i.product, quantity: i.quantity, due: i.due })),
+          created: [...fresh.map((i) => ({ ref: i.odoo_ref, source: i.source, product: i.product, quantity: i.quantity, due: i.due })), ...extCreated()],
           closing: [],
         };
       }
       if (!dryRun) {
         // Nur Vorschläge, die die App gerade selbst berechnet hat, dürfen geschlossen werden
+        const extClosing = extX ? extX.closing : [];
         const allowed = new Set(plan.closing.map((c) => c.ref));
+        const allowedExt = new Set(extClosing.map((c) => c.ref));
         applyPlan(plan, { closeRefs: closeRefs.filter((r) => allowed.has(r)) });
+        if (extX) applyExternal(extX, ext, closeRefs.filter((r) => allowedExt.has(r)));
         setState("last_sync", new Date().toISOString());
         setState("last_error", null);
-        if (plan.created.length || closeRefs.length) setState("last_change", new Date().toISOString());
-        const remaining = computePlan(await Promise.resolve(items)).closing;
+        if (plan.created.length || closeRefs.length || (extX && extX.created.length)) setState("last_change", new Date().toISOString());
+        const remaining = [...computePlan(items).closing, ...(extX ? computeExternal(ext).closing : [])];
         setState("pending_closing", JSON.stringify(remaining));
       } else if (auto) {
-        setState("pending_closing", JSON.stringify(plan.closing));
+        setState("pending_closing", JSON.stringify([...plan.closing, ...(extX ? extX.closing : [])]));
       }
       return {
         baseline: false,
         openCount: plan.openCount,
-        created: plan.created.map((i) => ({ ref: i.odoo_ref, source: i.source, product: i.product, quantity: i.quantity, due: i.due })),
+        created: [...plan.created.map((i) => ({ ref: i.odoo_ref, source: i.source, product: i.product, quantity: i.quantity, due: i.due })), ...extCreated()],
         updated: plan.updated.length,
-        closing: plan.closing,
+        closing: [...plan.closing, ...(extX ? extX.closing : [])],
       };
     } catch (err) {
       setState("last_error", err.message);
@@ -204,7 +348,7 @@ export default function registerOdooSync(app, db, { isDate, nextPosition }) {
       baselineDone: getState("baseline_done") === "1",
       lastSync: getState("last_sync"),
       lastChange: getState("last_change"),
-      lastError: getState("last_error"),
+      lastError: getState("last_error") || (getState("ext_error") ? "Einkauf (Fremdfertigung): " + getState("ext_error") : null),
       pendingClosing: pending,
     });
   });
