@@ -113,6 +113,16 @@ export default function registerOdooSync(app, db, { isDate, nextPosition }) {
     return new Map([...best].map(([source, c]) => [source, c.machine]));
   }
 
+  // Von Hand nachgeholte Aufträge (A-Nummern), die nicht in der Odoo-Planungsliste stehen
+  function getExtraSources() {
+    try {
+      const l = JSON.parse(getState("gap_extra") || "[]");
+      return Array.isArray(l) ? l.filter((s) => typeof s === "string" && /^[A-Z]\d{3,}$/.test(s)) : [];
+    } catch {
+      return [];
+    }
+  }
+
   // Fremdgefertigte Teile: Einkaufsbestellungen zu Kundenaufträgen, bei denen das bestellte Teil das verkaufte ist (kein Materialeinkauf)
   const dayOf = (v) => (typeof v === "string" && /^\d{4}-\d{2}-\d{2}/.test(v) ? v.slice(0, 10) : null);
   async function fetchExternal() {
@@ -311,6 +321,9 @@ export default function registerOdooSync(app, db, { isDate, nextPosition }) {
         if (i.gap) gapIds.push(i.odoo_id);
       });
       if (gapIds.length) {
+        // Als neu kennzeichnen (NEU in "Noch nicht eingeplant"), obwohl Odoo sie schon vom ersten Abgleich als bekannt führte
+        const markNew = db.prepare("UPDATE odoo_seen SET first_seen = ? WHERE odoo_id = ? AND first_seen = 'baseline'");
+        gapIds.forEach((id) => markNew.run(now, id));
         let done = [];
         try {
           done = JSON.parse(getState("gap_done") || "[]");
@@ -356,6 +369,8 @@ export default function registerOdooSync(app, db, { isDate, nextPosition }) {
         } catch (err) {
           setState("gap_error", err.message);
         }
+        // Gezielt nachgeholte Aufträge (POST /api/odoo/nachholen): ohne Maschine, sie kommen in "Noch nicht eingeplant"
+        getExtraSources().forEach((s) => !wanted.has(s) && wanted.set(s, ""));
       }
       const plan = computePlan(items, wanted);
       plan.all = items;
@@ -441,6 +456,21 @@ export default function registerOdooSync(app, db, { isDate, nextPosition }) {
     }
     try {
       res.json(await run({ dryRun: dryRun !== false, closeRefs: close || [] }));
+    } catch (err) {
+      res.status(502).json({ error: err.message });
+    }
+  });
+
+  // Einen Auftrag gezielt nachholen: Seine offenen Fertigungsaufträge, die die App nicht kennt, kommen in "Noch nicht eingeplant" (einmalig)
+  app.post("/api/odoo/nachholen", async (req, res) => {
+    const source = String((req.body && req.body.source) || "").trim().toUpperCase();
+    if (!/^[A-Z]\d{3,}$/.test(source)) return res.status(400).json({ error: "Bitte eine Auftragsnummer wie A01378 angeben" });
+    if (getState("baseline_done") !== "1") return res.status(409).json({ error: "Der erste Abgleich mit Odoo ist noch nicht gelaufen" });
+    try {
+      const extra = getExtraSources();
+      if (!extra.includes(source)) setState("gap_extra", JSON.stringify([...extra, source]));
+      const r = await run({ dryRun: false, closeRefs: [] });
+      res.json({ source, created: r.created.filter((c) => c.source === source) });
     } catch (err) {
       res.status(502).json({ error: err.message });
     }
