@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Anleitung Produktions-App</title>
+<style>
+  :root {
+    --bg: #EDEFF2; --surface: #FFFFFF; --sunken: #F4F5F7; --line: #DFE3E8; --ink: #14181D; --muted: #5B6672;
+    --accent: #D12C3A; --hot: #E08A00; --ok: #168A52; color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) { --bg: #0D1014; --surface: #151A20; --sunken: #1B2128; --line: #262D36; --ink: #E9ECF0; --muted: #9AA4B0; --accent: #FF6B76; --hot: #F5B301; --ok: #34C27A; color-scheme: dark; }
+  }
+  :root[data-theme="dark"] { --bg: #0D1014; --surface: #151A20; --sunken: #1B2128; --line: #262D36; --ink: #E9ECF0; --muted: #9AA4B0; --accent: #FF6B76; --hot: #F5B301; --ok: #34C27A; color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  .wrap { max-width: 1280px; margin: 0 auto; padding: 18px max(16px, env(safe-area-inset-left, 0px)) 40px max(16px, env(safe-area-inset-right, 0px)); }
+  header { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 18px; }
+  header h1 { margin: 0; font-size: 22px; letter-spacing: .01em; }
+  header .sp { flex: 1; }
+  a.btn, button.btn { display: inline-flex; align-items: center; gap: 8px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); border-radius: 10px; padding: 9px 16px; font: 600 15px/1 inherit; cursor: pointer; text-decoration: none; min-height: 42px; }
+  a.btn:hover, button.btn:hover { border-color: var(--muted); }
+  button.btn.primary { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+  button.btn:disabled { opacity: .4; cursor: default; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px; }
+  .tile { text-align: left; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 18px; cursor: pointer; color: inherit; font: inherit; display: flex; flex-direction: column; gap: 8px; }
+  .tile:hover { border-color: var(--hot); }
+  .tile .nr { color: var(--muted); font-size: 13px; text-transform: uppercase; letter-spacing: .08em; }
+  .tile h2 { margin: 0; font-size: 18px; line-height: 1.25; text-wrap: balance; }
+  .tile p { margin: 0; color: var(--muted); font-size: 14px; }
+  .tile .n { margin-top: auto; color: var(--muted); font-size: 13px; }
+  .lead { color: var(--muted); max-width: 70ch; margin: 0 0 18px; }
+  /* Spieler */
+  .player { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 18px; align-items: start; }
+  .stage { position: relative; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: #000; aspect-ratio: 1280 / 800; }
+  .stage img { position: absolute; inset: 0; width: 100%; height: 100%; display: block; user-select: none; -webkit-user-drag: none; }
+  .hot { position: absolute; border: 3px solid var(--hot); border-radius: 12px; background: color-mix(in srgb, var(--hot) 14%, transparent); box-shadow: 0 0 0 4px color-mix(in srgb, var(--hot) 25%, transparent), 0 0 24px color-mix(in srgb, var(--hot) 55%, transparent); cursor: pointer; animation: puls 1.6s ease-in-out infinite; }
+  @keyframes puls { 0%, 100% { box-shadow: 0 0 0 3px color-mix(in srgb, var(--hot) 25%, transparent), 0 0 14px color-mix(in srgb, var(--hot) 45%, transparent); } 50% { box-shadow: 0 0 0 9px color-mix(in srgb, var(--hot) 12%, transparent), 0 0 30px color-mix(in srgb, var(--hot) 65%, transparent); } }
+  @media (prefers-reduced-motion: reduce) { .hot { animation: none; } }
+  .side { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 20px; display: flex; flex-direction: column; gap: 16px; }
+  .side .count { color: var(--muted); font-size: 13px; text-transform: uppercase; letter-spacing: .08em; }
+  .side h2 { margin: 0; font-size: 18px; line-height: 1.25; }
+  .side .cap { font-size: 18px; line-height: 1.45; margin: 0; text-wrap: pretty; }
+  .dots { display: flex; gap: 5px; flex-wrap: wrap; }
+  .dots i { width: 9px; height: 9px; border-radius: 50%; background: var(--line); }
+  .dots i.on { background: var(--hot); }
+  .dots i.done { background: var(--muted); }
+  .nav { display: flex; gap: 10px; flex-wrap: wrap; }
+  .hint { color: var(--muted); font-size: 13px; margin: 0; }
+  .fin { text-align: center; padding: 30px 10px; }
+  .fin h2 { font-size: 22px; }
+  .tip { position: absolute; left: 50%; bottom: 12px; transform: translateX(-50%); background: var(--ink); color: var(--bg); padding: 8px 14px; border-radius: 999px; font-size: 14px; opacity: 0; transition: opacity .2s; pointer-events: none; white-space: nowrap; }
+  .tip.show { opacity: .92; }
+  @media (max-width: 900px) { .player { grid-template-columns: 1fr; } .side .cap { font-size: 17px; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1 id="ttl">Anleitung Produktions-App</h1>
+    <span class="sp"></span>
+    <button class="btn" id="home" hidden>Alle Anleitungen</button>
+    <a class="btn" href="/">Zur App</a>
+  </header>
+  <main id="main"></main>
+</div>
+<script>
+(function () {
+  var main = document.getElementById("main"), ttl = document.getElementById("ttl"), home = document.getElementById("home");
+  var data = null, cur = null, idx = 0;
+
+  function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+
+  function list() {
+    cur = null; ttl.textContent = "Anleitung Produktions-App"; home.hidden = true; document.title = "Anleitung Produktions-App";
+    main.textContent = "";
+    main.appendChild(el("p", "lead", "Hier siehst du die App Schritt für Schritt, so wie sie in der Werkstatt aussieht. Tippe auf die leuchtende Stelle im Bild oder auf „Weiter“. Alle Beispiele sind Übungsdaten, nichts davon ist ein echter Auftrag."));
+    var g = el("div", "grid");
+    data.demos.forEach(function (d, i) {
+      var b = el("button", "tile");
+      b.appendChild(el("span", "nr", "Anleitung " + (i + 1)));
+      b.appendChild(el("h2", null, d.title));
+      b.appendChild(el("p", null, d.text));
+      b.appendChild(el("span", "n", d.steps.length + " Schritte"));
+      b.onclick = function () { location.hash = d.id; };
+      g.appendChild(b);
+    });
+    main.appendChild(g);
+  }
+
+  function player() {
+    var d = cur, s = d.steps[idx];
+    ttl.textContent = d.title; home.hidden = false; document.title = d.title + " · Anleitung";
+    main.textContent = "";
+    var wrap = el("div", "player"), stage = el("div", "stage"), img = document.createElement("img");
+    img.src = s.img; img.alt = "Bildschirm der App, Schritt " + (idx + 1);
+    stage.appendChild(img);
+    var tip = el("div", "tip", "Tippe auf die leuchtende Stelle oder auf „Weiter“");
+    if (s.hot) {
+      var h = el("div", "hot");
+      h.style.left = s.hot.x + "%"; h.style.top = s.hot.y + "%"; h.style.width = s.hot.w + "%"; h.style.height = s.hot.h + "%";
+      h.setAttribute("role", "button"); h.setAttribute("aria-label", "Hier tippen: " + s.caption);
+      h.onclick = function (e) { e.stopPropagation(); next(); };
+      stage.appendChild(h);
+      stage.onclick = function () { tip.classList.add("show"); setTimeout(function () { tip.classList.remove("show"); }, 1800); };
+    }
+    stage.appendChild(tip);
+    var side = el("div", "side");
+    side.appendChild(el("div", "count", "Schritt " + (idx + 1) + " von " + d.steps.length));
+    var dots = el("div", "dots");
+    d.steps.forEach(function (_, i) { dots.appendChild(el("i", i === idx ? "on" : i < idx ? "done" : "")); });
+    side.appendChild(dots);
+    side.appendChild(el("p", "cap", s.caption));
+    var nav = el("div", "nav"), back = el("button", "btn", "Zurück"), fwd = el("button", "btn primary", idx === d.steps.length - 1 ? "Fertig" : "Weiter");
+    back.disabled = idx === 0; back.onclick = prev; fwd.onclick = next;
+    nav.appendChild(back); nav.appendChild(fwd);
+    side.appendChild(nav);
+    side.appendChild(el("p", "hint", "Mit den Pfeiltasten geht es auch."));
+    wrap.appendChild(stage); wrap.appendChild(side); main.appendChild(wrap);
+    if (idx + 1 < d.steps.length) { var pre = new Image(); pre.src = d.steps[idx + 1].img; }
+  }
+
+  function finish() {
+    document.title = cur.title + " · fertig";
+    main.textContent = "";
+    var f = el("div", "fin");
+    f.appendChild(el("h2", null, "Geschafft: " + cur.title));
+    var again = el("button", "btn", "Noch einmal ansehen"), all = el("button", "btn primary", "Alle Anleitungen");
+    again.onclick = function () { idx = 0; player(); }; all.onclick = function () { location.hash = ""; };
+    var row = el("div", "nav"); row.style.justifyContent = "center"; row.appendChild(again); row.appendChild(all);
+    f.appendChild(row); main.appendChild(f);
+  }
+
+  function next() { if (!cur) return; if (idx < cur.steps.length - 1) { idx++; player(); window.scrollTo(0, 0); } else finish(); }
+  function prev() { if (cur && idx > 0) { idx--; player(); } }
+
+  function route() {
+    var id = decodeURIComponent(location.hash.replace(/^#/, ""));
+    var d = data && data.demos.filter(function (x) { return x.id === id; })[0];
+    if (d) { cur = d; idx = 0; player(); } else list();
+  }
+
+  home.onclick = function () { location.hash = ""; };
+  document.addEventListener("keydown", function (e) {
+    if (!cur) return;
+    if (e.key === "ArrowRight" || e.key === "Enter" || e.key === " ") { e.preventDefault(); next(); }
+    else if (e.key === "ArrowLeft") { e.preventDefault(); prev(); }
+  });
+  window.addEventListener("hashchange", route);
+  fetch("demos.json", { cache: "no-cache" }).then(function (r) { return r.json(); }).then(function (j) { data = j; route(); }).catch(function () { main.textContent = "Die Anleitung konnte nicht geladen werden."; });
+})();
+</script>
+</body>
+</html>

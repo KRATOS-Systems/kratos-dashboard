@@ -1,0 +1,171 @@
+{
+ "demos": [
+  {
+   "id": "fraesen",
+   "title": "Fräsen beenden und Laufzeit eintragen",
+   "text": "Die Maschine ist fertig: Lauf beenden, Anzahl der Aufspannungen, Programmlaufzeit von der Steuerung eintragen und das Fräsen fertig melden.",
+   "steps": [
+    {
+     "img": "fraesen/01.webp",
+     "caption": "Öffne „Mein Arbeitsplatz“ und tippe auf deinen Namen.",
+     "hot": {
+      "x": 58.828125,
+      "y": 10.8046875,
+      "w": 19.609375,
+      "h": 13
+     }
+    },
+    {
+     "img": "fraesen/02.webp",
+     "caption": "Gib deine vierstellige PIN ein und tippe auf das grüne Häkchen.",
+     "hot": {
+      "x": 21.09375,
+      "y": 28.6796875,
+      "w": 8.853759765625,
+      "h": 10.25
+     }
+    },
+    {
+     "img": "fraesen/03.webp",
+     "caption": "Das Fräsen läuft nebenher. Du siehst es unten bei „Maschinenläufe“. Ist die Maschine fertig, tippe auf „Beenden“.",
+     "hot": {
+      "x": 86.328125,
+      "y": 47.572265625,
+      "w": 6.640625,
+      "h": 4.85546875
+     }
+    },
+    {
+     "img": "fraesen/04.webp",
+     "caption": "„Jetzt beenden“ nimmt die aktuelle Uhrzeit. War die Maschine schon früher fertig, trägst du darunter die Uhrzeit ein.",
+     "hot": {
+      "x": 21.71875,
+      "y": 46.1015625,
+      "w": 11.53076171875,
+      "h": 7.75
+     }
+    },
+    {
+     "img": "fraesen/05.webp",
+     "caption": "Als Erstes: Wie viele Aufspannungen hat dieses Teil? Beim letzten Mal waren es 2 (hervorgehoben).",
+     "hot": {
+      "x": 36.312255859375,
+      "y": 38.88671875,
+      "w": 9.124755859375,
+      "h": 11.75
+     }
+    },
+    {
+     "img": "fraesen/06.webp",
+     "caption": "Ist die erste Aufspannung fertig, tippe auf „Ja“.",
+     "hot": {
+      "x": 27.187499999999996,
+      "y": 47.794921875,
+      "w": 22.8125,
+      "h": 12.25
+     }
+    },
+    {
+     "img": "fraesen/07.webp",
+     "caption": "Wähle die Aufspannung, deren Zeit du eintragen willst.",
+     "hot": {
+      "x": 27.187499999999996,
+      "y": 45.9921875,
+      "w": 22.8125,
+      "h": 11.75
+     }
+    },
+    {
+     "img": "fraesen/08.webp",
+     "caption": "Bei einem Teil, das ihr schon gefertigt habt, steht die letzte Zeit als Vorschlag da. Ist das Programm gleich geblieben, tippe auf „Laufzeit unverändert“.",
+     "hot": {
+      "x": 27.187499999999996,
+      "y": 52.029296875,
+      "w": 22.8125,
+      "h": 10.25
+     }
+    },
+    {
+     "img": "fraesen/09.webp",
+     "caption": "Die zweite Aufspannung trägst du genauso ein. Du findest sie auf „Mein Arbeitsplatz“ unter „Noch nicht fertig gemeldet“.",
+     "hot": {
+      "x": 89.912109375,
+      "y": 47.59375,
+      "w": 6.962890625,
+      "h": 4.85546875
+     }
+    },
+    {
+     "img": "fraesen/10.webp",
+     "caption": "Bestätige: Die Aufspannung ist fertig.",
+     "hot": {
+      "x": 27.187499999999996,
+      "y": 47.794921875,
+      "w": 22.8125,
+      "h": 12.25
+     }
+    },
+    {
+     "img": "fraesen/11.webp",
+     "caption": "Hat sich das Programm geändert, tippe auf „Andere Zeit eingeben“.",
+     "hot": {
+      "x": 50,
+      "y": 52.029296875,
+      "w": 22.8125,
+      "h": 10.25
+     }
+    },
+    {
+     "img": "fraesen/12.webp",
+     "caption": "Trage die Programmlaufzeit ein, genau wie die Steuerung der Maschine sie anzeigt: Minuten und Sekunden eines vollen Durchlaufs.",
+     "hot": {
+      "x": 27.187499999999996,
+      "y": 34.126953125,
+      "w": 45.625,
+      "h": 10.60546875
+     }
+    },
+    {
+     "img": "fraesen/13.webp",
+     "caption": "Der Haken „Programm wurde geändert“ ist schon gesetzt, weil du eine andere Zeit eingibst. Lass ihn so, dann sieht die Kalkulation, dass die Zeit neu ist.",
+     "hot": {
+      "x": 27.187499999999996,
+      "y": 59.08789062499999,
+      "w": 45.625,
+      "h": 3.875
+     }
+    },
+    {
+     "img": "fraesen/14.webp",
+     "caption": "Tippe auf „Speichern“.",
+     "hot": {
+      "x": 27.187499999999996,
+      "y": 63.462890625,
+      "w": 45.625,
+      "h": 10.25
+     }
+    },
+    {
+     "img": "fraesen/15.webp",
+     "caption": "Sind alle Aufspannungen eingetragen, melde das Fräsen fertig. Damit gibt Odoo die QS frei.",
+     "hot": {
+      "x": 27.187499999999996,
+      "y": 48.794921875,
+      "w": 45.625,
+      "h": 10.25
+     }
+    },
+    {
+     "img": "fraesen/16.webp",
+     "caption": "Kommt kein weiterer Arbeitsschritt auf einer anderen Maschine dazu, tippe auf „Nein, fertig“.",
+     "hot": {
+      "x": 50,
+      "y": 51.939453125,
+      "w": 22.8125,
+      "h": 10.25
+     }
+    }
+   ]
+  }
+ ]
+}
