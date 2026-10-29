@@ -267,11 +267,12 @@ function ArbeitsplatzInner({ onGreet, goTo }) {
         <MachineRuns list={data.card && data.card.machine} now={now} odooUrl={data.odooUrl} canStop={operate || (data.me.leitung && data.write && !data.phone && !isPhoneView())} employeeId={own ? undefined : data.viewing.id} onChanged={load} />
       </section>
 
+      {/* Meine Aufgaben stehen direkt unter der Zeiterfassung, damit man sie im Blick hat */}
+      <Aufgaben viewId={viewId} canStamp={operate} onStamp={(fa) => setPicker({ tab: "suchen", q: fa })} />
+
       {operate && <LaufzeitOffen />}
 
       <Teile viewId={viewId} today={todayStr()} goTo={goTo} canStart={operate} onStart={(st) => run({ action: "start", workorderId: st.workorderId }, `${st.label} gestartet`)} />
-
-      <Aufgaben viewId={viewId} canStamp={operate} onStamp={(fa) => setPicker({ tab: "suchen", q: fa })} />
 
       <div className="btiles">
         <div className="card btile">
