@@ -330,6 +330,12 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [dragKey, orders, rates, defaults, monday0, todayOff, free, avDates]
   );
+  // Plan vor dem Ziehen, nur während des Ziehens berechnet: Vergleich für die Info-Zeile am Zeiger ("verschiebt 2 andere Aufträge")
+  const origPlan = useMemo(
+    () => (dragActive ? buildPlanDeps(withAv(orders), rates, defaults, monday0, todayOff, free) : null),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [dragActive, dragKey, orders, rates, defaults, monday0, todayOff, free, avDates]
+  );
   const groups = useMemo(() => buildGroups(viewOrders, plan, monday0, tightDays), [viewOrders, plan, monday0, tightDays]);
   // Die erste Position einer Maschine gilt als laufend: ihr Start wird automatisch eingetragen (änderbar)
   useEffect(() => {
@@ -552,6 +558,8 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
       sub: bar.sub,
       active: false,
       fromBoard: !!bar.fromBoard,
+      // Kopie des gegriffenen Zeitstrahl-Balkens, hängt beim Ziehen am Zeiger
+      html: bar.fromBoard ? null : e.currentTarget.outerHTML.replace(/\sdata-bar="[^"]*"/, "").replace(/\sdata-ids="[^"]*"/, ""),
       x: e.clientX,
       y: e.clientY,
       offX: e.clientX - r.left,
@@ -2622,7 +2630,7 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
             )}
           </div>
         </div>
-        <div className={`tl${dense ? " dense" : ""}${detailId != null ? " has-sel" : ""}`} style={{ "--n": total }}>
+        <div className={`tl${dense ? " dense" : ""}${detailId != null ? " has-sel" : ""}${dragActive ? " is-drag" : ""}`} style={{ "--n": total }}>
           <div className="tl-in" ref={tlRef}>
             <div className="tl-head">
               <div />
@@ -3484,12 +3492,75 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
         const go = draggedBar.fromBoard && draggedBar.ids.length === 1 ? orders.find((x) => x.id === draggedBar.ids[0]) : null;
         const gcol = go ? boardColumns.find((c) => c.id === go.machine) : null;
         const pos = { left: draggedBar.x - draggedBar.offX, top: draggedBar.y - draggedBar.offY, width: draggedBar.w };
-        if (go && gcol) return <div className="cardghost" style={pos}>{boardCardOf(go, gcol, true)}</div>;
-        return (
-          <div className="ghost" style={{ ...pos, height: draggedBar.h }}>
-            <b>{draggedBar.label}</b>
-            <span>{draggedBar.sub}</span>
+        // Info-Zeile am Zeiger: wohin, wann, pünktlich oder nicht, und was sich für andere Aufträge ändert (gleiche Planung wie beim Loslassen)
+        const info = (() => {
+          const t = draggedBar.target;
+          if (!t) return { tone: "mute", head: "Zum Ablegen auf eine Zeile oder Spalte ziehen", pill: null, line: null };
+          const isLane = LANE_IDS.includes(t.machine);
+          const place = isLane ? laneOf(t.machine).name : MACHINES.find((m) => m.id === t.machine)?.short;
+          const parts = [place];
+          const o0 = viewOrders.find((x) => x.id === draggedBar.ids[0]);
+          if (isLane) parts.push(`ab ${fmtShort(t.date)}`, o0 ? fmtDuration(daysIn(o0)) : "");
+          else {
+            const its = draggedBar.ids.map((id) => itemById.get(id)?.it).filter((it) => it && it.scheduled);
+            if (its.length) parts.push(`Start ${fmtShort(dateOf(Math.min(...its.map((i) => i.pastStart ?? i.start))))}`, `Ende ${fmtShort(endDateOf(Math.max(...its.map((i) => i.end))))}`);
+            else parts.push("noch keine Stunden eingetragen");
+          }
+          const g = o0 ? groupByKey.get(groupKeyOf(o0)) : null;
+          const pill = pillOf(g);
+          let moved = 0;
+          let newlyLate = 0;
+          if (origPlan && !isLane) {
+            const before = new Map();
+            origPlan.forEach((p) => p.items.forEach((i) => i.scheduled && before.set(i.o.id, i)));
+            plan.forEach((p) =>
+              p.items.forEach((i) => {
+                if (!i.scheduled || draggedBar.ids.includes(i.o.id)) return;
+                const a = before.get(i.o.id);
+                if (!a || Math.abs(a.end - i.end) <= 0.05) return;
+                moved += 1;
+                if (i.status === "late" && a.status !== "late") newlyLate += 1;
+              })
+            );
+          }
+          const line = isLane
+            ? null
+            : moved === 0
+              ? "Keine anderen Aufträge betroffen"
+              : `Verschiebt ${moved} ${moved === 1 ? "anderen Auftrag" : "andere Aufträge"}${newlyLate ? `, ${newlyLate} davon neu verspätet` : ""}`;
+          const tone = (pill && pill.cls === "bad") || newlyLate > 0 ? "bad" : pill && pill.cls === "warn" ? "warn" : "ok";
+          return { tone, head: parts.filter(Boolean).join(" · "), pill, line };
+        })();
+        const chipLeft = Math.max(8, Math.min(draggedBar.x + 16, window.innerWidth - 360));
+        const chip = (
+          <div className={`dragchip ${info.tone}`} style={{ left: chipLeft, top: draggedBar.y + 22 }}>
+            <b>{info.head}</b>
+            {info.pill && <span className={`pill ${info.pill.cls}`}>{info.pill.text}</span>}
+            {info.line && <span>{info.line}</span>}
           </div>
+        );
+        if (go && gcol)
+          return (
+            <>
+              <div className="cardghost" style={pos}>{boardCardOf(go, gcol, true)}</div>
+              {chip}
+            </>
+          );
+        if (draggedBar.html)
+          return (
+            <>
+              <div className="barghost" style={{ ...pos, height: draggedBar.h }} dangerouslySetInnerHTML={{ __html: draggedBar.html }} />
+              {chip}
+            </>
+          );
+        return (
+          <>
+            <div className="ghost" style={{ ...pos, height: draggedBar.h }}>
+              <b>{draggedBar.label}</b>
+              <span>{draggedBar.sub}</span>
+            </div>
+            {chip}
+          </>
         );
       })()}
       {layer}

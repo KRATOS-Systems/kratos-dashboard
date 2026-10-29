@@ -1231,3 +1231,16 @@ a.btn { text-decoration: none; }
 .bd-chips { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; }
 .bd-empty { padding: 18px 8px; text-align: center; color: var(--faint); font-size: 13px; border: 1px dashed var(--line-strong); border-radius: 11px; }
 @media (max-width: 760px) { .bd-cols { grid-auto-flow: row; grid-auto-columns: unset; grid-template-columns: 1fr; } .bd-body { max-height: none; } }
+
+/* Ziehen im Zeitstrahl und im Board: Kopie am Zeiger, Lücke an der Einfügestelle, Info-Zeile mit den Folgen */
+.barghost { position: fixed; z-index: 1000; pointer-events: none; opacity: .94; transform: rotate(-1deg); filter: drop-shadow(0 14px 22px rgba(0,0,0,.4)); }
+.barghost .bar { position: static !important; left: auto !important; top: auto !important; width: 100% !important; height: 100% !important; min-width: 0 !important; transform: none !important; animation: none !important; transition: none !important; z-index: auto !important; opacity: 1 !important; }
+.bar.dragged { opacity: 1; background: color-mix(in srgb, var(--mc) 10%, transparent); outline: 2px dashed var(--mc); outline-offset: -2px; box-shadow: -5px 0 0 0 var(--mc); }
+.bar.dragged > * { visibility: hidden; }
+.tl.is-drag .bar { transition: left .2s ease, width .2s ease, transform .15s ease, box-shadow .15s ease, background .15s ease, opacity .2s ease; }
+.dragchip { position: fixed; z-index: 1001; pointer-events: none; max-width: 340px; display: flex; flex-direction: column; align-items: flex-start; gap: 5px; padding: 8px 11px; border-radius: 10px; background: var(--ink); color: var(--bg); font-size: 12.5px; line-height: 1.3; box-shadow: 0 10px 26px rgba(0,0,0,.4); }
+.dragchip b { font: 600 13px var(--f-body); }
+.dragchip.bad { box-shadow: 0 0 0 2px var(--bad), 0 10px 26px rgba(0,0,0,.4); }
+.dragchip.warn { box-shadow: 0 0 0 2px var(--warn), 0 10px 26px rgba(0,0,0,.4); }
+.dragchip.ok { box-shadow: 0 0 0 2px var(--ok), 0 10px 26px rgba(0,0,0,.4); }
+.dragchip.mute b { font-weight: 500; }
