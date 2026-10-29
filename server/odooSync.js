@@ -11,9 +11,16 @@
 // - Fremdfertigung: Eine bestätigte Einkaufsbestellung zu einem Kundenauftrag (A-Nummer), bei der das bestellte Teil das verkaufte Teil ist,
 //   kommt automatisch in die Spur "Fertigung extern" (Beginn = Bestätigung, Ende = Liefertermin des Lieferanten). Zum Schließen
 //   vorgeschlagen, sobald die Ware eingegangen ist.
+// - Lücken: Steht ein Auftrag in der Odoo-Fertigungsplanung (Projekt "01 Fertigungsplanung") offen auf einer Station, hat aber einen offenen
+//   Fertigungsauftrag, den die App nicht kennt (z. B. weil er schon beim ersten Abgleich offen war), wird er einmalig ergänzt und auf
+//   die Maschine gelegt, auf der die Aufgabe in Odoo steht (sonst "Noch nicht eingeplant"). Was die App schon kennt, bleibt unberührt.
 // Odoo wird nur gelesen, und nur wenn ODOO_URL und ODOO_API_KEY gesetzt sind.
 
 const OPEN_STATES = ["confirmed", "progress", "to_close"];
+const PLANNING_PROJECT = "01 Fertigungsplanung";
+const TASK_OPEN_STATES = ["01_in_progress", "02_changes_requested", "03_approved", "04_waiting_normal"];
+const FINAL_STAGES = new Set(["Geliefert & Abgerechnet", "Nachkalkulation"]);
+const STAGE_MACHINE = { "DMG M1": "m1", "DMG 40 EVO": "dmu40", "POS H 800U": "h800u", "DMG DMU 50": "dmu50", "DMU 50": "dmu50" };
 const EVERY = 10 * 60 * 1000;
 const EXT_OFFSET = 1000000000; // Einkaufspositionen liegen in odoo_seen oberhalb dieser Zahl, getrennt von den Fertigungsaufträgen
 const FRESH_DAYS = 3; // beim ersten Abgleich gelten Aufträge, die in den letzten Tagen angelegt wurden, als neu
@@ -78,6 +85,32 @@ export default function registerOdooSync(app, db, { isDate, nextPosition }) {
         saleCancelled: !!sale && sale.state === "cancel",
       };
     });
+  }
+
+  // Aufträge (A-Nummern), die in der Odoo-Fertigungsplanung offen auf einer Station stehen: A-Nummer -> Maschine der App ("" = keine bekannte Maschine).
+  // Gibt es zu einem Auftrag mehrere Aufgaben (Kopien), gilt die Aufgabe ohne "(Kopie)".
+  async function fetchPlanningSources() {
+    const projects = await odoo("project.project", "search_read", { domain: [["name", "=", PLANNING_PROJECT]], fields: ["name"], limit: 1 });
+    if (!Array.isArray(projects) || !projects.length) return new Map();
+    const tasks = await odoo("project.task", "search_read", {
+      domain: [["project_id", "=", projects[0].id], ["state", "in", TASK_OPEN_STATES]],
+      fields: ["name", "stage_id", "sale_order_id"],
+      limit: 1000,
+    });
+    const best = new Map(); // A-Nummer -> { machine, isCopy }
+    tasks.forEach((t) => {
+      const stage = Array.isArray(t.stage_id) ? String(t.stage_id[1]) : "";
+      if (!stage || FINAL_STAGES.has(stage)) return;
+      const fromSale = Array.isArray(t.sale_order_id) ? String(t.sale_order_id[1]).trim() : "";
+      const fromName = /^\s*(A\d{3,})\b/.exec(String(t.name || ""));
+      const source = /^[A-Z]\d{3,}$/.test(fromSale) ? fromSale : fromName ? fromName[1] : null;
+      if (!source) return;
+      const cand = { machine: STAGE_MACHINE[stage] || "", isCopy: /\(Kopie\)/i.test(String(t.name || "")) };
+      const cur = best.get(source);
+      // Eine Aufgabe ohne "(Kopie)" geht vor, bei gleichem Rang die mit bekannter Maschine
+      if (!cur || (cur.isCopy && !cand.isCopy) || (cur.isCopy === cand.isCopy && !cur.machine && cand.machine)) best.set(source, cand);
+    });
+    return new Map([...best].map(([source, c]) => [source, c.machine]));
   }
 
   // Fremdgefertigte Teile: Einkaufsbestellungen zu Kundenaufträgen, bei denen das bestellte Teil das verkaufte ist (kein Materialeinkauf)
@@ -211,12 +244,25 @@ export default function registerOdooSync(app, db, { isDate, nextPosition }) {
   }
 
   // Was würde passieren? (ohne etwas zu schreiben)
-  function computePlan(items) {
+  // wanted: A-Nummer -> Maschine aus der Odoo-Fertigungsplanung. Ein offener Fertigungsauftrag, den die App nicht kennt und der beim ersten
+  // Abgleich nur als "bekannt" gemerkt wurde, wird einmalig ergänzt, wenn sein Auftrag dort offen steht.
+  function computePlan(items, wanted = new Map()) {
     const seen = new Set(db.prepare("SELECT odoo_id FROM odoo_seen").all().map((r) => r.odoo_id));
     const inApp = new Map(db.prepare("SELECT id, odoo_ref, odoo_id, done, source, product FROM orders WHERE odoo_ref LIKE 'FA%'").all().map((r) => [r.odoo_ref, r]));
     const openIds = new Set(items.map((i) => i.odoo_ref));
     const byRef = new Map(items.map((i) => [i.odoo_ref, i]));
-    const created = items.filter((i) => !inApp.has(i.odoo_ref) && !seen.has(i.odoo_id) && !i.delivered && !i.saleCancelled);
+    let gapDone = new Set();
+    try {
+      gapDone = new Set(JSON.parse(getState("gap_done") || "[]"));
+    } catch {
+      gapDone = new Set();
+    }
+    const isGap = (i) => seen.has(i.odoo_id) && !gapDone.has(i.odoo_id) && !!i.source && wanted.has(i.source);
+    const created = items.filter((i) => !inApp.has(i.odoo_ref) && (!seen.has(i.odoo_id) || isGap(i)) && !i.delivered && !i.saleCancelled);
+    created.forEach((i) => {
+      i.gap = isGap(i);
+      i.machine = i.gap ? wanted.get(i.source) || "" : "";
+    });
     const updated = items.filter((i) => inApp.has(i.odoo_ref) && inApp.get(i.odoo_ref).done === 0);
     const closing = [];
     inApp.forEach((r, ref) => {
@@ -232,7 +278,7 @@ export default function registerOdooSync(app, db, { isDate, nextPosition }) {
 
   function applyPlan(plan, { closeRefs = [], markAllSeen = false } = {}) {
     const insert = db.prepare(
-      "INSERT INTO orders (machine, order_no, due_date, position, odoo_ref, source, product, quantity, odoo_id, component_status, extern_days) VALUES ('', ?, ?, ?, ?, ?, ?, ?, ?, ?, 7)"
+      "INSERT INTO orders (machine, order_no, due_date, position, odoo_ref, source, product, quantity, odoo_id, component_status, extern_days) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 7)"
     );
     const update = db.prepare(
       "UPDATE orders SET source = COALESCE(?, source), product = COALESCE(?, product), quantity = CASE WHEN is_split = 1 THEN quantity ELSE COALESCE(?, quantity) END, odoo_id = COALESCE(?, odoo_id), component_status = ? WHERE odoo_ref = ? AND done = 0"
@@ -250,11 +296,29 @@ export default function registerOdooSync(app, db, { isDate, nextPosition }) {
     const now = new Date().toISOString();
     db.exec("BEGIN");
     try {
-      let position = nextPosition("");
+      const nextPos = new Map();
+      const takePosition = (machine) => {
+        if (!nextPos.has(machine)) nextPos.set(machine, nextPosition(machine));
+        const p = nextPos.get(machine);
+        nextPos.set(machine, p + 1);
+        return p;
+      };
+      const gapIds = [];
       plan.created.forEach((i) => {
-        insert.run(i.odoo_ref, (i.source && dueBySource.get(i.source)) || i.due, position++, i.odoo_ref, i.source, i.product, i.quantity, i.odoo_id, i.component_status);
+        const machine = i.gap ? i.machine || "" : "";
+        insert.run(machine, i.odoo_ref, (i.source && dueBySource.get(i.source)) || i.due, takePosition(machine), i.odoo_ref, i.source, i.product, i.quantity, i.odoo_id, i.component_status);
         seen.run(i.odoo_id, now);
+        if (i.gap) gapIds.push(i.odoo_id);
       });
+      if (gapIds.length) {
+        let done = [];
+        try {
+          done = JSON.parse(getState("gap_done") || "[]");
+        } catch {
+          done = [];
+        }
+        setState("gap_done", JSON.stringify([...new Set([...done, ...gapIds])]));
+      }
       plan.updated.forEach((i) => update.run(i.source, i.product, i.quantity, i.odoo_id, i.component_status, i.odoo_ref));
       closeRefs.forEach((ref) => close.run(ref, ref));
       if (markAllSeen) plan.all.forEach((i) => seenOld.run(i.odoo_id));
@@ -283,7 +347,17 @@ export default function registerOdooSync(app, db, { isDate, nextPosition }) {
       }
       const extCreated = () => (extX ? extX.created.map((e) => ({ ref: e.odoo_ref, source: e.source, product: e.product, quantity: e.quantity, due: e.due, supplier: e.supplier })) : []);
       const baseline = getState("baseline_done") !== "1";
-      const plan = computePlan(items);
+      // Aufträge aus der Odoo-Fertigungsplanung; schlägt das fehl (z. B. keine Rechte auf Projekte), läuft der Abgleich wie bisher
+      let wanted = new Map();
+      if (!baseline) {
+        try {
+          wanted = await fetchPlanningSources();
+          setState("gap_error", null);
+        } catch (err) {
+          setState("gap_error", err.message);
+        }
+      }
+      const plan = computePlan(items, wanted);
       plan.all = items;
       if (baseline) {
         // Erster Abgleich: alle alten offenen Aufträge sind "bekannt". Was in den letzten Tagen neu angelegt wurde, kommt als neu in die Liste.
@@ -352,7 +426,10 @@ export default function registerOdooSync(app, db, { isDate, nextPosition }) {
       baselineDone: getState("baseline_done") === "1",
       lastSync: getState("last_sync"),
       lastChange: getState("last_change"),
-      lastError: getState("last_error") || (getState("ext_error") ? "Einkauf (Fremdfertigung): " + getState("ext_error") : null),
+      lastError:
+        getState("last_error") ||
+        (getState("ext_error") ? "Einkauf (Fremdfertigung): " + getState("ext_error") : null) ||
+        (getState("gap_error") ? "Odoo-Planungsliste: " + getState("gap_error") : null),
       pendingClosing: pending,
     });
   });
