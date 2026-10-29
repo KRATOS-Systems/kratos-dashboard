@@ -17,6 +17,7 @@ import {
   byPosition,
   days,
   doneHoursOf,
+  remainingOf,
   metaLine,
   ODOO_URL,
   ODOO_PO_URL,
@@ -165,6 +166,9 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
   const laneTracks = useRef({});
   const lastDragEnd = useRef(0);
   const latest = useRef({});
+  const boardCols = useRef({}); // Spalten des Maschinen-Boards unten (Ziel beim Ziehen, wie die Zeilen im Zeitstrahl)
+  const [boardQuery, setBoardQuery] = useState("");
+  const [boardFilter, setBoardFilter] = useState("alle"); // alle | spaet | neu
   const tlRef = useRef(null);
   const tipRef = useRef(null);
 
@@ -356,7 +360,7 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
   // Auf das Sichtfenster zugeschnitten; cutL/cutR = der Balken läuft links/rechts über den Rand
   const span = (a, b) => ({ cs: Math.max(a, viewStart), ce: Math.min(b, viewEnd), cutL: a < viewStart, cutR: b > viewEnd });
 
-  latest.current = { orders, basePlan, total, viewStart, monday0, detailId };
+  latest.current = { orders, basePlan, total, viewStart, monday0, detailId, today };
 
   // Klick neben die Balken: aufgeklappte Blöcke wieder zusammenfassen
   const clearSelection = (e) => {
@@ -369,9 +373,32 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
   useEffect(() => {
     if (!dragging) return undefined;
 
-    const findTarget = (x, y) => {
+    const findTarget = (x, y, ids) => {
       const { basePlan: base, total: t, viewStart: v0, monday0: m0 } = latest.current;
       if (!base) return null;
+      // Maschinen-Board unten: dieselbe Logik wie im Zeitstrahl, nur dass die Einfügeposition aus der Reihenfolge der Karten kommt.
+      // In QS und Extern beginnt die Position heute (wie beim Verschieben per Knopf); liegt sie schon dort, bleibt alles wie es ist.
+      const dragged = ids || [];
+      for (const [id, el] of Object.entries(boardCols.current)) {
+        if (!el) continue;
+        const r = el.getBoundingClientRect();
+        if (x < r.left || x > r.right || y < r.top || y > r.bottom) continue;
+        if (LANE_IDS.includes(id)) {
+          const cur = latest.current.orders;
+          if (dragged.length > 0 && dragged.every((oid) => cur.find((o) => o.id === oid)?.machine === id)) return null;
+          return { machine: id, date: latest.current.today };
+        }
+        const cards = [...el.querySelectorAll("[data-card]")].filter((c) => !dragged.includes(Number(c.dataset.card)));
+        let index = cards.length;
+        for (let k = 0; k < cards.length; k++) {
+          const cr = cards[k].getBoundingClientRect();
+          if (y < cr.top + cr.height / 2) {
+            index = k;
+            break;
+          }
+        }
+        return { machine: id, index };
+      }
       // Orte (QS, Extern …): der Tag, an dem losgelassen wird, ist der Beginn dort
       for (const lane of LANES) {
         const ex = laneTracks.current[lane.id];
@@ -405,7 +432,7 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
       if (!i) return;
       if (!i.active && Math.hypot(e.clientX - i.startX, e.clientY - i.startY) < DRAG_THRESHOLD) return;
       i.active = true;
-      const target = findTarget(e.clientX, e.clientY);
+      const target = findTarget(e.clientX, e.clientY, i.ids);
       setDrag((d) => d && { ...d, active: true, x: e.clientX, y: e.clientY, target });
     };
 
@@ -427,7 +454,7 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
         return;
       }
       lastDragEnd.current = Date.now();
-      const target = findTarget(e.clientX, e.clientY);
+      const target = findTarget(e.clientX, e.clientY, i.ids);
       if (!target) return;
       const current = latest.current.orders;
       if (LANE_IDS.includes(target.machine)) {
@@ -2784,6 +2811,131 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
     </div>
   );
 
+  // ---------- Maschinen-Board: jede Zeile des Zeitstrahls ist unten eine Spalte (spiegelbildlich) ----------
+  // Karten ziehen funktioniert wie im Zeitstrahl (gleiche Planung, gleiches Speichern). Mit Suche oder Filter ist das Ziehen aus, weil
+  // dann nicht alle Karten sichtbar sind und die Einfügeposition nicht stimmen würde.
+  const boardDrag = boardQuery.trim() === "" && boardFilter === "alle";
+  const boardNeedle = boardQuery.trim().toLowerCase();
+  const isLateOrder = (o) => {
+    const g = groupByKey.get(groupKeyOf(o));
+    return !!g && g.status === "late";
+  };
+  const boardColumns = [
+    ...MACHINES.map((m) => ({ id: m.id, name: m.short, sub: m.name, c: m.c, img: m.img, imgZoom: m.imgZoom, machine: true })),
+    ...LANES.map((l) => ({ id: l.id, name: l.name, sub: l.cap, c: l.c, machine: false })),
+  ].map((col) => {
+    const all = viewOrders
+      .filter((o) => o.machine === col.id && !o.done)
+      .sort(col.machine ? byPosition : (a, b) => (a.extern_start || "").localeCompare(b.extern_start || "") || byPosition(a, b));
+    const cards = all.filter((o) => {
+      if (boardFilter === "spaet" && !isLateOrder(o)) return false;
+      if (boardFilter === "neu" && !isNewPlan(o)) return false;
+      if (!boardNeedle) return true;
+      return [o.order_no, o.source, o.product, o.part_label].some((s) => s && String(s).toLowerCase().includes(boardNeedle));
+    });
+    return { ...col, all, cards, hours: col.machine ? all.reduce((s, o) => s + remainingOf(o), 0) : 0, late: all.filter(isLateOrder).length };
+  });
+  const boardCardOf = (o, col) => {
+    const g = groupByKey.get(groupKeyOf(o));
+    const it = col.machine ? itemById.get(o.id)?.it : null;
+    const pill = pillOf(g);
+    const av = avPill(o.id);
+    const dd = o.due ? daysBetween(today, o.due) : null;
+    const dueText = dd == null ? "ohne Liefertermin" : dd === 0 ? "Liefertermin heute" : dd > 0 ? `Liefertermin in ${days(dd)} (${fmtShort(o.due)})` : `Liefertermin seit ${days(-dd)} überschritten (${fmtShort(o.due)})`;
+    let when;
+    if (col.machine) {
+      if (!(o.hours > 0)) when = "Stunden fehlen";
+      else if (it && it.scheduled) when = `${fmtShort(dateOf(it.pastStart ?? it.start))} bis ${fmtShort(endDateOf(it.end))}`;
+      else when = "Arbeit erledigt";
+    } else when = o.extern_start ? `ab ${fmtShort(o.extern_start)} · ${fmtDuration(daysIn(o))}` : "ohne Beginn";
+    const waiting = it && it.scheduled && it.waitFrom != null && it.start > it.waitFrom ? waitShort(it) : null;
+    const dragged = dragActive && drag.ids.includes(o.id);
+    return (
+      <div
+        key={o.id}
+        data-card={o.id}
+        className={`bd-card${boardDrag ? " can" : ""}${dragged ? " dragging" : ""}${detailId === o.id || (laneDetail && laneDetail.includes(o.id)) ? " sel" : ""}`}
+        title={dueText}
+        onPointerDown={
+          boardDrag
+            ? (e) => startDrag(e, { ids: [o.id], label: o.source || posNo(o), sub: o.product || "", toggle: null, ...(col.machine ? { select: o.id } : { laneSelect: [o.id] }) })
+            : undefined
+        }
+        onClick={boardDrag ? undefined : () => openDetail(o.id)}
+      >
+        <div className="bd-top">
+          <Thumb src={partImg(o)} size={36} />
+          <div className="bd-title">
+            <b>{o.source || posNo(o)}</b>
+            {isNewPlan(o) && <span className="newpill" title="Neu aus Odoo übernommen">NEU</span>}
+            <span className="bd-no">{o.source ? posNo(o) : ""}</span>
+          </div>
+        </div>
+        {o.product && <div className="bd-prod">{o.product}</div>}
+        <div className="bd-facts">
+          {o.quantity != null && <span>{fmtH(o.quantity)} Stück</span>}
+          {o.hours > 0 && <span>{fmtH(round1(o.hours))} h</span>}
+          <span className="bd-when">{when}</span>
+        </div>
+        {it && it.percent != null && (
+          <div className="bd-bar" title={`${it.percent} % erledigt`}>
+            <i style={{ width: `${it.percent}%` }} />
+          </div>
+        )}
+        <div className="bd-chips">
+          {pill ? <span className={`pill ${pill.cls}`}>{pill.text}</span> : <span className="pill mute">{dd == null ? "kein Termin" : `Termin ${fmtShort(o.due)}`}</span>}
+          <span className={`av ${av.s.ready ? "bereit" : ""}`} title={av.s.ready ? "Arbeitsvorbereitung bereit" : `Arbeitsvorbereitung: fehlt ${av.s.open.map((s) => s.label).join(", ")}`}>
+            AV {av.done}/{av.total}
+          </span>
+          {waiting && <span className="pill warn">{waiting}</span>}
+        </div>
+      </div>
+    );
+  };
+  const boardCard = (
+    <div className="card" id="board">
+      <div className="sec-head">
+        <div>
+          <h2>Maschinen-Board</h2>
+          <p>Alle offenen Positionen je Station, in der Reihenfolge des Zeitstrahls. Karte ziehen verschiebt wie im Zeitstrahl, anklicken öffnet die Details.</p>
+        </div>
+        <div className="bd-tools">
+          <input className="bd-search" type="search" placeholder="Suchen: Auftrag, Artikel …" value={boardQuery} onChange={(e) => setBoardQuery(e.target.value)} aria-label="Im Board suchen" />
+          <div className="seg" role="group" aria-label="Filter">
+            {[["alle", "Alle"], ["spaet", "Verspätet"], ["neu", "Neu"]].map(([k, label]) => (
+              <button key={k} type="button" className={boardFilter === k ? "on" : ""} onClick={() => setBoardFilter(k)}>
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+      {!boardDrag && <div className="bd-hint">Mit Suche oder Filter ist das Verschieben ausgeschaltet. Zum Ziehen Suche und Filter zurücksetzen.</div>}
+      <div className="bd-cols">
+        {boardColumns.map((col) => (
+          <div key={col.id} className="bd-col" style={{ "--c": col.c }}>
+            <div className="bd-head">
+              {col.machine ? <MTile c={col.c} img={col.img} imgZoom={col.imgZoom} size={36} title={col.sub} /> : <i className="bd-dot" />}
+              <div className="bd-name">
+                <b>{col.name}</b>
+                <span>{col.sub}</span>
+              </div>
+              <span className="pill mute">{col.all.length}</span>
+            </div>
+            <div className="bd-sum">
+              {col.machine && <span>{fmtH(round1(col.hours))} h offen</span>}
+              {col.late > 0 && <span className="pill bad">{col.late} verspätet</span>}
+            </div>
+            <div ref={(el) => (boardCols.current[col.id] = el)} className={`bd-body${dragActive && drag.target?.machine === col.id ? " droptarget" : ""}`}>
+              {col.cards.map((o) => boardCardOf(o, col))}
+              {col.cards.length === 0 && <div className="bd-empty">{col.all.length === 0 ? "Keine Aufträge" : "Nichts gefunden"}</div>}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+
   // ---------- Aufträge im Überblick ----------
   const ordersCard = (
     <div className="card">
@@ -3282,6 +3434,7 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
         <>
           <div className="rise" style={{ "--i": 3 }}>{timeline}</div>
           <div className="rise" style={{ "--i": 4 }}>{poolCard}</div>
+          <div className="rise" style={{ "--i": 5 }}>{boardCard}</div>
         </>
       )}
       {tab === "auf" && <div className="rise" style={{ "--i": 3 }}>{ordersCard}</div>}
