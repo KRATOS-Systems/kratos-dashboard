@@ -14,7 +14,7 @@ import { avKey, avSummary } from "../src/avLib.js";
 import { labelOf, m2o } from "./bde.js";
 
 const MACHINES = [
-  { id: "dmu40", name: "DMU 40 eVo" },
+  { id: "dmu40", name: "DMU 40 EVO" },
   { id: "dmu50", name: "DMU 50" },
   { id: "m1", name: "M1" },
   { id: "h800u", name: "POS H800U" },

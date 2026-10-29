@@ -23,7 +23,7 @@ const PLAN_PAGES = ["planung", "av"];
 const readHash = () => window.location.hash.replace(/^#/, "");
 const readPage = () => {
   const id = readHash().split("/")[0];
-  return id === "kiosk" || PAGES.some((p) => p.id === id) ? id : "planung";
+  return id === "kiosk" || id === "hilfe" || PAGES.some((p) => p.id === id) ? id : "planung";
 };
 const readKiosk = () => readHash() === "team/vollbild" || readHash() === "kiosk";
 
@@ -74,7 +74,7 @@ export default function App() {
     return () => clearTimeout(t);
   }, [anim, page]);
   useEffect(() => {
-    document.title = page === "kiosk" ? "Kratos Kiosk" : `Kratos ${PAGES.find((p) => p.id === page).label}`;
+    document.title = page === "kiosk" ? "Kratos Kiosk" : page === "hilfe" ? "Kratos Hilfe" : `Kratos ${PAGES.find((p) => p.id === page).label}`;
     window.scrollTo(0, 0);
   }, [page]);
   const goTo = useCallback((id) => {
@@ -231,6 +231,10 @@ export default function App() {
                 </span>
               )}
             </button>
+            <button type="button" className={`ghost-dark${page === "hilfe" ? " on" : ""}`} aria-label="Hilfe" onClick={() => goTo("hilfe")}>
+              <Ico n="help" />
+              <span className="lbl">Hilfe</span>
+            </button>
             <button type="button" className="ghost-dark" onClick={() => setShowData(true)}>
               <Ico n="save" />
               <span className="lbl">Datensicherung</span>
@@ -265,6 +269,7 @@ export default function App() {
           {page === "team" && <Team kiosk={kiosk} goTo={goTo} />}
           {page === "platz" && <Arbeitsplatz goTo={goTo} />}
           {page === "kiosk" && <Kiosk />}
+          {page === "hilfe" && <iframe className="help-frame" title="Hilfe und Anleitungen" src={`/anleitung/?embed=1${readHash().split("/")[1] ? "#" + readHash().split("/")[1] : ""}`} />}
           {page === "dashboard" && capLoaded && <Dashboard weekCap={weekCap} saveCapacity={saveCapacity} today={today} shared={shared} openTalos={(q) => { setTalosQ(q); setShowSearch(true); }} />}
         </main>
       </div>

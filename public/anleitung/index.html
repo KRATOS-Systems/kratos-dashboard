@@ -14,6 +14,9 @@
   }
   :root[data-theme="dark"] { --bg: #0D1014; --surface: #151A20; --sunken: #1B2128; --line: #262D36; --ink: #E9ECF0; --muted: #9AA4B0; --accent: #FF6B76; --hot: #F5B301; --ok: #34C27A; color-scheme: dark; }
   * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  .embed a.btn.toapp { display: none; }
+  .embed .wrap { padding-top: 6px; }
   body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
   .wrap { max-width: 1280px; margin: 0 auto; padding: 18px max(16px, env(safe-area-inset-left, 0px)) 40px max(16px, env(safe-area-inset-right, 0px)); }
   header { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 18px; }
@@ -56,12 +59,16 @@
 </style>
 </head>
 <body>
+<script>
+  try { var t = localStorage.getItem("kratos-dashboard-theme"); if (t === "light" || t === "dark") document.documentElement.setAttribute("data-theme", t); } catch (e) {}
+  if (/[?&]embed=1/.test(location.search)) document.documentElement.classList.add("embed");
+</script>
 <div class="wrap">
   <header>
     <h1 id="ttl">Anleitung Produktions-App</h1>
     <span class="sp"></span>
     <button class="btn" id="home" hidden>Alle Anleitungen</button>
-    <a class="btn" href="/">Zur App</a>
+    <a class="btn toapp" href="/">Zur App</a>
   </header>
   <main id="main"></main>
 </div>

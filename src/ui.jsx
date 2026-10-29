@@ -56,6 +56,7 @@ const IC = {
   up: '<path d="M12 19V7M6 11l6-6 6 6"/>',
   down: '<path d="M12 4v12M6 12l6 6 6-6"/>',
   search: '<circle cx="11" cy="11" r="6"/><path d="M20 20l-4-4"/>',
+  help: '<circle cx="12" cy="12" r="9"/><path d="M9.6 9.4a2.5 2.5 0 1 1 3.6 2.2c-.8.4-1.2 1-1.2 1.9M12 17h.01"/>',
   sun: '<circle cx="12" cy="12" r="4"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6L7 7M17 17l1.4 1.4M5.6 18.4L7 17M17 7l1.4-1.4"/>',
   moon: '<path d="M20 14A8 8 0 0 1 10 4a8 8 0 1 0 10 10z"/>',
   check: '<path d="M5 12l5 5 9-10"/>',
