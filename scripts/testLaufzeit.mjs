@@ -166,6 +166,18 @@ try {
   assert.deepEqual(wlog, ['mrp.workorder.write(6533, {"duration":20})'], "nur der Testaufbau (gestempelte Dauer) schreibt direkt");
   ok("Anzahl und 3 Zeilen für Aufspannung 1 und 2 stehen als Notizen im Fertigungsauftrag; die App schreibt sonst nichts in Odoo");
 
+  // Notizen, die Odoo samt HTML-Zeichen als Text gespeichert hat (so war es live), sind lesbar
+  const mkE = async (model, v) => (await fetch(`http://localhost:${ODOO_PORT}/json/2/${model}/create`, { method: "POST", headers: { Authorization: "bearer test", "Content-Type": "application/json" }, body: JSON.stringify({ vals_list: [v] }) }).then((x) => x.json()))[0];
+  const alt = await mkE("mrp.production", { name: "FA07777", state: "progress", origin: "A07777", product_id: 2901, product_qty: 3 });
+  const altWo = await mkE("mrp.workorder", { name: "Fräsen", production_id: alt, workcenter_id: 14, product_id: 2901, state: "ready", sequence: 2 });
+  await mkE("mail.message", { model: "mrp.production", res_id: alt, message_type: "comment", author_id: 3, date: "2026-10-29 10:00:00", body: "<p>&lt;p&gt;&lt;b&gt;Aufspannungen (DMU 40 EVO):&lt;/b&gt; 3 (Nino Posset, 29.10.2026)&lt;/p&gt;</p>" });
+  await mkE("mail.message", { model: "mrp.production", res_id: alt, message_type: "comment", author_id: 3, date: "2026-10-29 10:05:00", body: "<p>&lt;p&gt;&lt;b&gt;Laufzeit Aufspannung 1 (DMU 40 EVO):&lt;/b&gt; 7:30 Min:Sek für 2 Teile = 3:45 je Stück (Nino Posset, 29.10.2026)&lt;/p&gt;</p>" });
+  const altSt = await api("GET", `/api/bde/laufzeit?workorderId=${altWo}`);
+  assert.equal(altSt.anzahl, 3);
+  assert.deepEqual(altSt.rows.map((x) => [x.nr, x.minutes, x.teile, x.who]), [[1, 7.5, 2, "Nino Posset"]]);
+  assert.deepEqual(altSt.open, [2, 3]);
+  ok("Notizen mit von Odoo maskierten HTML-Zeichen (wie live) werden gelesen: Anzahl 3, Aufspannung 1 erfasst, 2 und 3 offen");
+
   // Von Hand verunstaltete oder fremde Notizen stören nicht
   await fetch(`http://localhost:${ODOO_PORT}/json/2/mrp.production/message_post`, {
     method: "POST",

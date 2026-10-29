@@ -1,7 +1,7 @@
 // Arbeitsgänge fertig melden, Fertigungsauftrag abschließen, weiterer Arbeitsschritt auf einer anderen Maschine und die Programmlaufzeit je Aufspannung (Fräsen).
 //
 // Laufzeit: Mehrere Aufspannungen bleiben EIN Arbeitsgang "Fräsen" je Maschine in Odoo. Die Zeiten stehen als interne Notizen im Verlauf des
-// Fertigungsauftrags, eine Zeile je Eintrag in festem Aufbau (keine eigenen Odoo-Felder oder -Modelle, nichts muss in Odoo eingerichtet werden):
+// Fertigungsauftrags (als reiner Text: Odoo schützt Text, der über die Schnittstelle kommt, und zeigt HTML-Zeichen sonst als Buchstaben), eine Zeile je Eintrag in festem Aufbau (keine eigenen Odoo-Felder oder -Modelle, nichts muss in Odoo eingerichtet werden):
 //   "Aufspannungen (DMU 40 EVO): 3 (Aurel Rama, 29.10.2026)"
 //   "Laufzeit Aufspannung 2 (DMU 40 EVO): 12:00 Min:Sek für 2 Teile = 6:00 je Stück (Aurel Rama, 29.10.2026[, Programm geändert | , unverändert])"
 // Die Maschine in Klammern ist der Arbeitsplatz des Fräsen-Arbeitsgangs. Aufspannung 1, 2 ... zählt je Maschine. Je Maschine und Aufspannung
@@ -25,20 +25,14 @@ const mmss = (min) => {
   const s = Math.round(min * 60);
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 };
-const escHtml = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 // Notiz-HTML aus Odoo -> reiner Text
-const plain = (html) =>
-  String(html || "")
-    .replace(/<br\s*\/?>/gi, " ")
-    .replace(/<[^>]+>/g, "")
-    .replace(/&nbsp;/g, " ")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&#0*39;/g, "'")
-    .replace(/&amp;/g, "&")
-    .replace(/\s+/g, " ")
-    .trim();
+const strip = (t) => String(t).replace(/<br\s*\/?>/gi, " ").replace(/<[^>]+>/g, "");
+const unescape = (t) => String(t).replace(/&nbsp;/g, " ").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#0*39;/g, "'").replace(/&amp;/g, "&");
+// Zuerst die Auszeichnung entfernen, dann die maskierten Zeichen zurückwandeln und noch einmal entfernen: so sind auch Notizen lesbar, die Odoo samt
+// ihrer HTML-Zeichen als Text gespeichert hat ("&lt;p&gt;&lt;b&gt;Aufspannungen ...")
+const plain = (html) => strip(unescape(strip(html || "")))
+  .replace(/\s+/g, " ")
+  .trim();
 const RE_ANZAHL = /Aufspannungen(?: \(([^)]+)\))?:\s*(\d+)/;
 const RE_ZEILE = /Laufzeit Aufspannung (\d+)(?: \(([^)]+)\))?:\s*(\d+):(\d{2})(?:\D+?(\d+)\s*Teil)?/;
 const RE_VON = /\(([^,)]+),/;
@@ -171,7 +165,7 @@ export default function registerBdeLaufzeit(app, ctx) {
   }
 
   // Notiz im Fertigungsauftrag ablegen (nur interne Notiz, keine E-Mail)
-  const postNote = (productionId, html) => odoo.write("mrp.production", "message_post", { ids: [productionId], body: `<p>${html}</p>`, message_type: "comment", subtype_xmlid: "mail.mt_note" });
+  const postNote = (productionId, text) => odoo.write("mrp.production", "message_post", { ids: [productionId], body: text, message_type: "comment", subtype_xmlid: "mail.mt_note" });
   const today = () => new Date().toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric", timeZone: "Europe/Berlin" });
   const nameOf = (id) => {
     const e = ctx.employees().get(id);
@@ -270,7 +264,7 @@ export default function registerBdeLaufzeit(app, ctx) {
       const maxNr = Math.max(0, ...st.rows.map((r) => r.nr));
       if (n < maxNr) throw userErr(`Für Aufspannung ${maxNr} gibt es schon eine Laufzeit, weniger als ${maxNr} geht nicht`);
       if (!st.productionId) throw userErr("Der Arbeitsgang gehört zu keinem Fertigungsauftrag");
-      if (st.anzahl !== n) await postNote(st.productionId, `<b>Aufspannungen (${escHtml(st.machine)}):</b> ${n} (${escHtml(nameOf(s.e))}, ${today()})`);
+      if (st.anzahl !== n) await postNote(st.productionId, `Aufspannungen (${st.machine}): ${n} (${nameOf(s.e)}, ${today()})`);
       res.json({ ok: true, ...(await status(w)) });
     } catch (err) {
       ctx.fail(res, err);
@@ -312,11 +306,8 @@ export default function registerBdeLaufzeit(app, ctx) {
 
       const geaendert = !!b.geaendert;
       const uebernommen = !!b.uebernommen && !geaendert;
-      const tail = [nameOf(s.e), today(), geaendert ? "Programm geändert" : uebernommen ? "unverändert" : null].filter(Boolean).map(escHtml).join(", ");
-      await postNote(
-        st.productionId,
-        `<b>Laufzeit Aufspannung ${nr} (${escHtml(st.machine)}):</b> ${mmss(minutes)} Min:Sek für ${teile} ${teile === 1 ? "Teil" : "Teile"} = ${mmss(perPiece)} je Stück (${tail})`
-      );
+      const tail = [nameOf(s.e), today(), geaendert ? "Programm geändert" : uebernommen ? "unverändert" : null].filter(Boolean).join(", ");
+      await postNote(st.productionId, `Laufzeit Aufspannung ${nr} (${st.machine}): ${mmss(minutes)} Min:Sek für ${teile} ${teile === 1 ? "Teil" : "Teile"} = ${mmss(perPiece)} je Stück (${tail})`);
       res.json({ ok: true, ...(await status(w)) });
     } catch (err) {
       ctx.fail(res, err);
@@ -393,7 +384,7 @@ export default function registerBdeLaufzeit(app, ctx) {
         const wizard = result && typeof result === "object" && result.res_model ? String(result.res_model) : null;
         throw userErr(`Odoo hat den Auftrag noch nicht abgeschlossen${wizard ? " und fragt etwas zurück" : ""}. Bitte ${info.fa || "den Auftrag"} in Odoo öffnen und dort abschließen.`);
       }
-      await postNote(id, `<b>Fertigungsauftrag abgeschlossen</b> über die Produktions-App (${escHtml(nameOf(s.e))}, ${today()})`).catch(() => {});
+      await postNote(id, `Fertigungsauftrag abgeschlossen über die Produktions-App (${nameOf(s.e)}, ${today()})`).catch(() => {});
       res.json({ ok: true, ...after });
     } catch (err) {
       ctx.fail(res, err);
@@ -449,7 +440,7 @@ export default function registerBdeLaufzeit(app, ctx) {
       vals_list: [{ name: "Fräsen", workcenter_id: machine.id, production_id: id, sequence: seq + 1, duration_expected: fraesenMin, blocked_by_workorder_ids: [[4, ruestenId]] }],
     });
     if (qs) await odoo.write("mrp.workorder", "write", { ids: [qs.id], vals: { sequence: seq + 2, blocked_by_workorder_ids: [[4, fraesenId]] } });
-    await postNote(id, `<b>Weiterer Arbeitsschritt auf ${escHtml(machine.name)}</b> angelegt: Rüsten und Fräsen (${escHtml(who)}, ${today()})`).catch(() => {});
+    await postNote(id, `Weiterer Arbeitsschritt auf ${machine.name} angelegt: Rüsten und Fräsen (${who}, ${today()})`).catch(() => {});
     ctx.invalidate();
     return { ruestenId, fraesenId };
   }

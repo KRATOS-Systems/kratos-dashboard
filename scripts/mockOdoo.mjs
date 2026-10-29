@@ -322,7 +322,7 @@ function call(model, method, p) {
     }
     case "message_post": {
       const rec = byId(model, p.ids[0]);
-      T["mail.message"].push({ id: nextId("mail.message"), model, res_id: p.ids[0], message_type: p.message_type || "comment", author_id: 3, body: p.body, date: fmt(now()), record_name: rec ? rec.name : false, subject: false });
+      T["mail.message"].push({ id: nextId("mail.message"), model, res_id: p.ids[0], message_type: p.message_type || "comment", author_id: 3, body: `<p>${String(p.body).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")}</p>`, date: fmt(now()), record_name: rec ? rec.name : false, subject: false });
       log.push({ at: fmt(now()), call: `${model}.message_post(${p.ids}, ${p.subtype_xmlid}): ${String(p.body).replace(/<[^>]+>/g, " ").slice(0, 120)}` });
       return 1;
     }
