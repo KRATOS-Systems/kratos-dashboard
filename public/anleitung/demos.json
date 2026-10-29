@@ -1,12 +1,196 @@
 {
  "demos": [
   {
-   "id": "fraesen",
-   "title": "Fräsen beenden und Laufzeit eintragen",
-   "text": "Die Maschine ist fertig: Lauf beenden, Anzahl der Aufspannungen, Programmlaufzeit von der Steuerung eintragen und das Fräsen fertig melden.",
+   "id": "av",
+   "title": "1. Arbeitsvorbereitung: Auftrag vorbereiten",
+   "text": "Neue Aufträge aus Odoo prüfen: Material, Programm, Werkzeuge, Spannmittel und Prüfplan auf „bereit“ setzen, bevor gefertigt wird.",
    "steps": [
     {
-     "img": "fraesen/01.webp",
+     "img": "av/01.webp",
+     "caption": "Die Arbeitsvorbereitung kommt zuerst. Neue Aufträge aus Odoo erscheinen hier mit dem Zeichen „NEU“. Hier prüfst du, ob alles bereit ist, bevor gefertigt wird.",
+     "hot": {
+      "x": 27.109375000000004,
+      "y": 28.716796875,
+      "w": 5.928955078125,
+      "h": 3.8359375
+     }
+    },
+    {
+     "img": "av/02.webp",
+     "caption": "Pro Auftrag gibt es sechs Punkte: Material, Programm, Werkzeuge, Spannmittel, Prüfplan und EMPB. Unter jedem Status steht, wer zuständig ist.",
+     "hot": {
+      "x": 68.765869140625,
+      "y": 24.091796875,
+      "w": 5.09765625,
+      "h": 3
+     }
+    },
+    {
+     "img": "av/03.webp",
+     "caption": "Ein Klick auf den Status schaltet ihn weiter: „offen“, „in Arbeit“, „bereit“. Das Material ist bestellt: Tippe auf „offen“.",
+     "hot": {
+      "x": 68.765869140625,
+      "y": 30.279296875,
+      "w": 4.752197265625,
+      "h": 4.173828125
+     }
+    },
+    {
+     "img": "av/04.webp",
+     "caption": "Jetzt steht dort „in Arbeit“. Ist das Material da, tippe noch einmal.",
+     "hot": {
+      "x": 68.765869140625,
+      "y": 30.216796875,
+      "w": 6.22314453125,
+      "h": 4.173828125
+     }
+    },
+    {
+     "img": "av/05.webp",
+     "caption": "„bereit“ heißt: erledigt. Genauso gehst du die anderen Punkte durch.",
+     "hot": {
+      "x": 68.765869140625,
+      "y": 31.572265625,
+      "w": 5.081787109375,
+      "h": 4.173828125
+     }
+    },
+    {
+     "img": "av/06.webp",
+     "caption": "Ein Klick auf die Zeile öffnet die Details mit Zeichnung, Termin, Zuständigem und Notiz.",
+     "hot": {
+      "x": 27.109375000000004,
+      "y": 28.716796875,
+      "w": 5.928955078125,
+      "h": 3.8359375
+     }
+    },
+    {
+     "img": "av/07.webp",
+     "caption": "Die Spalte „Planung“ zeigt, auf welcher Maschine der Auftrag läuft. Solange dort „nicht eingeplant“ steht, geht es in der Planung weiter.",
+     "hot": {
+      "x": 54.01489257812499,
+      "y": 24.091796875,
+      "w": 4.927978515625,
+      "h": 3
+     }
+    }
+   ]
+  },
+  {
+   "id": "planung",
+   "title": "2. Planung: Maschine und Arbeitsgänge gleich festlegen",
+   "text": "Neue Aufträge einplanen: Stunden prüfen, Maschine wählen und Arbeitsgänge für mehrere Maschinen von Anfang an anlegen, auch in Odoo.",
+   "steps": [
+    {
+     "img": "planung/01.webp",
+     "caption": "Hier planst du. Das Wichtigste vorab: Lege die Maschine und die Arbeitsgänge am besten gleich fest, bevor die Fertigung beginnt. Nachträglich geht es auch, ist aber umständlicher.",
+     "hot": {
+      "x": 19.375,
+      "y": 9.451171875,
+      "w": 78.75,
+      "h": 81.0625
+     }
+    },
+    {
+     "img": "planung/02.webp",
+     "caption": "Neue Aufträge aus Odoo liegen unter „Noch nicht eingeplant“.",
+     "hot": {
+      "x": 19.296875,
+      "y": 29.486328125,
+      "w": 78.90625,
+      "h": 41.052734375
+     }
+    },
+    {
+     "img": "planung/03.webp",
+     "caption": "Die Stunden kommen aus Odoo (Arbeitsplan der Stückliste). Stimmen sie nicht oder fehlen sie, trage ungefähre Gesamtstunden selbst ein.",
+     "hot": {
+      "x": 41.385498046875,
+      "y": 47.4453125,
+      "w": 6.406249999999999,
+      "h": 5.173828125
+     }
+    },
+    {
+     "img": "planung/04.webp",
+     "caption": "Wähle die Maschine, auf der der Auftrag laufen soll.",
+     "hot": {
+      "x": 59.744873046875,
+      "y": 47.728515625,
+      "w": 8.349609375,
+      "h": 4.60546875
+     }
+    },
+    {
+     "img": "planung/05.webp",
+     "caption": "Der Auftrag steht jetzt im Zeitstrahl bei der Maschine. Mit dem Ziehen des Balkens verschiebst du ihn.",
+     "hot": {
+      "x": 49.407958984375,
+      "y": 46.689453125,
+      "w": 4.453125,
+      "h": 6.5
+     }
+    },
+    {
+     "img": "planung/06.webp",
+     "caption": "Braucht ein Teil mehrere Maschinen, etwa Seite 1 auf der einen und Seite 2 auf der anderen? Dann lege die „Arbeitsgänge“ gleich hier an.",
+     "hot": {
+      "x": 82.47314453125,
+      "y": 47.529296875,
+      "w": 8.65478515625,
+      "h": 4.85546875
+     }
+    },
+    {
+     "img": "planung/07.webp",
+     "caption": "Jeder Arbeitsgang bekommt eine Bezeichnung, eine Maschine und Stunden. Sie laufen nacheinander, von oben nach unten.",
+     "hot": {
+      "x": 29.531249999999996,
+      "y": 42.005859375,
+      "w": 40.9375,
+      "h": 5.537109375
+     }
+    },
+    {
+     "img": "planung/08.webp",
+     "caption": "Mit dem Haken „Auch in Odoo anlegen“ entstehen Rüsten und Fräsen für die weitere Maschine gleich in Odoo, vor der QS. So muss während der Fertigung nichts nachgetragen werden.",
+     "hot": {
+      "x": 29.531249999999996,
+      "y": 54.080078125,
+      "w": 39.36767578125,
+      "h": 3.875
+     }
+    },
+    {
+     "img": "planung/09.webp",
+     "caption": "Tippe auf „Anlegen“.",
+     "hot": {
+      "x": 63.40087890625,
+      "y": 58.99218750000001,
+      "w": 7.06787109375,
+      "h": 5.787109375
+     }
+    },
+    {
+     "img": "planung/10.webp",
+     "caption": "Beide Arbeitsgänge stehen im Zeitstrahl, jeder bei seiner Maschine. Die Fertigung kann beginnen.",
+     "hot": {
+      "x": 19.375,
+      "y": 9.501953125,
+      "w": 78.75,
+      "h": 81.0625
+     }
+    }
+   ]
+  },
+  {
+   "id": "stempeln",
+   "title": "3. Anmelden und stempeln",
+   "text": "Mit der PIN anmelden, eine Arbeit starten, unterbrechen und beenden. So rechnet Odoo die Zeit richtig ab.",
+   "steps": [
+    {
+     "img": "stempeln/01.webp",
      "caption": "Öffne „Mein Arbeitsplatz“ und tippe auf deinen Namen.",
      "hot": {
       "x": 58.828125,
@@ -16,7 +200,7 @@
      }
     },
     {
-     "img": "fraesen/02.webp",
+     "img": "stempeln/02.webp",
      "caption": "Gib deine vierstellige PIN ein und tippe auf das grüne Häkchen.",
      "hot": {
       "x": 21.09375,
@@ -26,7 +210,178 @@
      }
     },
     {
-     "img": "fraesen/03.webp",
+     "img": "stempeln/03.webp",
+     "caption": "Das ist deine Seite. Oben siehst du die Maschinenampel, darunter, woran du gerade arbeitest. Noch läuft keine Zeit.",
+     "hot": {
+      "x": 19.296875,
+      "y": 21.2734375,
+      "w": 78.90625,
+      "h": 31.673828124999996
+     }
+    },
+    {
+     "img": "stempeln/04.webp",
+     "caption": "Um eine Arbeit zu starten, tippe auf „Wechseln“.",
+     "hot": {
+      "x": 21.71875,
+      "y": 39.322265625,
+      "w": 24.6875,
+      "h": 10.25
+     }
+    },
+    {
+     "img": "stempeln/05.webp",
+     "caption": "Suche den Auftrag über „Suchen“. Unter „Zuletzt“ und „Als Nächstes“ stehen die Aufträge, an denen du zuletzt gearbeitet hast oder die als Nächstes kommen.",
+     "hot": {
+      "x": 55.521240234375,
+      "y": 45.29296875,
+      "w": 7.269287109375,
+      "h": 6.468749999999999
+     }
+    },
+    {
+     "img": "stempeln/06.webp",
+     "caption": "Tippe auf den Arbeitsgang, den du anfängst. Hier: die Programmierung.",
+     "hot": {
+      "x": 24.609375,
+      "y": 43.484375,
+      "w": 47.03125,
+      "h": 6.25
+     }
+    },
+    {
+     "img": "stempeln/07.webp",
+     "caption": "Jetzt läuft deine Zeit auf diesem Arbeitsgang. Die Uhr zählt mit.",
+     "hot": {
+      "x": 19.296875,
+      "y": 21.2734375,
+      "w": 78.90625,
+      "h": 49.490234375
+     }
+    },
+    {
+     "img": "stempeln/08.webp",
+     "caption": "Musst du kurz weg, tippe auf „Pause“. Danach heißt der Knopf „Weiter“ und setzt die Zeit am selben Arbeitsgang fort.",
+     "hot": {
+      "x": 46.40625,
+      "y": 44.888671875,
+      "w": 24.6875,
+      "h": 10.25
+     }
+    },
+    {
+     "img": "stempeln/09.webp",
+     "caption": "Bist du mit dem Arbeitsgang fertig oder hörst du auf, tippe auf „Stopp“. Stoppe immer, bevor du etwas anderes anfängst oder gehst.",
+     "hot": {
+      "x": 71.09375,
+      "y": 44.888671875,
+      "w": 24.6875,
+      "h": 10.25
+     }
+    },
+    {
+     "img": "stempeln/10.webp",
+     "caption": "Danach fragt dich die App, ob der Arbeitsgang fertig ist. Wie du antwortest, zeigen die nächsten Anleitungen.",
+     "hot": {
+      "x": 27.187499999999996,
+      "y": 48.88671875,
+      "w": 22.8125,
+      "h": 12.25
+     }
+    }
+   ]
+  },
+  {
+   "id": "programmierung",
+   "title": "4. Programmierung fertig und Anzahl der Aufspannungen",
+   "text": "Die Programmierung abschließen und festhalten, wie viele Aufspannungen das Teil braucht.",
+   "steps": [
+    {
+     "img": "programmierung/01.webp",
+     "caption": "Du programmierst. Bist du fertig, tippe auf „Stopp“.",
+     "hot": {
+      "x": 71.09375,
+      "y": 44.888671875,
+      "w": 24.6875,
+      "h": 10.25
+     }
+    },
+    {
+     "img": "programmierung/02.webp",
+     "caption": "Die App fragt: „Programmierung fertig?“ Ja heißt: Das Programm ist fertig. Dann gibt Odoo den nächsten Arbeitsgang frei.",
+     "hot": {
+      "x": 27.187499999999996,
+      "y": 48.88671875,
+      "w": 22.8125,
+      "h": 12.25
+     }
+    },
+    {
+     "img": "programmierung/03.webp",
+     "caption": "Jetzt: Wie viele Aufspannungen braucht das Teil? Beim letzten Mal waren es 2, das ist hervorgehoben. Bei mehr als sechs trägst du die Zahl bei „Mehr“ ein.",
+     "hot": {
+      "x": 36.312255859375,
+      "y": 36.6171875,
+      "w": 9.124755859375,
+      "h": 11.75
+     }
+    },
+    {
+     "img": "programmierung/04.webp",
+     "caption": "Fertig. Die Programmierung ist in Odoo abgeschlossen, und die Anzahl der Aufspannungen steht im Fertigungsauftrag. Beim Fräsen siehst du sie wieder.",
+     "hot": {
+      "x": 0.546875,
+      "y": 29.7734375,
+      "w": 16.40625,
+      "h": 6.037109375
+     }
+    }
+   ]
+  },
+  {
+   "id": "ruesten",
+   "title": "5. Rüsten fertig",
+   "text": "Das Rüsten stempeln und beenden. Ja, wenn die Maschine bereit zum Fräsen ist.",
+   "steps": [
+    {
+     "img": "ruesten/01.webp",
+     "caption": "Das Rüsten stempelst du wie jede andere Arbeit. Ist die Maschine bereit, tippe auf „Stopp“.",
+     "hot": {
+      "x": 71.09375,
+      "y": 44.888671875,
+      "w": 24.6875,
+      "h": 10.25
+     }
+    },
+    {
+     "img": "ruesten/02.webp",
+     "caption": "Die App fragt: „Rüsten fertig?“ Tippe auf „Ja“, wenn die Maschine bereit zum Fräsen ist. Ist noch etwas zu tun, tippe auf „Nein“ und mach später weiter.",
+     "hot": {
+      "x": 27.187499999999996,
+      "y": 48.88671875,
+      "w": 22.8125,
+      "h": 12.25
+     }
+    },
+    {
+     "img": "ruesten/03.webp",
+     "caption": "Das Rüsten ist in Odoo abgeschlossen, und das Fräsen ist freigegeben. Jetzt kann es auf der Maschine losgehen.",
+     "hot": {
+      "x": 0.546875,
+      "y": 29.7734375,
+      "w": 16.40625,
+      "h": 6.037109375
+     }
+    }
+   ]
+  },
+  {
+   "id": "fraesen",
+   "title": "6. Fräsen beenden und Laufzeit eintragen",
+   "text": "Die Maschine ist fertig: Lauf beenden, Anzahl der Aufspannungen, Programmlaufzeit von der Steuerung eintragen und das Fräsen fertig melden.",
+   "steps": [
+    {
+     "img": "fraesen/01.webp",
      "caption": "Das Fräsen läuft nebenher. Du siehst es unten bei „Maschinenläufe“. Ist die Maschine fertig, tippe auf „Beenden“.",
      "hot": {
       "x": 86.328125,
@@ -36,7 +391,7 @@
      }
     },
     {
-     "img": "fraesen/04.webp",
+     "img": "fraesen/02.webp",
      "caption": "„Jetzt beenden“ nimmt die aktuelle Uhrzeit. War die Maschine schon früher fertig, trägst du darunter die Uhrzeit ein.",
      "hot": {
       "x": 21.71875,
@@ -46,7 +401,7 @@
      }
     },
     {
-     "img": "fraesen/05.webp",
+     "img": "fraesen/03.webp",
      "caption": "Als Erstes: Wie viele Aufspannungen hat dieses Teil? Beim letzten Mal waren es 2 (hervorgehoben).",
      "hot": {
       "x": 36.312255859375,
@@ -56,7 +411,7 @@
      }
     },
     {
-     "img": "fraesen/06.webp",
+     "img": "fraesen/04.webp",
      "caption": "Ist die erste Aufspannung fertig, tippe auf „Ja“.",
      "hot": {
       "x": 27.187499999999996,
@@ -66,7 +421,7 @@
      }
     },
     {
-     "img": "fraesen/07.webp",
+     "img": "fraesen/05.webp",
      "caption": "Wähle die Aufspannung, deren Zeit du eintragen willst.",
      "hot": {
       "x": 27.187499999999996,
@@ -76,7 +431,7 @@
      }
     },
     {
-     "img": "fraesen/08.webp",
+     "img": "fraesen/06.webp",
      "caption": "Bei einem Teil, das ihr schon gefertigt habt, steht die letzte Zeit als Vorschlag da. Ist das Programm gleich geblieben, tippe auf „Laufzeit unverändert“.",
      "hot": {
       "x": 27.187499999999996,
@@ -86,7 +441,7 @@
      }
     },
     {
-     "img": "fraesen/09.webp",
+     "img": "fraesen/07.webp",
      "caption": "Die zweite Aufspannung trägst du genauso ein. Du findest sie auf „Mein Arbeitsplatz“ unter „Noch nicht fertig gemeldet“.",
      "hot": {
       "x": 89.912109375,
@@ -96,7 +451,7 @@
      }
     },
     {
-     "img": "fraesen/10.webp",
+     "img": "fraesen/08.webp",
      "caption": "Bestätige: Die Aufspannung ist fertig.",
      "hot": {
       "x": 27.187499999999996,
@@ -106,7 +461,7 @@
      }
     },
     {
-     "img": "fraesen/11.webp",
+     "img": "fraesen/09.webp",
      "caption": "Hat sich das Programm geändert, tippe auf „Andere Zeit eingeben“.",
      "hot": {
       "x": 50,
@@ -116,7 +471,7 @@
      }
     },
     {
-     "img": "fraesen/12.webp",
+     "img": "fraesen/10.webp",
      "caption": "Trage die Programmlaufzeit ein, genau wie die Steuerung der Maschine sie anzeigt: Minuten und Sekunden eines vollen Durchlaufs.",
      "hot": {
       "x": 27.187499999999996,
@@ -126,7 +481,7 @@
      }
     },
     {
-     "img": "fraesen/13.webp",
+     "img": "fraesen/11.webp",
      "caption": "Der Haken „Programm wurde geändert“ ist schon gesetzt, weil du eine andere Zeit eingibst. Lass ihn so, dann sieht die Kalkulation, dass die Zeit neu ist.",
      "hot": {
       "x": 27.187499999999996,
@@ -136,7 +491,7 @@
      }
     },
     {
-     "img": "fraesen/14.webp",
+     "img": "fraesen/12.webp",
      "caption": "Tippe auf „Speichern“.",
      "hot": {
       "x": 27.187499999999996,
@@ -146,7 +501,7 @@
      }
     },
     {
-     "img": "fraesen/15.webp",
+     "img": "fraesen/13.webp",
      "caption": "Sind alle Aufspannungen eingetragen, melde das Fräsen fertig. Damit gibt Odoo die QS frei.",
      "hot": {
       "x": 27.187499999999996,
@@ -156,13 +511,281 @@
      }
     },
     {
-     "img": "fraesen/16.webp",
+     "img": "fraesen/14.webp",
      "caption": "Kommt kein weiterer Arbeitsschritt auf einer anderen Maschine dazu, tippe auf „Nein, fertig“.",
      "hot": {
       "x": 50,
       "y": 51.939453125,
       "w": 22.8125,
       "h": 10.25
+     }
+    }
+   ]
+  },
+  {
+   "id": "schritt",
+   "title": "7. Weiterer Arbeitsschritt auf einer anderen Maschine",
+   "text": "Die Ausnahme: Zeigt sich erst beim Fräsen, dass eine zweite Maschine nötig ist, legst du den Arbeitsschritt nachträglich an.",
+   "steps": [
+    {
+     "img": "schritt/01.webp",
+     "caption": "Besser ist es, alle Maschinen und Arbeitsgänge gleich in der Planung festzulegen. Zeigt sich erst beim Fräsen, dass eine zweite Maschine nötig ist, geht es auch jetzt. Beende zuerst den Lauf.",
+     "hot": {
+      "x": 86.328125,
+      "y": 47.572265625,
+      "w": 6.640625,
+      "h": 4.85546875
+     }
+    },
+    {
+     "img": "schritt/02.webp",
+     "caption": "Tippe auf „Jetzt beenden“.",
+     "hot": {
+      "x": 21.71875,
+      "y": 46.1015625,
+      "w": 11.53076171875,
+      "h": 7.75
+     }
+    },
+    {
+     "img": "schritt/03.webp",
+     "caption": "Die Laufzeit dieser Aufspannung ist schon eingetragen. Melde das Fräsen fertig.",
+     "hot": {
+      "x": 27.187499999999996,
+      "y": 48.794921875,
+      "w": 45.625,
+      "h": 10.25
+     }
+    },
+    {
+     "img": "schritt/04.webp",
+     "caption": "Jetzt fragt die App: Kommt noch ein weiterer Arbeitsschritt auf einer anderen Maschine dazu? Tippe auf „Weiterer Arbeitsschritt“.",
+     "hot": {
+      "x": 27.187499999999996,
+      "y": 51.939453125,
+      "w": 22.8125,
+      "h": 10.25
+     }
+    },
+    {
+     "img": "schritt/05.webp",
+     "caption": "Wähle die Maschine, auf der es weitergeht.",
+     "hot": {
+      "x": 61.40624999999999,
+      "y": 36.419921875,
+      "w": 11.40625,
+      "h": 13
+     }
+    },
+    {
+     "img": "schritt/06.webp",
+     "caption": "Trage ein, wie viele Stunden du fürs Rüsten und fürs Fräsen planst. Das ist freiwillig, hilft aber der Planung.",
+     "hot": {
+      "x": 27.187499999999996,
+      "y": 49.919921875,
+      "w": 45.625,
+      "h": 13.105468749999998
+     }
+    },
+    {
+     "img": "schritt/07.webp",
+     "caption": "Tippe auf „Anlegen“. Die App legt in Odoo Rüsten und Fräsen für diese Maschine an, vor der QS.",
+     "hot": {
+      "x": 27.187499999999996,
+      "y": 63.525390625,
+      "w": 45.625,
+      "h": 10.25
+     }
+    },
+    {
+     "img": "schritt/08.webp",
+     "caption": "Fertig. Auf der neuen Maschine stempelst du wie gewohnt. Laufzeit und Aufspannungen zählen dort wieder bei 1.",
+     "hot": {
+      "x": 0.546875,
+      "y": 29.7734375,
+      "w": 16.40625,
+      "h": 6.037109375
+     }
+    }
+   ]
+  },
+  {
+   "id": "qs",
+   "title": "8. QS fertig und Fertigungsauftrag abschließen",
+   "text": "Die Qualitätssicherung beenden und den Fertigungsauftrag in Odoo abschließen. Das Material wird abgebucht und das fertige Teil eingelagert.",
+   "steps": [
+    {
+     "img": "qs/01.webp",
+     "caption": "Die QS ist der letzte Arbeitsgang. Bist du mit der Prüfung fertig, tippe auf „Stopp“.",
+     "hot": {
+      "x": 71.09375,
+      "y": 44.888671875,
+      "w": 24.6875,
+      "h": 10.25
+     }
+    },
+    {
+     "img": "qs/02.webp",
+     "caption": "Die App fragt: „Qualitätssicherung fertig?“ Ja, wenn das Teil geprüft und in Ordnung ist.",
+     "hot": {
+      "x": 27.187499999999996,
+      "y": 48.88671875,
+      "w": 22.8125,
+      "h": 12.25
+     }
+    },
+    {
+     "img": "qs/03.webp",
+     "caption": "Sind alle Arbeitsgänge fertig, fragt die App, ob der Fertigungsauftrag abgeschlossen wird. Dabei bucht Odoo das Material ab und das fertige Teil ins Lager. Erst jetzt ist der Auftrag wirklich fertig.",
+     "hot": {
+      "x": 27.187499999999996,
+      "y": 49.97265625,
+      "w": 22.8125,
+      "h": 10.25
+     }
+    },
+    {
+     "img": "qs/04.webp",
+     "caption": "Der Auftrag ist abgeschlossen. Fragt Odoo etwas zurück, sagt dir die App, dass du ihn in Odoo abschließen musst. Dann gib der Leitung Bescheid.",
+     "hot": {
+      "x": 0.546875,
+      "y": 29.7734375,
+      "w": 16.40625,
+      "h": 6.037109375
+     }
+    }
+   ]
+  },
+  {
+   "id": "ampel",
+   "title": "9. Maschinenampel und beim Gehen",
+   "text": "Die Ampel zeigt, was an den Maschinen läuft. Läuft eine Maschine ohne dich weiter und ist fertig, beendest du den Lauf.",
+   "steps": [
+    {
+     "img": "ampel/01.webp",
+     "caption": "Oben siehst du für jede Maschine eine Ampel. Grün heißt: Es läuft ein Fräsen. Darunter steht, welcher Auftrag läuft und wer ihn gestartet hat.",
+     "hot": {
+      "x": 19.296875,
+      "y": 10.875,
+      "w": 20.45654296875,
+      "h": 9.8984375
+     }
+    },
+    {
+     "img": "ampel/02.webp",
+     "caption": "Gelb heißt: Es wird gerüstet, aber es läuft noch kein Fräsen.",
+     "hot": {
+      "x": 55.37841796875001,
+      "y": 10.875,
+      "w": 21.03271484375,
+      "h": 9.8984375
+     }
+    },
+    {
+     "img": "ampel/03.webp",
+     "caption": "Rot heißt: Nichts ist gestempelt, obwohl Arbeitszeit ist und Arbeit für die Maschine wartet. Keine Lampe heißt: Nichts zu tun, oder es ist Nacht und Wochenende.",
+     "hot": {
+      "x": 39.75341796875,
+      "y": 10.875,
+      "w": 15.625,
+      "h": 9.8984375
+     }
+    },
+    {
+     "img": "ampel/04.webp",
+     "caption": "Tippe auf eine Ampel, um zu sehen, was dort läuft.",
+     "hot": {
+      "x": 19.296875,
+      "y": 10.875,
+      "w": 20.45654296875,
+      "h": 9.8984375
+     }
+    },
+    {
+     "img": "ampel/05.webp",
+     "caption": "Ist die Maschine fertig und der Kollege schon gegangen, tippe auf „Beenden“. Das darf jeder angemeldete Mitarbeiter.",
+     "hot": {
+      "x": 62.265625,
+      "y": 49.390625,
+      "w": 6.640625,
+      "h": 4.85546875
+     }
+    },
+    {
+     "img": "ampel/06.webp",
+     "caption": "„Jetzt beenden“ nimmt die aktuelle Uhrzeit. War die Maschine schon früher fertig, trägst du die Uhrzeit ein.",
+     "hot": {
+      "x": 31.093749999999996,
+      "y": 43.0390625,
+      "w": 11.53076171875,
+      "h": 7.75
+     }
+    },
+    {
+     "img": "ampel/07.webp",
+     "caption": "Die Ampel zeigt jetzt: Nichts zu tun. Tippe auf „Schließen“.",
+     "hot": {
+      "x": 31.093749999999996,
+      "y": 54.18359375,
+      "w": 7.991943359375001,
+      "h": 5.787109375
+     }
+    },
+    {
+     "img": "ampel/08.webp",
+     "caption": "Beim Gehen: Stoppe deine Arbeit, schau auf die Ampel und beende einen fertigen Lauf. Läuft die Maschine bewusst weiter, zum Beispiel nachts, lass sie laufen. Deine Arbeitszeit stempelst du weiter am Odoo-Kiosk.",
+     "hot": {
+      "x": 19.296875,
+      "y": 10.875,
+      "w": 15.625,
+      "h": 9.8984375
+     }
+    }
+   ]
+  },
+  {
+   "id": "leitung",
+   "title": "10. Für die Leitung: Zur Rechnung bereit",
+   "text": "Alle Teile eines Kundenauftrags sind gefertigt und Odoo sieht noch etwas zu berechnen: Die App zeigt es an.",
+   "steps": [
+    {
+     "img": "leitung/01.webp",
+     "caption": "Als Leitung siehst du auf „Mein Arbeitsplatz“ den Abschnitt „Zur Rechnung bereit“. Dort stehen Kundenaufträge, bei denen alle Teile gefertigt sind und Odoo noch etwas zu berechnen sieht.",
+     "hot": {
+      "x": 19.296875,
+      "y": 49.666015625,
+      "w": 78.90625,
+      "h": 3.94921875
+     }
+    },
+    {
+     "img": "leitung/02.webp",
+     "caption": "Pro Auftrag siehst du Kunde, Anzahl der Teile, Lieferstatus, Betrag und wie viele Rechnungen es schon gibt. „In Odoo öffnen“ führt direkt zum Auftrag.",
+     "hot": {
+      "x": 87.421875,
+      "y": 59.06249999999999,
+      "w": 9.453125,
+      "h": 4.85546875
+     }
+    },
+    {
+     "img": "leitung/03.webp",
+     "caption": "Die App liefert und berechnet nichts, sie zeigt es nur an. Ist in Odoo alles berechnet, verschwindet der Eintrag von selbst.",
+     "hot": {
+      "x": 19.296875,
+      "y": 49.666015625,
+      "w": 78.90625,
+      "h": 3.94921875
+     }
+    },
+    {
+     "img": "leitung/04.webp",
+     "caption": "Auf der Team-Tafel siehst du, wer woran arbeitet. Vergessene Buchungen und zu lange Maschinenläufe meldet dir die App als Hinweis.",
+     "hot": {
+      "x": 0.546875,
+      "y": 24.736328125,
+      "w": 16.40625,
+      "h": 6.037109375
      }
     }
    ]

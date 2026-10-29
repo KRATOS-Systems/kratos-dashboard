@@ -38,7 +38,7 @@
   .player { display: flex; gap: 22px; align-items: flex-start; justify-content: center; }
   .stage { position: relative; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: #000; aspect-ratio: 1280 / 800; flex: 1 1 auto; width: min(100%, calc((100vh - 130px) * 1.6)); min-width: 0; }
   .stage img { position: absolute; inset: 0; width: 100%; height: 100%; display: block; user-select: none; -webkit-user-drag: none; }
-  .hot { position: absolute; border: 3px solid var(--hot); border-radius: 12px; background: color-mix(in srgb, var(--hot) 14%, transparent); box-shadow: 0 0 0 4px color-mix(in srgb, var(--hot) 25%, transparent), 0 0 24px color-mix(in srgb, var(--hot) 55%, transparent); cursor: pointer; animation: puls 1.6s ease-in-out infinite; }
+  .hot { position: absolute; border: 3px solid var(--hot); border-radius: 12px; background: color-mix(in srgb, var(--hot) 14%, transparent); box-shadow: 0 0 0 4px color-mix(in srgb, var(--hot) 25%, transparent), 0 0 24px color-mix(in srgb, var(--hot) 55%, transparent); animation: puls 1.6s ease-in-out infinite; }
   @keyframes puls { 0%, 100% { box-shadow: 0 0 0 3px color-mix(in srgb, var(--hot) 25%, transparent), 0 0 14px color-mix(in srgb, var(--hot) 45%, transparent); } 50% { box-shadow: 0 0 0 9px color-mix(in srgb, var(--hot) 12%, transparent), 0 0 30px color-mix(in srgb, var(--hot) 65%, transparent); } }
   @media (prefers-reduced-motion: reduce) { .hot { animation: none; } }
   .side { flex: 0 0 400px; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 20px; display: flex; flex-direction: column; gap: 16px; }
@@ -53,6 +53,8 @@
   .hint { color: var(--muted); font-size: 13px; margin: 0; }
   .fin { text-align: center; padding: 30px 10px; }
   .fin h2 { font-size: 22px; }
+  .btn.nudge { animation: wink .6s ease 3; }
+  @keyframes wink { 50% { box-shadow: 0 0 0 7px color-mix(in srgb, var(--hot) 45%, transparent); } }
   .tip { position: absolute; left: 50%; bottom: 12px; transform: translateX(-50%); background: var(--ink); color: var(--bg); padding: 8px 14px; border-radius: 999px; font-size: 14px; opacity: 0; transition: opacity .2s; pointer-events: none; white-space: nowrap; }
   .tip.show { opacity: .92; }
   @media (max-width: 1000px) { .player { flex-direction: column; align-items: stretch; } .stage { width: 100%; } .side { flex: none; } .side .cap { font-size: 18px; } }
@@ -82,11 +84,10 @@
   function list() {
     cur = null; ttl.textContent = "Anleitung Produktions-App"; home.hidden = true; document.title = "Anleitung Produktions-App";
     main.textContent = "";
-    main.appendChild(el("p", "lead", "Hier siehst du die App Schritt für Schritt, so wie sie in der Werkstatt aussieht. Tippe auf die leuchtende Stelle im Bild oder auf „Weiter“. Alle Beispiele sind Übungsdaten, nichts davon ist ein echter Auftrag."));
+    main.appendChild(el("p", "lead", "Hier siehst du die App Schritt für Schritt, so wie sie in der Werkstatt aussieht. Lies den Text rechts und tippe dann auf „Weiter“. Die leuchtende Stelle im Bild zeigt dir, wo du in der App tippst. Alle Beispiele sind Übungsdaten, nichts davon ist ein echter Auftrag."));
     var g = el("div", "grid");
-    data.demos.forEach(function (d, i) {
+    data.demos.forEach(function (d) {
       var b = el("button", "tile");
-      b.appendChild(el("span", "nr", "Anleitung " + (i + 1)));
       b.appendChild(el("h2", null, d.title));
       b.appendChild(el("p", null, d.text));
       b.appendChild(el("span", "n", d.steps.length + " Schritte"));
@@ -103,15 +104,16 @@
     var wrap = el("div", "player"), stage = el("div", "stage"), img = document.createElement("img");
     img.src = s.img; img.alt = "Bildschirm der App, Schritt " + (idx + 1);
     stage.appendChild(img);
-    var tip = el("div", "tip", "Tippe auf die leuchtende Stelle oder auf „Weiter“");
+    var tip = el("div", "tip", "Das ist nur das Bild. Lies den Text und tippe auf „Weiter“.");
+    var fwd;
+    function nudge() { tip.classList.add("show"); if (fwd) fwd.classList.add("nudge"); setTimeout(function () { tip.classList.remove("show"); if (fwd) fwd.classList.remove("nudge"); }, 2000); }
     if (s.hot) {
       var h = el("div", "hot");
       h.style.left = s.hot.x + "%"; h.style.top = s.hot.y + "%"; h.style.width = s.hot.w + "%"; h.style.height = s.hot.h + "%";
-      h.setAttribute("role", "button"); h.setAttribute("aria-label", "Hier tippen: " + s.caption);
-      h.onclick = function (e) { e.stopPropagation(); next(); };
+      h.setAttribute("aria-label", "Hier tippst du in der App");
       stage.appendChild(h);
-      stage.onclick = function () { tip.classList.add("show"); setTimeout(function () { tip.classList.remove("show"); }, 1800); };
     }
+    stage.onclick = nudge;
     stage.appendChild(tip);
     var side = el("div", "side");
     side.appendChild(el("div", "count", "Schritt " + (idx + 1) + " von " + d.steps.length));
@@ -119,7 +121,7 @@
     d.steps.forEach(function (_, i) { dots.appendChild(el("i", i === idx ? "on" : i < idx ? "done" : "")); });
     side.appendChild(dots);
     side.appendChild(el("p", "cap", s.caption));
-    var nav = el("div", "nav"), back = el("button", "btn", "Zurück"), fwd = el("button", "btn primary", idx === d.steps.length - 1 ? "Fertig" : "Weiter");
+    var nav = el("div", "nav"), back = el("button", "btn", "Zurück"); fwd = el("button", "btn primary", idx === d.steps.length - 1 ? "Fertig" : "Weiter");
     back.disabled = idx === 0; back.onclick = prev; fwd.onclick = next;
     nav.appendChild(back); nav.appendChild(fwd);
     side.appendChild(nav);

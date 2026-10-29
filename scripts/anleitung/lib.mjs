@@ -17,9 +17,9 @@ export class Rec {
   }
 
   // Sichtbares Element mit diesem Text (kleinstes Element, dessen Text passt); markiert wird der anklickbare Vorfahre
-  async find(text, { nth = 0, starts = false, scope = null } = {}) {
+  async find(text, { nth = 0, starts = false, scope = null, self = false } = {}) {
     return this.page.evaluate(
-      ({ text, nth, starts, scope, CLICKABLE }) => {
+      ({ text, nth, starts, scope, self, CLICKABLE }) => {
         const root = scope ? document.querySelector(scope) : document;
         if (!root) return null;
         const norm = (s) => s.replace(/\s+/g, " ").trim();
@@ -36,12 +36,12 @@ export class Rec {
         });
         const el = hits[nth];
         if (!el) return null;
-        const anc = el.closest(CLICKABLE) || el;
+        const anc = self ? el : el.closest(CLICKABLE) || el;
         anc.scrollIntoView({ block: "center", inline: "nearest" });
         const r = anc.getBoundingClientRect();
         return { x: r.x, y: r.y, w: r.width, h: r.height };
       },
-      { text, nth, starts, scope, CLICKABLE }
+      { text, nth, starts, scope, self, CLICKABLE }
     );
   }
 
@@ -99,10 +99,13 @@ export class Rec {
     await sleep(200);
   }
 
-  async login(name, pin) {
+  async pickPerson(name) {
     const who = await this.find(name);
     await this.click(who);
     await sleep(600);
+  }
+
+  async enterPin(pin) {
     for (const d of pin) {
       const b = await this.page.evaluate((d) => {
         const el = [...document.querySelectorAll("button")].find((x) => x.innerText.trim() === d && x.getBoundingClientRect().width > 1);
@@ -112,6 +115,14 @@ export class Rec {
       await this.click(b);
       await sleep(120);
     }
+    await this.click(await this.findSel("button.go"));
+    await this.page.waitForFunction(() => document.body.innerText.includes("Angemeldet als"), { timeout: 10000 });
+    await sleep(600);
+  }
+
+  async login(name, pin) {
+    await this.pickPerson(name);
+    await this.enterPin(pin);
   }
 
   finish() {

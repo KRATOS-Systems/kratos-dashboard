@@ -218,7 +218,7 @@ try {
   // Weiterer Arbeitsschritt auf einer anderen Maschine (hier: nach der ersten Spannung wird entschieden)
   r = await api("GET", "/api/bde/schritt?productionId=1307");
   assert.equal(r.status, 200);
-  assert.deepEqual(r.machines.map((m) => m.name).sort(), ["DMG M1", "DMU 40 EVO", "FRÄSEN"]);
+  assert.deepEqual(r.machines.map((m) => m.name).sort(), ["DMG M1", "DMU 40 EVO", "DMU 50", "FRÄSEN"]);
   ok("Für den weiteren Arbeitsschritt stehen alle Maschinen mit Rüst-Arbeitsplatz zur Wahl");
   r = await api("POST", "/api/bde/schritt", { productionId: 1307, machineId: 999 });
   assert.equal(r.status, 400);
@@ -305,12 +305,12 @@ try {
       { name: "Qualitätssicherung", production_id: p2, workcenter_id: 5, product_id: 2901, state: "blocked", sequence: 3 },
     ],
   });
-  r = await api("POST", "/api/planung/odoo-schritte", { productionId: p2, ags: [{ machine: "dmu40", hours: 2 }, { machine: "dmu50", hours: 1 }] });
+  r = await api("POST", "/api/planung/odoo-schritte", { productionId: p2, ags: [{ machine: "dmu40", hours: 2 }, { machine: "h800u", hours: 1 }] });
   assert.equal(r.status, 400);
-  assert.match(r.error, /DMU 50/);
+  assert.match(r.error, /POS H 800 U/);
   assert.match(r.error, /nichts angelegt/);
   assert.equal((await odoo("/__state"))["mrp.workorder"].filter((x) => x.production_id === p2).length, 4);
-  ok("Fehlt der Arbeitsplatz einer Maschine in Odoo (DMU 50), sagt die App welcher und legt nichts an");
+  ok("Fehlt der Arbeitsplatz einer Maschine in Odoo (hier die POS H 800 U), sagt die App welcher und legt nichts an");
 
   r = await api("POST", "/api/planung/odoo-schritte", { productionId: p2, ags: [{ machine: "dmu40", hours: 2 }, { machine: "m1", hours: 3.5 }] });
   assert.equal(r.status, 200, JSON.stringify(r));

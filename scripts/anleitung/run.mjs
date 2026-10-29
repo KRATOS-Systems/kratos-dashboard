@@ -7,13 +7,14 @@ import { DEMOS } from "./demos.mjs";
 
 const OUT = path.join(PROJECT, "public", "anleitung");
 const want = process.argv.slice(2);
-const env = await startEnv();
+const env = await startEnv({ sync: true });
 const done = [];
 try {
   for (const demo of DEMOS) {
     if (want.length && !want.includes(demo.id)) continue;
     console.log("Demo", demo.id);
-    const page = await env.browser.newPage();
+    const ctx = await env.browser.createBrowserContext();
+    const page = await ctx.newPage();
     await page.setViewport({ width: 1280, height: 800, deviceScaleFactor: 2 });
     await page.emulateMediaFeatures([{ name: "prefers-color-scheme", value: "dark" }]);
     const rec = new Rec(page, OUT, demo);
@@ -27,7 +28,7 @@ try {
       await page.screenshot({ path: path.join(PROJECT, "public", "anleitung", `_fehler_${demo.id}.png`) }).catch(() => {});
       process.exitCode = 1;
     }
-    await page.close();
+    await ctx.close();
   }
   // vorhandene Demos aus demos.json behalten, die nicht neu aufgenommen wurden
   let old = [];

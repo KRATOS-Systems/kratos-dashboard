@@ -104,6 +104,8 @@ const T = {
     { id: 16, name: "DMU 40 EVO Rüsten" },
     { id: 15, name: "DMG M1" },
     { id: 17, name: "DMG M1 Rüsten" },
+    { id: 21, name: "DMU 50" },
+    { id: 22, name: "DMU 50 Rüsten" },
   ],
   "product.template": [{ id: 70, name: "Grundplatte" }, { id: 71, name: "Motorplatte" }],
   "product.product": [
