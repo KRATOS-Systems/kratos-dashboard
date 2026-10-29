@@ -377,6 +377,17 @@ try {
   await assert.rejects(c.write("mail.message", "unlink", { ids: [910] }), /gesperrt/);
   ok("Odoo-Zugang: Fertigungsauftrag nur Notiz, Menge und Abschließen; Arbeitsgang nur Starten, Stoppen, Fertig melden, Anlegen mit festen Feldern; kein Löschen");
 
+  // Maschinen, die nur nach ihrem Typ heißen, laufen nebenher wie der Sammelplatz FRÄSEN; "… Rüsten" bleibt Personenarbeit
+  const { kindOf, labelOf, stepOf } = await import("../server/bde.js");
+  for (const m of ["FRÄSEN", "DMU 40 EVO", "DMG M1", "POS H 800 U", "DMU 50"]) {
+    assert.equal(kindOf(m), "maschine", m);
+    assert.equal(labelOf(m), "Fräsen", m);
+  }
+  for (const m of ["DMU 40 EVO Rüsten", "DMG M1 Rüsten", "RÜSTEN", "CAM-PROGRAMMIERUNG", "QUALITÄTSSICHERUNG (QS)"]) assert.equal(kindOf(m), "person", m);
+  assert.equal(labelOf("DMU 40 EVO Rüsten"), "Rüsten");
+  assert.equal(stepOf("Programmlaufzeit"), null);
+  ok("Maschinen-Arbeitsplätze (DMU 40 EVO, DMG M1, POS H 800 U, DMU 50) laufen nebenher wie FRÄSEN, die „… Rüsten“-Arbeitsplätze zählen als Personenzeit");
+
   console.log(`\nAlle ${n} Prüfungen bestanden`);
 } catch (err) {
   console.error("\nFEHLER:", err.message);

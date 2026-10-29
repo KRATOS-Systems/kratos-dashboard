@@ -44,16 +44,19 @@ const LEITUNG = idList(process.env.BDE_LEITUNG, "3,1");
 const PEOPLE = [...new Set([...TEAM, ...LEITUNG])];
 
 // Tätigkeiten: Maschinenlauf darf parallel laufen, externe Arbeitsplätze zählen nicht als Personenzeit, alles andere ist Personentätigkeit
+// Maschinen heißen bei uns teils nur nach dem Typ (DMU 40 EVO, DMG M1, POS H 800 U, DMU 50); "… Rüsten" ist dagegen Personenarbeit
+const MACHINE_NAME = /^(DMU|DMG|POS)\b/;
 export function kindOf(workcenter) {
   const n = String(workcenter || "").toUpperCase();
-  if (/FRÄSEN|DREHEN/.test(n)) return "maschine";
+  if (/RÜSTEN/.test(n)) return "person";
+  if (/FRÄSEN|DREHEN/.test(n) || MACHINE_NAME.test(n)) return "maschine";
   if (/EXTERN|TEST/.test(n)) return "extern";
   return "person";
 }
 const LABELS = [
   [/PROGRAMM/, "Programmierung"],
   [/RÜSTEN/, "Rüsten"],
-  [/FRÄSEN/, "Fräsen"],
+  [/FRÄSEN|^(DMU|DMG|POS)\b/, "Fräsen"],
   [/DREHEN/, "Drehen"],
   [/QUALIT|\bQS\b/, "QS"],
   [/SÄGEN/, "Sägen"],
