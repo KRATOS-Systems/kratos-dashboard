@@ -1,5 +1,5 @@
 import React, { Suspense, lazy, useEffect, useMemo, useState } from "react";
-import { addDays, daysBetween, fmtShort } from "./lib.js";
+import { addDays, daysBetween, fmtShort, MACHINES } from "./lib.js";
 import { AV_ITEMS, isNewAv, AV_STATUS, avCycle, avDone, avState, avSummary } from "./avLib.js";
 import { AppTile, Ico, Thumb, partImg } from "./ui.jsx";
 import { ODOO_URL } from "./planLogic.js";
@@ -152,6 +152,11 @@ function AvPanel({ avStdOf = () => null, r, checks, orders, onSet, onBulk, peopl
             );
           })}
           {o.component_status && <div className="avp-odoo">Materialstatus laut Odoo: {o.component_status}</div>}
+          {(o.odoo_hours > 0 || o.odoo_machine) && (
+            <div className="avp-odoo">
+              Fräsen laut Odoo: {[o.odoo_machine && (MACHINES.find((m) => m.id === o.odoo_machine) || {}).short, o.odoo_hours > 0 && `${String(o.odoo_hours).replace(".", ",")} h`].filter(Boolean).join(", ")}
+            </div>
+          )}
         </div>
       </div>
     </div>

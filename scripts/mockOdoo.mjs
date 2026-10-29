@@ -118,6 +118,8 @@ const T = {
     ...(process.env.MOCK_A01378 ? [{ id: 1302, name: "FA01302", product_id: 2902, state: "confirmed", origin: "A01378" }] : []),
   ],
   "mrp.workorder": [
+    // Fräsen von FA01302 auf der DMU 40 EVO mit 10 Stunden Plan (nur mit MOCK_A01378=1)
+    ...(process.env.MOCK_A01378 ? [{ id: 6513, name: "Fräsen", sequence: 2, production_id: 1302, workcenter_id: 14, product_id: 2902, state: "blocked", duration_expected: 600, duration: 0, qty_production: 4 }] : []),
     { id: 5000, name: "Fräsen", production_id: 1100, workcenter_id: 1, product_id: 2901, state: "done", duration_expected: 60, duration: 300, qty_production: 10 },
     { id: 6531, name: "Programmierung", sequence: 0, production_id: 1307, workcenter_id: 6, product_id: 2901, state: "ready", duration_expected: 900, duration: 0 },
     { id: 6532, name: "Rüsten", sequence: 1, production_id: 1307, workcenter_id: 10, product_id: 2901, state: "blocked", duration_expected: 120, duration: 0 },

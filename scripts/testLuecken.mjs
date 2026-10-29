@@ -46,6 +46,9 @@ try {
   assert.equal(orders[0].machine, "m1");
   assert.equal(orders[0].source, "A01365");
   assert.ok(orders[0].odoo_id);
+  assert.equal(orders[0].hours, 1);
+  assert.equal(orders[0].odoo_hours, 1);
+  assert.equal(orders[0].odoo_machine, "");
   ok("FA01307 ist ergänzt, liegt auf der M1 (Aufgabe ohne „Kopie“), mit Odoo-Verweis");
 
   // 4. Nicht doppelt
@@ -53,6 +56,13 @@ try {
   assert.deepEqual(r.created, []);
   assert.equal((await api("GET", "/api/orders")).orders.length, 1);
   ok("Zweiter Abgleich legt nichts doppelt an");
+
+  // 4b. Stunden aus Odoo gelten nur einmal: wer sie ändert, behält seinen Wert, auch beim nächsten Abgleich
+  const put = await fetch(`http://localhost:3059/api/orders/${orders[0].id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ hours: 5 }) });
+  assert.ok(put.ok, "Stunden ändern nicht möglich: " + put.status);
+  await api("POST", "/api/odoo/sync", { dryRun: false });
+  assert.equal((await api("GET", "/api/orders")).orders[0].hours, 5);
+  ok("Stunden aus Odoo (1 h) werden bei leeren Stunden übernommen und danach nie wieder überschrieben");
 
   // 5. Bewusst gelöscht: kommt nicht wieder
   const id = orders[0].id;
@@ -75,6 +85,9 @@ try {
   assert.equal(orders[0].odoo_ref, "FA01302");
   assert.equal(orders[0].machine, "");
   assert.equal(orders[0].source, "A01378");
+  assert.equal(orders[0].hours, 10);
+  assert.equal(orders[0].odoo_machine, "dmu40");
+  assert.equal(orders[0].machine, "", "die Maschine aus Odoo ist nur ein Hinweis");
   assert.ok(orders[0].new_since && orders[0].new_since !== "baseline", "soll als NEU gekennzeichnet sein");
   ok("A01378 nachgeholt: FA01302 liegt in „Noch nicht eingeplant“ und ist als NEU markiert, Fehleingabe wird abgelehnt");
 

@@ -14,6 +14,8 @@
 // - Lücken: Steht ein Auftrag in der Odoo-Fertigungsplanung (Projekt "01 Fertigungsplanung") offen auf einer Station, hat aber einen offenen
 //   Fertigungsauftrag, den die App nicht kennt (z. B. weil er schon beim ersten Abgleich offen war), wird er einmalig ergänzt und auf
 //   die Maschine gelegt, auf der die Aufgabe in Odoo steht (sonst "Noch nicht eingeplant"). Was die App schon kennt, bleibt unberührt.
+// - Fräszeit: Die geplante Zeit der Fräsen-Arbeitsgänge in Odoo (aus dem Arbeitsplan der Stückliste) wird als Stunden übernommen, wenn bei der
+//   Position noch keine stehen, einmalig und ohne etwas zu überschreiben. Maschine und Zeit laut Odoo stehen als Hinweis an der Position.
 // Odoo wird nur gelesen, und nur wenn ODOO_URL und ODOO_API_KEY gesetzt sind.
 
 const OPEN_STATES = ["confirmed", "progress", "to_close"];
@@ -21,6 +23,8 @@ const PLANNING_PROJECT = "01 Fertigungsplanung";
 const TASK_OPEN_STATES = ["01_in_progress", "02_changes_requested", "03_approved", "04_waiting_normal"];
 const FINAL_STAGES = new Set(["Geliefert & Abgerechnet", "Nachkalkulation"]);
 const STAGE_MACHINE = { "DMG M1": "m1", "DMG 40 EVO": "dmu40", "POS H 800U": "h800u", "DMG DMU 50": "dmu50", "DMU 50": "dmu50" };
+// Arbeitsplatz des Fräsen-Arbeitsgangs in Odoo -> Maschine der App ("" = Sammelplatz FRÄSEN oder unbekannt)
+const WORKCENTER_MACHINE = { "DMU 40 EVO": "dmu40", "DMU 50": "dmu50", "DMG M1": "m1", "POS H 800 U": "h800u" };
 const EVERY = 10 * 60 * 1000;
 const EXT_OFFSET = 1000000000; // Einkaufspositionen liegen in odoo_seen oberhalb dieser Zahl, getrennt von den Fertigungsaufträgen
 const FRESH_DAYS = 3; // beim ersten Abgleich gelten Aufträge, die in den letzten Tagen angelegt wurden, als neu
@@ -68,7 +72,30 @@ export default function registerOdooSync(app, db, { isDate, nextPosition }) {
       const sales = await odoo("sale.order", "search_read", { domain: [["name", "in", chunk]], fields: ["name", "delivery_status", "state"], limit: 500 });
       sales.forEach((s) => delivery.set(s.name, s));
     }
+    // Geplante Fräszeit und Maschine je Fertigungsauftrag aus den Fräsen-Arbeitsgängen (Minuten laut Arbeitsplan, 0 = Odoo hat keine Zeit)
+    const milling = new Map();
+    const prodIds = prods.map((p) => p.id).filter(Number.isInteger);
+    for (let i = 0; i < prodIds.length; i += 150) {
+      try {
+        const wos = await odoo("mrp.workorder", "search_read", {
+          domain: [["production_id", "in", prodIds.slice(i, i + 150)], ["state", "!=", "cancel"], ["name", "ilike", "Fräs"]],
+          fields: ["production_id", "workcenter_id", "duration_expected"],
+          limit: 1500,
+        });
+        wos.forEach((w) => {
+          const pid = Array.isArray(w.production_id) ? w.production_id[0] : null;
+          if (!pid) return;
+          const cur = milling.get(pid) || { minutes: 0, machine: null };
+          cur.minutes += typeof w.duration_expected === "number" ? w.duration_expected : 0;
+          if (cur.machine === null) cur.machine = Array.isArray(w.workcenter_id) ? WORKCENTER_MACHINE[String(w.workcenter_id[1]).trim()] || "" : "";
+          milling.set(pid, cur);
+        });
+      } catch (err) {
+        console.error("Odoo-Abgleich: Fräszeiten nicht lesbar", err.message); // ohne Zeiten weiter, der Rest des Abgleichs läuft
+      }
+    }
     return prods.map((p) => {
+      const mill = milling.get(p.id);
       const origin = (p.origin || "").trim();
       const sale = delivery.get(origin);
       const due = typeof p.date_deadline === "string" ? p.date_deadline.slice(0, 10) : null;
@@ -80,6 +107,8 @@ export default function registerOdooSync(app, db, { isDate, nextPosition }) {
         quantity: typeof p.product_qty === "number" ? p.product_qty : null,
         due: due && isDate(due) ? due : null,
         component_status: p.components_availability ? String(p.components_availability).slice(0, 60) : null,
+        odoo_hours: mill && mill.minutes > 0 ? Math.round((mill.minutes / 60) * 100) / 100 : null,
+        odoo_machine: mill ? mill.machine : null,
         created: typeof p.create_date === "string" ? p.create_date.replace(" ", "T") + "Z" : null,
         delivered: !!sale && sale.delivery_status === "full",
         saleCancelled: !!sale && sale.state === "cancel",
@@ -294,6 +323,8 @@ export default function registerOdooSync(app, db, { isDate, nextPosition }) {
       "UPDATE orders SET source = COALESCE(?, source), product = COALESCE(?, product), quantity = CASE WHEN is_split = 1 THEN quantity ELSE COALESCE(?, quantity) END, odoo_id = COALESCE(?, odoo_id), component_status = ? WHERE odoo_ref = ? AND done = 0"
     );
     const close = db.prepare("UPDATE orders SET done = 1, done_date = COALESCE(done_date, date('now')) WHERE odoo_ref = ? OR parent_ref = ?");
+    const hint = db.prepare("UPDATE orders SET odoo_hours = ?, odoo_machine = ? WHERE odoo_ref = ? AND done = 0");
+    const takeHours = db.prepare("UPDATE orders SET hours = ?, odoo_hours_applied = 1 WHERE odoo_ref = ? AND done = 0 AND is_split = 0 AND odoo_hours_applied = 0 AND (hours IS NULL OR hours = 0)");
     const seen = db.prepare("INSERT OR IGNORE INTO odoo_seen (odoo_id, first_seen) VALUES (?, ?)");
     const seenOld = db.prepare("INSERT OR IGNORE INTO odoo_seen (odoo_id, first_seen) VALUES (?, 'baseline')");
     // Neue Positionen eines bekannten Auftrags übernehmen dessen aktuellen Liefertermin (den frühesten der offenen Positionen)
@@ -333,6 +364,12 @@ export default function registerOdooSync(app, db, { isDate, nextPosition }) {
         setState("gap_done", JSON.stringify([...new Set([...done, ...gapIds])]));
       }
       plan.updated.forEach((i) => update.run(i.source, i.product, i.quantity, i.odoo_id, i.component_status, i.odoo_ref));
+      // Fräszeit laut Odoo: immer als Hinweis merken, als Stunden nur einmal und nur bei leeren Stunden (geteilte Positionen haben eigene Stunden)
+      [...plan.created, ...plan.updated].forEach((i) => {
+        if (i.odoo_hours === undefined) return;
+        hint.run(i.odoo_hours, i.odoo_machine, i.odoo_ref);
+        if (i.odoo_hours > 0) takeHours.run(i.odoo_hours, i.odoo_ref);
+      });
       closeRefs.forEach((ref) => close.run(ref, ref));
       if (markAllSeen) plan.all.forEach((i) => seenOld.run(i.odoo_id));
       db.exec("COMMIT");
