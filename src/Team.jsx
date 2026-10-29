@@ -3,6 +3,7 @@ import { Ico, useToast } from "./ui.jsx";
 import { useNow, clock, since, fmtTime, splitProduct, odooLink, act, useBdeSession, canOperate, toLocalInput, fromLocalInput, bookingRef, bookingKey } from "./bdeLib.js";
 import Avatar from "./Avatar.jsx";
 import { JobRef } from "./BdeControls.jsx";
+import { askLaufzeit, afterStop } from "./Laufzeit.jsx";
 
 // Team-Tafel: eine Karte pro Mitarbeiter, wer ist da und woran wird gerade gearbeitet.
 // Farbe statt Text: grün = da und Buchung läuft, grau = da, nichts gebucht, orange = doppelt gestempelt, rot = Buchung vergessen,
@@ -87,6 +88,8 @@ export function MachineStop({ run, employeeId, onDone, onCancel }) {
       await act({ action: "stop", workorderId: run.workorderId, employeeId, endAt });
       toast(`${run.label} ${run.fa} beendet`);
       onDone();
+      // Fräsen beendet: Pflichtfrage "Aufspannung fertig?" (nur beim eigenen Lauf, nicht wenn die Leitung für andere beendet)
+      if (employeeId == null) afterStop(run);
     } catch (err) {
       toast(err.message);
     } finally {
@@ -128,6 +131,11 @@ export function MachineRuns({ list, now, odooUrl, canStop, employeeId, onChanged
               {m.order ? ` · ${m.order}` : ""}
             </span>
             <Clock start={m.start} now={now} />
+            {(m.step === "Fräsen" || m.label === "Fräsen") && (
+              <button type="button" className="btn sm" onClick={() => askLaufzeit({ mode: "status", workorderId: m.workorderId })} title="Programmlaufzeit je Aufspannung">
+                Laufzeiten
+              </button>
+            )}
             {canStop && (
               <button type="button" className="btn sm" onClick={() => setOpen(open === m.workorderId ? null : m.workorderId)}>
                 Beenden
@@ -182,11 +190,19 @@ export function TeamCard({ c, now, odooUrl, session, onChanged }) {
       await act(body);
       toast(msg);
       onChanged && onChanged();
+      return true;
     } catch (err) {
       toast(err.message);
+      return false;
     } finally {
       setBusy(false);
     }
+  }
+  // Eigene Programmierung gestoppt: fertig? Dann Anzahl der Aufspannungen fürs Fräsen festhalten
+  async function stopPerson() {
+    const b = c.persons[0];
+    const ok = await run({ action: "stop", ...bookingRef(b), employeeId: own ? undefined : c.id }, own ? "Gestoppt" : `${b.label} von ${c.name} beendet`);
+    if (ok && own) afterStop(b);
   }
   return (
     <article className={`bcard st-${c.state}${own ? " own" : ""}`}>
@@ -215,7 +231,7 @@ export function TeamCard({ c, now, odooUrl, session, onChanged }) {
             type="button"
             className="bbtn"
             disabled={busy}
-            onClick={() => run({ action: "stop", ...bookingRef(c.persons[0]), employeeId: own ? undefined : c.id }, own ? "Gestoppt" : `${c.persons[0].label} von ${c.name} beendet`)}
+            onClick={stopPerson}
           >
             {own ? "Stopp" : "Beenden"}
           </button>

@@ -103,3 +103,56 @@ Schlüssel nur auf dem Server; PIN wird nie gelesen, nur geprüft (5 Fehlversuch
 - Bedienen und Kiosk: `node scripts/mockOdoo.mjs` (Test-Odoo auf Port 8069, Test-PINs und Chips in der Datei), Server mit `BDE_ODOO_URL=http://localhost:8069 BDE_ODOO_API_KEY=test BDE_WRITE=1 BDE_KIOSK_KEY=… BDE_SECRET=…` und einer Datenbankkopie (`DB_PATH`). `GET http://localhost:8069/__log` zeigt alle Schreibaufrufe.
 
 Vorschläge für n8n und die Steuerungsanbindung: `docs/bde-n8n-und-steuerung.md`.
+
+## Programmlaufzeit je Aufspannung (Fräsen)
+
+Für die Nachkalkulation: je Aufspannung die Programmlaufzeit eines vollen Durchlaufs, vom Mitarbeiter an der Maschine abgelesen. Mehrere Aufspannungen bleiben **ein** Arbeitsgang „Fräsen“ in Odoo, es entstehen keine zusätzlichen Arbeitsgänge, die Zeiterfassung (`mrp.workcenter.productivity`) wird nicht geändert und nicht für Laufzeiten benutzt. Code: `server/bdeLaufzeit.js`, `src/Laufzeit.jsx`, Test `scripts/testLaufzeit.mjs`.
+
+**Wo die Zeiten stehen:** als interne Notizen im Verlauf des **Fertigungsauftrags** in Odoo (wie früher von Hand), eine Zeile je Eintrag in festem Aufbau. Es gibt keine eigenen Odoo-Felder oder -Modelle, in Odoo muss nichts eingerichtet werden.
+
+```
+Aufspannungen: 3 (Aurel Rama, 29.10.2026)
+Laufzeit Aufspannung 2: 12:00 Min:Sek für 2 Teile = 6:00 je Stück (Aurel Rama, 29.10.2026)
+Laufzeit Aufspannung 1: 6:00 Min:Sek für 1 Teil = 6:00 je Stück (Aurel Rama, 29.10.2026, Programm geändert)
+```
+
+- Je Aufspannung gilt die **neueste** Notiz, ebenso bei der Anzahl. Eine Korrektur ist einfach eine neue Zeile, die alte bleibt im Verlauf stehen.
+- Hinter dem Namen steht optional „Programm geändert“ oder „unverändert“ (Laufzeit vom früheren Auftrag übernommen).
+- Die Laufzeit je Stück rechnet die App (Minuten ÷ Teile), die Summe aller Aufspannungen ebenso.
+- Eine Notiz, die jemand so umschreibt, dass sie nicht mehr lesbar ist, wird von der App ignoriert; die App fragt dann einfach neu.
+- Notizen sind interne Notizen (`message_post` mit `mail.mt_note`, keine E-Mail, keine Empfänger).
+
+**Ablauf in der App** (nur Arbeitsgang Fräsen)
+- Nach dem Stopp der **Programmierung**: „Programmierung fertig?“ Ja → „Wie viele Aufspannungen?“ (Vorschlag vom letzten gleichen Artikel).
+- Beim **Beenden des Fräsens** (eigener Lauf, nicht wenn die Leitung für andere beendet): ist die Anzahl noch leer, zuerst die Anzahl. Dann Pflichtfrage „Aufspannung fertig? Ja/Nein“. Ja → Aufspannung wählen (die nächste offene ist hervorgehoben), Programmlaufzeit in Minuten:Sekunden, Teile je Aufspannung (zuletzt benutzter Wert, sonst 1). Mitarbeiter und Datum automatisch.
+- **Wiederholteil**: Die App sucht im zuletzt erledigten Fräsen-Arbeitsgang desselben Artikels nach solchen Notizen und schlägt die Werte vor („Wie beim letzten Mal (FA01100): 7:30 für 1 Teil“). „Laufzeit unverändert“ übernimmt sie, „Andere Zeit eingeben“ setzt den Haken „Programm geändert“ vor.
+- **Stand**: Knopf „Laufzeiten“ an der Maschinenzeile des laufenden Fräsens (auf Team und Mein Arbeitsplatz): welche Aufspannung hat welche Zeit, wer, wann, welche sind offen.
+- **Noch nicht fertig gemeldet**: Auf Mein Arbeitsplatz steht eine Liste der eigenen Arbeitsgänge der letzten 14 Tage, die gestoppt, aber nicht fertig gemeldet sind (nicht, solange sie laufen); beim Fräsen mit „Eintragen“, wenn Laufzeiten fehlen. Sie fängt auf, was der Dialog nicht erreicht: Beenden am Kiosk, das kleine Fenster, eine weggeklickte Frage.
+- **Fräsen fertig melden** (`mrp.workorder.button_finish`) geht in der App nur, wenn die Anzahl feststeht und jede Aufspannung eine Laufzeit hat und keine Zeit mehr läuft. Alle weiteren Schritte: siehe unten.
+- **Plausibilität**: Summe Laufzeit je Stück × Stückzahl darf die gestempelte Zeit des Arbeitsgangs nicht übersteigen, sonst Warnung („Minuten und Sekunden vertauscht?“) mit „Korrigieren“ oder „Trotzdem speichern“.
+
+**Schreibrechte** (`server/odooClient.js`): am Fertigungsauftrag nur `message_post` als interne Notiz, am Arbeitsgang nur Starten, Stoppen und `button_finish`. Kein Löschen, keine Zeiten, kein Status. Ohne `BDE_WRITE=1` wird nichts geschrieben.
+
+**Auslesen für die Kalkulationssoftware** (JSON-2, nur lesen): Notizen des Fertigungsauftrags, `mail.message` mit `model = mrp.production`, `res_id` = Fertigungsauftrag und Text „Laufzeit Aufspannung“. Die Zeilen sind wie oben aufgebaut.
+
+**Testen:** `node scripts/testLaufzeit.mjs` (automatische Prüfung gegen das Test-Odoo) und `node scripts/devTest.mjs` (App auf http://localhost:3056 mit Test-Odoo zum Ausprobieren). Live geht es erst nach Freigabe mit dem Deploy der App, in Odoo ist nichts vorzubereiten (nur `BDE_WRITE=1`, wie für das übrige Bedienen).
+
+## Arbeitsgänge fertig melden, Fertigungsauftrag abschließen, weiterer Arbeitsschritt
+
+Code: `server/bdeLaufzeit.js` (Wege `/api/bde/fertig`, `/api/bde/auftrag`, `/api/bde/auftrag/abschliessen`, `/api/bde/schritt`, `/api/bde/offen`), `src/Laufzeit.jsx`, Test `scripts/testLaufzeit.mjs`.
+
+**Schritt eines Arbeitsgangs** erkennt die App am **Namen des Arbeitsgangs** (Programmierung, Rüsten, Fräsen, Qualitätssicherung = „QS“), nicht am Arbeitsplatz. Das Fräsen läuft bei uns mal auf dem Sammelplatz FRÄSEN, mal direkt auf DMU 40 EVO, DMG M1 oder POS H 800 U. Jede gestempelte Buchung trägt dafür `step` und `machine` (`server/bde.js`, `stepOf`).
+
+**Ablauf**
+- Nach dem Stopp einer eigenen Buchung fragt die App je nach Schritt: Programmierung „fertig?“ (Ja meldet den Arbeitsgang fertig, dann die Anzahl der Aufspannungen), Fräsen die Laufzeit je Aufspannung (am Ende „Fräsen fertig melden“), Rüsten und QS „… fertig?“.
+- „Fertig melden“ ruft `mrp.workorder.button_finish` auf. Odoo gibt den nächsten Arbeitsgang selbst frei. Gesperrt, solange noch eine Zeit läuft, beim Fräsen zusätzlich, solange Anzahl oder Laufzeiten fehlen.
+- Ist die QS fertig und alle Arbeitsgänge des Auftrags sind es auch, fragt die App „Fertigungsauftrag abschließen?“. Das setzt die produzierte Menge auf die Auftragsmenge und ruft `mrp.production.button_mark_done` auf (Odoo bucht Material und fertiges Teil). Stellt Odoo eine Rückfrage (Assistent), bleibt der Auftrag offen und die App verweist auf Odoo.
+- **Weiterer Arbeitsschritt** („Weiterer Arbeitsschritt“ nach dem Fräsen, im Stand-Dialog und vor dem Abschluss): Maschine wählen (alle Arbeitsplätze mit passendem „… Rüsten“-Arbeitsplatz sowie FRÄSEN/RÜSTEN), geplante Stunden optional. Die App legt „Rüsten“ und „Fräsen“ der Maschine an, hängt sie vor die QS und lässt die QS auf das neue Fräsen warten. Solange der Fertigungsauftrag nicht abgeschlossen ist, geht das beliebig oft. Eine Notiz im Fertigungsauftrag hält es fest.
+- Die Liste **„Noch nicht fertig gemeldet“** auf Mein Arbeitsplatz zeigt eigene Arbeitsgänge der letzten 14 Tage, die gestoppt, aber nicht fertig gemeldet sind (Kiosk, kleines Fenster und weggeklickte Fragen fragen nicht selbst).
+- **Aus der Planung** (Dashboard, Arbeitsgänge einer Position): Hat die Position einen Odoo-Fertigungsauftrag, legt das Haken „Auch in Odoo anlegen“ im Dialog „Arbeitsgänge“ die Arbeitsschritte an (`POST /api/planung/odoo-schritte`, Maschinen: dmu40 = DMU 40 EVO, dmu50 = DMU 50, m1 = DMG M1, h800u = POS H 800 U). Der erste Arbeitsgang gehört zum Fräsen, das der Auftrag schon hat. Für jeden weiteren, den es auf dieser Maschine in Odoo noch nicht gibt, entstehen Rüsten und Fräsen (geplante Zeit = Stunden des Arbeitsgangs) vor der QS. Die Planung wird zuerst gespeichert. Klappt Odoo nicht (z. B. `BDE_WRITE` aus oder Arbeitsplatz fehlt), bleibt die Planung bestehen und die App meldet, was fehlt.
+- **DMU 50**: In Odoo gibt es noch keine Arbeitsplätze „DMU 50“ und „DMU 50 Rüsten“. Sobald sie angelegt sind, erscheint die DMU 50 von selbst bei der Maschinenwahl und in der Planung; bis dahin sagt die App, welcher Arbeitsplatz fehlt, und legt nichts an.
+- Laufzeiten und Anzahl der Aufspannungen gelten **je Fräsen-Arbeitsgang, also je Maschine**. Die Notizen tragen die Maschine in Klammern.
+
+**Schreibrechte** (`server/odooClient.js`), zusätzlich zu oben: `mrp.workorder` `create` nur mit Name, Arbeitsplatz, Fertigungsauftrag, Reihenfolge, Plandauer, Abhängigkeit; `write` nur Reihenfolge und Abhängigkeit; `mrp.production` `write` nur `qty_producing`, dazu `button_mark_done`. Keine Zeiten, kein Status, kein Löschen.
+
+**Nur gegen das Test-Odoo geprüft.** Offen vor dem Livegang an einem echten Auftrag: ob Odoo beim Anlegen der Arbeitsgänge die Abhängigkeit (`blocked_by_workorder_ids`) so annimmt, ob die QS danach tatsächlich auf das neue Fräsen wartet, und ob `button_mark_done` bei euch ohne Rückfrage durchläuft.

@@ -27,7 +27,7 @@ const M2O = {
   "product.product": { product_tmpl_id: "product.template" },
   "mail.activity": { activity_type_id: "mail.activity.type", user_id: "res.users", create_uid: "res.users" },
   "res.users": { partner_id: "res.partner" },
-  "project.task": { project_id: "project.project" },
+  "project.task": { project_id: "project.project", stage_id: "project.task.type", sale_order_id: "sale.order" },
   "account.analytic.line": { project_id: "project.project", task_id: "project.task", employee_id: "hr.employee" },
   "discuss.channel.member": { partner_id: "res.partner", channel_id: "discuss.channel" },
   "mail.message": { author_id: "res.partner" },
@@ -38,13 +38,18 @@ const O2M = { "product.template": { product_variant_ids: ["product.product", "pr
 const T = {
   "res.users": [{ id: 2, name: "Alexander Meimeteas", partner_id: 3 }, { id: 25, name: "Frank Häckl", partner_id: 41 }, { id: 30, name: "Aurel Rama", partner_id: 42 }, { id: 29, name: "Nino Posset", partner_id: 43 }],
   // Zeiten ohne Auftrag: Projekt Gemeinkosten mit Aufgaben, Stundenzettel
-  "project.project": [{ id: 1, name: "Internal" }, { id: 18, name: "Gemeinkosten" }],
+  "project.project": [{ id: 1, name: "Internal" }, { id: 18, name: "Gemeinkosten" }, { id: 6, name: "01 Fertigungsplanung" }],
+  "project.task.type": [{ id: 68, name: "DMG M1" }, { id: 46, name: "DMG 40 EVO" }, { id: 42, name: "Geliefert & Abgerechnet" }],
   "project.task": [
     { id: 3, name: "Time Off", project_id: 1, sequence: 10 },
     { id: 699, name: "AV / Planung allgemein", project_id: 18, sequence: 10 },
     { id: 700, name: "QS allgemein", project_id: 18, sequence: 10 },
     { id: 701, name: "Instandhaltung", project_id: 18, sequence: 10 },
     { id: 702, name: "Unterbrechung", project_id: 18, sequence: 10 },
+    // Odoo-Fertigungsplanung: A01365 steht offen auf der M1 (Original) und als Kopie bei 40 EVO, A00958 ist schon geliefert
+    { id: 900, name: "A01365 - AV LT: 30.10. (Kopie)", project_id: 6, stage_id: 46, state: "03_approved", sale_order_id: 1365 },
+    { id: 901, name: "A01365 - AV LT: 30.10.", project_id: 6, stage_id: 68, state: "03_approved", sale_order_id: 1365 },
+    { id: 902, name: "A00958 - AV Rahmenvertrag", project_id: 6, stage_id: 42, state: "03_approved", sale_order_id: 958 },
   ],
   "account.analytic.line": [
     { id: 2600, name: "07:00–07:30 · Kratos BDE", date: day(0), unit_amount: 0.5, employee_id: 1, project_id: 18, task_id: 701, create_date: ago(3) },
@@ -69,6 +74,10 @@ const T = {
     { id: 901, model: "discuss.channel", res_id: 71, message_type: "comment", author_id: 43, body: "<p>Material für FA01307 ist da</p>", date: ago(1), record_name: false, subject: false },
     { id: 902, model: "discuss.channel", res_id: 73, message_type: "comment", author_id: 41, body: "<p>Privat an Nino</p>", date: ago(0.5), record_name: false, subject: false },
     { id: 903, model: "mrp.production", res_id: 1307, message_type: "comment", author_id: 3, body: "<p>@Aurel Rama bitte Erstmuster vor Serienstart prüfen</p>", date: ago(2), record_name: "FA01307", subject: false },
+    // Programmlaufzeiten des früheren Auftrags FA01100 (Wiederholteil), wie die App sie als Notiz ablegt
+    { id: 910, model: "mrp.production", res_id: 1100, message_type: "comment", author_id: 3, body: "<p><b>Aufspannungen:</b> 2 (Aurel Rama, 29.09.2026)</p>", date: ago(24 * 30), record_name: "FA01100", subject: false },
+    { id: 911, model: "mrp.production", res_id: 1100, message_type: "comment", author_id: 3, body: "<p><b>Laufzeit Aufspannung 1:</b> 7:30 Min:Sek für 1 Teil = 7:30 je Stück (Aurel Rama, 29.09.2026)</p>", date: ago(24 * 30), record_name: "FA01100", subject: false },
+    { id: 912, model: "mrp.production", res_id: 1100, message_type: "comment", author_id: 3, body: "<p><b>Laufzeit Aufspannung 2:</b> 12:00 Min:Sek für 2 Teile = 6:00 je Stück (Aurel Rama, 29.09.2026)</p>", date: ago(24 * 30), record_name: "FA01100", subject: false },
   ],
   "mail.notification": [
     { id: 1, res_partner_id: 42, mail_message_id: 903, notification_type: "inbox", is_read: false },
@@ -90,6 +99,10 @@ const T = {
     { id: 5, name: "QUALITÄTSSICHERUNG (QS)" },
     { id: 6, name: "CAM-PROGRAMMIERUNG" },
     { id: 10, name: "RÜSTEN" },
+    { id: 14, name: "DMU 40 EVO" },
+    { id: 16, name: "DMU 40 EVO Rüsten" },
+    { id: 15, name: "DMG M1" },
+    { id: 17, name: "DMG M1 Rüsten" },
   ],
   "product.template": [{ id: 70, name: "Grundplatte" }, { id: 71, name: "Motorplatte" }],
   "product.product": [
@@ -97,14 +110,19 @@ const T = {
     { id: 2902, name: "Motorplatte für RFID", default_code: "212-12-025_R4", product_tmpl_id: 71 },
   ],
   "mrp.production": [
-    { id: 1307, name: "FA01307", product_id: 2901, state: "confirmed", origin: "A01365" },
+    { id: 1307, name: "FA01307", product_id: 2901, state: "confirmed", origin: "A01365", product_qty: 10, qty_producing: 0 },
     { id: 1070, name: "FA01070", product_id: 2902, state: "progress", origin: "A00958" },
+    // früherer, erledigter Auftrag desselben Artikels (Wiederholteil)
+    { id: 1100, name: "FA01100", product_id: 2901, state: "done", origin: "A01100" },
+    // offener Auftrag, der in keiner Odoo-Planungsaufgabe steht (nur mit MOCK_A01378=1, für POST /api/odoo/nachholen)
+    ...(process.env.MOCK_A01378 ? [{ id: 1302, name: "FA01302", product_id: 2902, state: "confirmed", origin: "A01378" }] : []),
   ],
   "mrp.workorder": [
-    { id: 6531, name: "Programmierung", production_id: 1307, workcenter_id: 6, product_id: 2901, state: "ready", duration_expected: 900, duration: 0 },
-    { id: 6532, name: "Rüsten", production_id: 1307, workcenter_id: 10, product_id: 2901, state: "blocked", duration_expected: 120, duration: 0 },
-    { id: 6533, name: "Fräsen", production_id: 1307, workcenter_id: 1, product_id: 2901, state: "blocked", duration_expected: 60, duration: 0 },
-    { id: 6534, name: "Qualitätssicherung", production_id: 1307, workcenter_id: 5, product_id: 2901, state: "blocked", duration_expected: 0, duration: 0 },
+    { id: 5000, name: "Fräsen", production_id: 1100, workcenter_id: 1, product_id: 2901, state: "done", duration_expected: 60, duration: 300, qty_production: 10 },
+    { id: 6531, name: "Programmierung", sequence: 0, production_id: 1307, workcenter_id: 6, product_id: 2901, state: "ready", duration_expected: 900, duration: 0 },
+    { id: 6532, name: "Rüsten", sequence: 1, production_id: 1307, workcenter_id: 10, product_id: 2901, state: "blocked", duration_expected: 120, duration: 0 },
+    { id: 6533, name: "Fräsen", sequence: 2, production_id: 1307, workcenter_id: 1, product_id: 2901, state: "blocked", duration_expected: 60, duration: 0, qty_production: 10 },
+    { id: 6534, name: "Qualitätssicherung", sequence: 3, production_id: 1307, workcenter_id: 5, product_id: 2901, state: "blocked", duration_expected: 0, duration: 0 },
     { id: 5590, name: "Fräsen", production_id: 1070, workcenter_id: 1, product_id: 2902, state: "progress", duration_expected: 0, duration: 0 },
     { id: 5591, name: "Qualitätssicherung", production_id: 1070, workcenter_id: 5, product_id: 2902, state: "ready", duration_expected: 60, duration: 0 },
   ],
@@ -122,7 +140,7 @@ const T = {
     { id: 14, employee_id: 2, number_of_days: 30, leaves_taken: 23, state: "validate", date_from: "2026-01-01", date_to: "2027-03-31" },
     { id: 8, employee_id: 3, number_of_days: 30, leaves_taken: 24, state: "validate", date_from: "2026-01-01", date_to: "2026-12-31" },
   ],
-  "sale.order": [{ id: 1365, name: "A01365" }],
+  "sale.order": [{ id: 1365, name: "A01365" }, { id: 958, name: "A00958" }, { id: 1378, name: "A01378" }],
   "mail.activity.type": [{ id: 1, name: "To-do" }, { id: 2, name: "Anruf" }, { id: 4, name: "E-Mail" }],
   "mail.activity": [
     { id: 501, activity_type_id: 1, user_id: 30, create_uid: 25, summary: "Programm für Grundplatte prüfen", note: "<p>Bohrbild mit <b>Zeichnung</b> abgleichen</p>", date_deadline: day(-2), res_model: "mrp.production", res_id: 1307, res_name: "FA01307", date_done: false },
@@ -250,6 +268,22 @@ function call(model, method, p) {
       return p.ids.map((id) => byId(model, id)).filter(Boolean).map((r) => out(model, r, p.fields));
     case "search_count":
       return search(model, { domain: p.domain }).length;
+    case "fields_get":
+      return {};
+    case "button_finish": {
+      const wo = byId("mrp.workorder", p.ids[0]);
+      if (["done", "cancel"].includes(wo.state)) throw new Error("Arbeitsgang ist schon erledigt");
+      wo.state = "done";
+      log.push({ at: fmt(now()), call: `mrp.workorder.button_finish(${wo.id})` });
+      return true;
+    }
+    case "button_mark_done": {
+      const rec = byId(model, p.ids[0]);
+      log.push({ at: fmt(now()), call: `${model}.button_mark_done(${rec.id})` });
+      if (rec.wizard) return { type: "ir.actions.act_window", res_model: "mrp.consumption.warning" };
+      rec.state = "done";
+      return true;
+    }
     case "start_employee": {
       const wo = byId("mrp.workorder", p.ids[0]);
       if (["done", "cancel"].includes(wo.state)) throw new Error("Arbeitsgang ist erledigt");
@@ -275,13 +309,15 @@ function call(model, method, p) {
     case "create": {
       const ids = p.vals_list.map((v) => {
         const id = nextId(model);
-        T[model].push({ ...v, id, create_date: fmt(now()) });
+        T[model].push({ ...v, id, create_date: fmt(now()), ...(model === "mrp.workorder" ? { state: v.state || "blocked" } : {}) });
         return id;
       });
       log.push({ at: fmt(now()), call: `${model}.create(${JSON.stringify(p.vals_list)}) -> ${ids}` });
       return ids;
     }
     case "message_post": {
+      const rec = byId(model, p.ids[0]);
+      T["mail.message"].push({ id: nextId("mail.message"), model, res_id: p.ids[0], message_type: p.message_type || "comment", author_id: 3, body: p.body, date: fmt(now()), record_name: rec ? rec.name : false, subject: false });
       log.push({ at: fmt(now()), call: `${model}.message_post(${p.ids}, ${p.subtype_xmlid}): ${String(p.body).replace(/<[^>]+>/g, " ").slice(0, 120)}` });
       return 1;
     }

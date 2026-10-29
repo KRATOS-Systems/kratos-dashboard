@@ -18,6 +18,7 @@ import registerBdeTasks from "./bdeTasks.js";
 import registerBdePhotos from "./bdePhotos.js";
 import registerBdeMessages from "./bdeMessages.js";
 import registerBdeParts from "./bdeParts.js";
+import registerBdeLaufzeit from "./bdeLaufzeit.js";
 import { createOverhead } from "./bdeOverhead.js";
 
 const TZ = "Europe/Berlin";
@@ -61,6 +62,19 @@ const LABELS = [
   [/ARBEITSVORB|\(AV\)/, "Arbeitsvorbereitung"],
   [/PLANUNG/, "Produktionsplanung"],
 ];
+// Arbeitsschritt eines Arbeitsgangs: an seinem Namen ("Fräsen", "Rüsten", "Programmierung", "Qualitätssicherung"), nicht am Arbeitsplatz.
+// Das Fräsen läuft bei uns mal auf dem Sammelarbeitsplatz FRÄSEN, mal direkt auf einer Maschine (DMU 40 EVO, DMG M1 ...).
+const STEP_RE = [
+  [/programmier/, "Programmierung"],
+  [/rüst/, "Rüsten"],
+  [/fräs/, "Fräsen"],
+  [/qualit|\bqs\b/, "QS"],
+];
+export function stepOf(name) {
+  const n = String(name || "").toLowerCase();
+  const hit = STEP_RE.find(([re]) => re.test(n));
+  return hit ? hit[1] : null;
+}
 export function labelOf(workcenter) {
   const n = String(workcenter || "").toUpperCase();
   const hit = LABELS.find(([re]) => re.test(n));
@@ -205,6 +219,7 @@ export default function registerBde(app, db, staff) {
         workorderId: wo ? wo.id : null,
         kind: kindOf(wc?.name),
         label: labelOf(wc?.name),
+        step: stepOf(wo?.name) || stepOf(wc?.name),
         workcenter: wc ? wc.name : null,
         fa: prod ? prod.name : null,
         order: prod ? origins.get(prod.id) || null : null,
@@ -290,6 +305,8 @@ export default function registerBde(app, db, staff) {
     taskId: b.taskId ?? null,
     overhead: !!b.overhead,
     label: b.label,
+    step: b.step ?? null,
+    machine: b.workcenter ?? null,
     kind: b.kind,
     fa: b.fa,
     order: b.order,
@@ -626,6 +643,7 @@ export default function registerBde(app, db, staff) {
   registerBdeTasks(app, ctx, db);
   registerBdePhotos(app, ctx);
   registerBdeMessages(app, ctx);
+  registerBdeLaufzeit(app, ctx);
   if (staff) registerBdeParts(app, db, ctx, staff);
 
   // Für Erinnerungen über Talos (n8n): offene Hinweise mit Odoo-Benutzer, nur mit eigenem Schlüssel

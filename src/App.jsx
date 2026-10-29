@@ -5,6 +5,7 @@ import Dashboard from "./Dashboard.jsx";
 import Team from "./Team.jsx";
 import Arbeitsplatz from "./Arbeitsplatz.jsx";
 import Kiosk from "./Kiosk.jsx";
+import LaufzeitHost from "./Laufzeit.jsx";
 import { MiniProvider } from "./MiniWindow.jsx";
 import { Palette, Alerts, alertsList } from "./Overlays.jsx";
 import { BrandMark, WordMark, Ico, SvgDefs, ToastProvider } from "./ui.jsx";
@@ -293,6 +294,7 @@ export default function App() {
         />
       )}
       {showData && <DataDialog onClose={() => setShowData(false)} />}
+      <LaufzeitHost />
       </MiniProvider>
     </ToastProvider>
   );

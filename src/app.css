@@ -1192,6 +1192,51 @@ a.btn { text-decoration: none; }
 .nav .badge.new { background: var(--dmu); animation: newblink 1.4s ease-in-out infinite; }
 .nav .badge { white-space: nowrap; }
 
+/* Programmlaufzeit je Aufspannung (src/Laufzeit.jsx): große Tasten, wenig Tippen */
+.modal.lz { z-index: 80; }
+.lzdlg { width: min(620px, 100%); display: flex; flex-direction: column; gap: 14px; }
+.lzdlg h3 { margin: 0; font-size: 24px; }
+.lzdlg p { margin: 0; }
+.lzhead { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; color: var(--muted); font-size: 14px; }
+.lzhead b { color: var(--ink); font-size: 16px; }
+.lzhint { color: var(--muted); font-size: 14px; }
+.lzhint b { color: var(--ink); }
+.lzerr { padding: 10px 12px; border-radius: 10px; background: var(--bad-soft); color: var(--bad); font-size: 14px; }
+.lzwarn { padding: 14px; border-radius: 12px; background: var(--warn-soft); color: var(--ink); border: 1px solid color-mix(in srgb, var(--warn) 50%, var(--line)); font-size: 16px; line-height: 1.4; }
+.lzbtns { display: flex; flex-wrap: wrap; gap: 10px; }
+.lzbtns .bbtn { flex: 1 1 200px; min-height: 72px; font-size: 19px; }
+.lzbtns.two .bbtn { flex: 1 1 0; min-height: 88px; font-size: 24px; }
+.lzgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(92px, 1fr)); gap: 10px; }
+.bbtn.big { flex-direction: column; min-height: 84px; font-size: 30px; font-family: var(--f-display); gap: 2px; }
+.bbtn.big small { font: 500 12px var(--f-body); color: var(--muted); }
+.bbtn.big.sug { border-color: var(--ink); }
+.bbtn.big.done { background: var(--ok-soft); border-color: color-mix(in srgb, var(--ok) 45%, var(--line-strong)); }
+.lzmore { display: flex; align-items: flex-end; gap: 10px; }
+.lzmore label, .lztime label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); }
+.lzmore input { width: 110px; }
+.lzmore .bbtn { min-height: 52px; }
+.lzdlg input[inputmode="numeric"] { min-height: 52px; font: 600 24px var(--f-mono); text-align: center; border-radius: 12px; border: 1px solid var(--line-strong); background: var(--surface); color: var(--ink); }
+.lzsug { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; flex-wrap: wrap; padding: 14px; border-radius: 12px; background: var(--sunken); border: 1px solid var(--line); }
+.lzsug span { color: var(--muted); font-size: 14px; }
+.lzsug b { font-size: 28px; }
+.lzsug small { font: 500 14px var(--f-body); color: var(--muted); }
+.lztime { display: flex; align-items: flex-end; gap: 10px; }
+.lztime label { flex: 1; }
+.lztime input { width: 100%; min-height: 72px; font-size: 36px; }
+.lzcolon { font: 600 36px var(--f-mono); padding-bottom: 14px; }
+.lzteile { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.lzteile > span { color: var(--muted); font-size: 14px; }
+.lzstep { display: flex; align-items: center; gap: 12px; }
+.lzstep .bbtn { min-width: 64px; min-height: 64px; font-size: 28px; }
+.lzstep b { min-width: 48px; text-align: center; font-size: 28px; }
+.lzfoot { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.lztable { width: 100%; border-collapse: collapse; font-size: 14px; }
+.lztable th { text-align: left; font-weight: 500; color: var(--muted); font-size: 12px; padding: 4px 8px; }
+.lztable td { padding: 8px; border-top: 1px solid var(--line); vertical-align: top; }
+.lztable tr.open td { color: var(--warn); font-weight: 600; }
+.lztag { display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 999px; background: var(--sunken); color: var(--muted); font-size: 11px; }
+.lztag.chg { background: var(--warn-soft); color: var(--warn); }
+@media (max-width: 520px) { .lztable th:nth-child(4), .lztable td:nth-child(4) { display: none; } }
 
 /* Maschinen-Board (Planung, unter "Noch nicht eingeplant"): jede Station des Zeitstrahls als Spalte */
 .bd-tools { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }

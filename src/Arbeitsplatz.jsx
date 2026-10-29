@@ -10,6 +10,7 @@ import { useMini, notifyChanged, BDE_CHANGED, BDE_OPEN_PICKER } from "./MiniWind
 import { todayStr } from "./lib.js";
 import { useNow, clock, since, fmtTime, hm, splitProduct, act, isPhoneView, bookingRef, bookingKey } from "./bdeLib.js";
 import Avatar from "./Avatar.jsx";
+import { afterStop, LaufzeitOffen } from "./Laufzeit.jsx";
 
 // Mein Arbeitsplatz: persönliche Seite nach Anmeldung mit PIN.
 // Oben groß die laufende Tätigkeit mit den drei Knöpfen Wechseln, Unterbrechen/Weiter, Stopp; darunter Zeiten der Woche, Resturlaub,
@@ -124,8 +125,10 @@ function ArbeitsplatzInner({ onGreet, goTo }) {
         setPicker(false);
         load();
         notifyChanged();
+        return true;
       } catch (err) {
         toast(err.message);
+        return false;
       } finally {
         setBusy(false);
       }
@@ -180,7 +183,12 @@ function ArbeitsplatzInner({ onGreet, goTo }) {
       onSwitch={() => setPicker(true)}
       onPause={() => run({ action: "pause" }, "Unterbrochen")}
       onResume={() => run({ action: "resume" }, data.resume ? `Weiter: ${data.resume.label} ${data.resume.fa || ""}` : null)}
-      onStop={() => b && run({ action: "stop", ...bookingRef(b) }, "Gestoppt")}
+      onStop={async () => {
+        if (!b) return;
+        const ok = await run({ action: "stop", ...bookingRef(b) }, "Gestoppt");
+        // Arbeitsgang beendet: fertig? (Programmierung, Fräsen mit Laufzeiten, Rüsten, QS mit Abschluss des Fertigungsauftrags)
+        if (ok) afterStop(b);
+      }}
     />
   );
 
@@ -255,6 +263,8 @@ function ArbeitsplatzInner({ onGreet, goTo }) {
         {controls}
         <MachineRuns list={data.card && data.card.machine} now={now} odooUrl={data.odooUrl} canStop={operate || (data.me.leitung && data.write && !data.phone && !isPhoneView())} employeeId={own ? undefined : data.viewing.id} onChanged={load} />
       </section>
+
+      {operate && <LaufzeitOffen />}
 
       <Teile viewId={viewId} today={todayStr()} goTo={goTo} canStart={operate} onStart={(st) => run({ action: "start", workorderId: st.workorderId }, `${st.label} gestartet`)} />
 

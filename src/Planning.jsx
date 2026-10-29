@@ -909,6 +909,7 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
     setOpsFor({
       id: o.id,
       error: null,
+      odoo: !!o.odoo_id, // Arbeitsschritte auf weiteren Maschinen auch in Odoo anlegen
       rows: [
         { label: "", machine: other.id, hours: "" },
         { label: "", machine: own, hours: "" },
@@ -923,10 +924,17 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
       setOpsFor((cur) => cur && { ...cur, error: data.error || "Das Aufteilen hat nicht geklappt" });
       return;
     }
+    const withOdoo = opsFor.odoo && !!o.odoo_id;
     setOpsFor(null);
     setDetailId(null);
     reloadOrders();
     toast(`${ops.length} Arbeitsgänge für ${posNo(o)} angelegt`);
+    // Die Planung ist gespeichert; die Arbeitsschritte in Odoo folgen. Klappt das nicht, bleibt die Planung und die App sagt, was fehlt.
+    if (withOdoo) {
+      const r2 = await postSplit("/api/planung/odoo-schritte", { productionId: o.odoo_id, ags: ops.map((x) => ({ machine: x.machine, hours: x.hours })) });
+      if (!r2.ok) toast(`In Odoo nicht angelegt: ${r2.data.error || "unbekannter Fehler"}`);
+      else if (r2.data.created.length) toast(`In Odoo angelegt: ${r2.data.created.map((c) => c.machine).join(", ")} (Rüsten und Fräsen vor der QS)`);
+    }
   }
 
   // ---------- Öffnen von außen (Suche, Hinweise) ----------
@@ -1827,6 +1835,12 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
               </span>
             </div>
           ))}
+          {o.odoo_id && (
+            <label className="chk" style={{ marginTop: 12 }}>
+              <input type="checkbox" checked={!!opsFor.odoo} onChange={(ev) => setOpsFor({ ...opsFor, odoo: ev.target.checked })} />
+              Auch in Odoo anlegen: Rüsten und Fräsen für die weiteren Arbeitsgänge, vor der QS
+            </label>
+          )}
           <div className="actions" style={{ marginTop: 16 }}>
             {rows.length < 6 && (
               <button type="button" className="btn sm" onClick={() => setOpsFor({ ...opsFor, rows: [...rows, { label: "", machine: rows[rows.length - 1].machine, hours: "" }] })}>
