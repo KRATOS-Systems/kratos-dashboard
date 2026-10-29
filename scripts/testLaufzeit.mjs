@@ -72,6 +72,15 @@ try {
   assert.deepEqual(st.suggestion.rows, [{ nr: 1, minutes: 7.5, teile: 1 }, { nr: 2, minutes: 12, teile: 2 }]);
   ok("Status und Vorschlag aus früherem Auftrag desselben Artikels (FA01100)");
 
+  // "Als Nächstes": zuerst die weiteren Arbeitsschritte des Auftrags, an dem man zuletzt gearbeitet hat (auch wartende), dann das Geplante
+  const nx = await api("GET", "/api/bde/next");
+  assert.equal(nx.status, 200);
+  const mineRows = nx.items.filter((i) => i.mine);
+  assert.ok(mineRows.length >= 3 && mineRows.every((i) => i.fa === "FA01307"), JSON.stringify(nx.items.map((i) => [i.fa, i.label, i.state, i.mine])));
+  assert.deepEqual(nx.items.slice(0, mineRows.length).map((i) => i.workorderId), mineRows.map((i) => i.workorderId), "eigene Aufträge stehen zuerst");
+  assert.ok(mineRows.some((i) => i.state === "blocked"), "auch wartende Arbeitsgänge sind dabei");
+  ok("Als Nächstes zeigt zuerst alle weiteren Arbeitsgänge des Auftrags, an dem der Mitarbeiter gearbeitet hat (auch wartende), danach das Geplante");
+
   // Programmierung ist kein Fräsen
   assert.equal((await api("GET", "/api/bde/laufzeit?workorderId=6531")).status, 400);
   ok("Laufzeiten gibt es nur beim Fräsen");

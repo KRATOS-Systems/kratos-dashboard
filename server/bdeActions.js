@@ -203,8 +203,29 @@ export default function registerBdeActions(app, db, ctx) {
   };
 
   app.get("/api/bde/next", async (req, res) => {
-    if (!ctx.readSession(req)) return res.status(401).json({ error: "Bitte anmelden" });
+    const s = ctx.readSession(req);
+    if (!s) return res.status(401).json({ error: "Bitte anmelden" });
     try {
+      // Zuerst die weiteren Arbeitsschritte der Aufträge, an denen der Mitarbeiter gerade arbeitet oder zuletzt gearbeitet hat (auch die, die noch auf einen
+      // Vorgänger warten, in der Reihenfolge des Auftrags); danach das, was in der Planung als Nächstes kommt
+      let mine = [];
+      try {
+        const lines = await odoo.read("mrp.workcenter.productivity", "search_read", {
+          domain: [["employee_id", "=", s.e], ["date_start", ">=", toOdoo(Date.now() - 3 * 24 * 3600 * 1000)]],
+          fields: ["production_id", "date_end"],
+          order: "id desc",
+          limit: 40,
+        });
+        const open = lines.filter((l) => !l.date_end);
+        const pids = [...new Set([...open, ...lines].map((l) => m2o(l.production_id)?.id).filter(Boolean))].slice(0, 4);
+        if (pids.length) {
+          const rows = await odoo.read("mrp.workorder", "search_read", { domain: [["production_id", "in", pids], ["state", "not in", ["done", "cancel"]]], fields: [...woFields, "sequence"], limit: 40 });
+          rows.sort((a, b) => pids.indexOf(m2o(a.production_id)?.id) - pids.indexOf(m2o(b.production_id)?.id) || (a.sequence || 0) - (b.sequence || 0) || a.id - b.id);
+          mine = rows;
+        }
+      } catch (err) {
+        if (err.busy) throw err;
+      }
       const planned = db
         .prepare(`SELECT odoo_id, machine, position FROM orders WHERE done = 0 AND odoo_id IS NOT NULL AND machine IN (${PLAN_MACHINES.map(() => "?").join(",")}) ORDER BY position`)
         .all(...PLAN_MACHINES);
@@ -222,7 +243,10 @@ export default function registerBdeActions(app, db, ctx) {
         });
         rows = rows.concat(more);
       }
-      res.json({ items: await withOrder(rows.map(pickOf).filter((p) => p.kind !== "extern").slice(0, 12)) });
+      const mineIds = new Set(mine.map((r) => r.id));
+      const rest = rows.filter((r) => !mineIds.has(r.id));
+      const items = [...mine.map((r) => ({ ...pickOf(r), mine: true })), ...rest.map(pickOf)].filter((p) => p.kind !== "extern").slice(0, 14);
+      res.json({ items: await withOrder(items) });
     } catch (err) {
       ctx.fail(res, err);
     }

@@ -462,7 +462,7 @@ function Picker({ data, now, busy, initial, onClose, onPick }) {
                 ))}
               </div>
             ) : (
-              list.map((r) => <PickRow key={`${bookingKey(r)}-${r.who || ""}`} r={r} now={now} odooUrl={data.odooUrl} busy={busy} onPick={() => onPick(r)} />)
+              list.map((r) => <PickRow key={`${bookingKey(r)}-${r.who || ""}`} r={r} now={now} odooUrl={data.odooUrl} busy={busy} onPick={r.state === "blocked" ? null : () => onPick(r)} />)
             ))}
         </div>
       </div>

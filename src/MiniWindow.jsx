@@ -304,12 +304,12 @@ function MiniPicker({ busy, msg, onClose, onMore, onPick }) {
         {items && items.length === 0 && <div className="bmini-hint">Nichts gefunden</div>}
         {items &&
           items.map((r) => (
-            <button key={bookingKey(r)} type="button" className="bmini-row" disabled={busy} onClick={() => onPick(r)}>
+            <button key={bookingKey(r)} type="button" className="bmini-row" disabled={busy || r.state === "blocked"} title={r.state === "blocked" ? "Wartet auf den Arbeitsgang davor" : undefined} onClick={() => onPick(r)}>
               <span className="bact">{r.label}</span>
               <JobRef fa={r.fa} order={r.order} />
               {r.product && <span className="bmini-prod">{r.product}</span>}
               <span className="bmini-go" aria-hidden="true">
-                ▶
+                {r.state === "blocked" ? "wartet" : "▶"}
               </span>
             </button>
           ))}
