@@ -21,6 +21,7 @@ const M2O = {
   "hr.attendance": { employee_id: "hr.employee" },
   "mrp.workorder": { production_id: "mrp.production", workcenter_id: "mrp.workcenter", product_id: "product.product" },
   "mrp.production": { product_id: "product.product" },
+  "sale.order": { partner_id: "res.partner" },
   "mrp.workcenter.productivity": { employee_id: "hr.employee", user_id: "res.users", workorder_id: "mrp.workorder", workcenter_id: "mrp.workcenter", production_id: "mrp.production" },
   "hr.leave.allocation": { employee_id: "hr.employee" },
   "quality.alert": { product_id: "product.product", product_tmpl_id: "product.template", production_id: "mrp.production" },

@@ -328,6 +328,40 @@ try {
   assert.equal(r.status, 400);
   ok("Eingaben ohne Odoo-Auftrag oder mit nur einem Arbeitsgang werden abgewiesen");
 
+  // --- Hinweis "Zur Rechnung bereit" (nur Leitung) ---
+  const mk = async (model, v) => (await mock(model, "create", { vals_list: [v] }))[0];
+  const so = (name, extra = {}) => mk("sale.order", { name, state: "sale", invoice_status: "to invoice", invoice_count: 1, delivery_status: "full", partner_id: 41, amount_total: 1234.5, ...extra });
+  // A07001: ein Fertigungsauftrag abgeschlossen, einer noch offen, aber alle Arbeitsgänge erledigt (so wie bei uns oft) -> bereit
+  await so("A07001", { invoice_count: 0, delivery_status: "partial" });
+  await mk("mrp.production", { name: "FA07001", state: "done", origin: "A07001", product_id: 2901 });
+  const m2 = await mk("mrp.production", { name: "FA07002", state: "confirmed", origin: "A07001", product_id: 2901 });
+  await mk("mrp.workorder", { name: "Fräsen", production_id: m2, workcenter_id: 1, state: "done" });
+  await mk("mrp.workorder", { name: "Qualitätssicherung", production_id: m2, workcenter_id: 5, state: "done" });
+  // A07002: ein Arbeitsgang läuft noch -> nicht bereit
+  await so("A07002");
+  const m3 = await mk("mrp.production", { name: "FA07003", state: "progress", origin: "A07002", product_id: 2901 });
+  await mk("mrp.workorder", { name: "Fräsen", production_id: m3, workcenter_id: 1, state: "done" });
+  await mk("mrp.workorder", { name: "Qualitätssicherung", production_id: m3, workcenter_id: 5, state: "progress" });
+  // A07003: schon berechnet -> nicht in der Liste; A07004: nichts gefertigt (Handelsware) -> nicht in der Liste
+  await so("A07003", { invoice_status: "invoiced" });
+  await mk("mrp.production", { name: "FA07004", state: "done", origin: "A07003", product_id: 2901 });
+  await so("A07004");
+
+  r = await api("GET", "/api/bde/rechnung");
+  assert.equal(r.status, 200);
+  assert.deepEqual(r.items, []);
+  ok("Mitarbeiter ohne Leitung sehen den Rechnungshinweis nicht");
+
+  await api("POST", "/api/bde/login", { id: 3, pin: "3333" });
+  r = await api("GET", "/api/bde/rechnung");
+  assert.equal(r.status, 200, JSON.stringify(r));
+  assert.deepEqual(r.items.map((i) => i.name), ["A07001"]);
+  assert.equal(r.items[0].parts, 2);
+  assert.equal(r.items[0].invoices, 0);
+  assert.equal(r.items[0].deliveryLabel, "teilweise geliefert");
+  assert.equal(r.items[0].partner, "Frank Häckl");
+  ok("Leitung sieht A07001 (alle Teile gefertigt, auch das mit nur erledigten Arbeitsgängen); A07002 (QS läuft), A07003 (berechnet) und A07004 (nichts gefertigt) fehlen");
+
   // Sperre im Odoo-Zugang
   process.env.BDE_ODOO_URL = env.BDE_ODOO_URL;
   process.env.BDE_ODOO_API_KEY = "test";

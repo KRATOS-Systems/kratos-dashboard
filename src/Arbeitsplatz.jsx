@@ -11,6 +11,7 @@ import { todayStr } from "./lib.js";
 import { useNow, clock, since, fmtTime, hm, splitProduct, act, isPhoneView, bookingRef, bookingKey } from "./bdeLib.js";
 import Avatar from "./Avatar.jsx";
 import { afterStop, LaufzeitOffen } from "./Laufzeit.jsx";
+import RechnungBereit from "./Rechnung.jsx";
 
 // Mein Arbeitsplatz: persönliche Seite nach Anmeldung mit PIN.
 // Oben groß die laufende Tätigkeit mit den drei Knöpfen Wechseln, Unterbrechen/Weiter, Stopp; darunter Zeiten der Woche, Resturlaub,
@@ -320,6 +321,7 @@ function ArbeitsplatzInner({ onGreet, goTo }) {
         </div>
       </section>
 
+      {data.me.leitung && own && <RechnungBereit odooUrl={data.odooUrl} />}
       {data.hints && <LeitungHints hints={data.hints} now={now} odooUrl={data.odooUrl} canStop={data.write && !data.phone && !isPhoneView()} onChanged={load} />}
       {SHOW_MASCHINENZEIT && data.me.leitung && own && <Maschinenzeit />}
       <p className="bfoot">Stand {data.at ? fmtTime(data.at) : "–"} · Zeiten aus Odoo, Woche ab Montag</p>
