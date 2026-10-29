@@ -25,6 +25,8 @@ const FINAL_STAGES = new Set(["Geliefert & Abgerechnet", "Nachkalkulation"]);
 const STAGE_MACHINE = { "DMG M1": "m1", "DMG 40 EVO": "dmu40", "POS H 800U": "h800u", "DMG DMU 50": "dmu50", "DMU 50": "dmu50" };
 // Arbeitsplatz des Fräsen-Arbeitsgangs in Odoo -> Maschine der App ("" = Sammelplatz FRÄSEN oder unbekannt)
 const WORKCENTER_MACHINE = { "DMU 40 EVO": "dmu40", "DMU 50": "dmu50", "DMG M1": "m1", "POS H 800 U": "h800u" };
+// Mehr als so viele Fräsen-Stunden in Odoo sind kein Plan, sondern ein Platzhalter (z. B. 1 h je Stück bei 1000 Stück): nur als Hinweis, nicht als Stunden
+const MAX_TAKE_HOURS = 300;
 const EVERY = 10 * 60 * 1000;
 const EXT_OFFSET = 1000000000; // Einkaufspositionen liegen in odoo_seen oberhalb dieser Zahl, getrennt von den Fertigungsaufträgen
 const FRESH_DAYS = 3; // beim ersten Abgleich gelten Aufträge, die in den letzten Tagen angelegt wurden, als neu
@@ -368,7 +370,7 @@ export default function registerOdooSync(app, db, { isDate, nextPosition }) {
       [...plan.created, ...plan.updated].forEach((i) => {
         if (i.odoo_hours === undefined) return;
         hint.run(i.odoo_hours, i.odoo_machine, i.odoo_ref);
-        if (i.odoo_hours > 0) takeHours.run(i.odoo_hours, i.odoo_ref);
+        if (i.odoo_hours > 0 && i.odoo_hours <= MAX_TAKE_HOURS) takeHours.run(i.odoo_hours, i.odoo_ref);
       });
       closeRefs.forEach((ref) => close.run(ref, ref));
       if (markAllSeen) plan.all.forEach((i) => seenOld.run(i.odoo_id));

@@ -99,6 +99,14 @@ try {
   assert.equal((await api("GET", "/api/orders")).orders.length, 1);
   ok("Nochmaliges Nachholen und weitere Abgleiche legen nichts doppelt an");
 
+  // 10. Platzhalter in Odoo (1 h je Stück bei 1000 Stück): als Hinweis gemerkt, nicht als Stunden übernommen
+  r = await api("POST", "/api/odoo/nachholen", { source: "A01379" });
+  assert.equal(r.status, 200, JSON.stringify(r));
+  const platzhalter = (await api("GET", "/api/orders")).orders.find((x) => x.odoo_ref === "FA01304");
+  assert.equal(platzhalter.hours, 0);
+  assert.equal(platzhalter.odoo_hours, 1000);
+  ok("1000 Stunden aus Odoo sind ein Platzhalter: nur als Hinweis gemerkt, die Stunden bleiben leer");
+
   console.log(`\nAlle ${n} Prüfungen bestanden`);
 } catch (err) {
   console.error("\nFEHLER:", err.message);
