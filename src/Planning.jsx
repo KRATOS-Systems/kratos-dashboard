@@ -171,6 +171,44 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
   const [boardFilter, setBoardFilter] = useState("alle"); // alle | spaet | neu
   const tlRef = useRef(null);
   const tipRef = useRef(null);
+  const flipPrev = useRef(new Map());
+  // Maschinen-Board: Karten gleiten an ihren neuen Platz, statt zu springen (beim Ziehen rücken die anderen zur Seite, beim Loslassen rastet die Karte ein)
+  useLayoutEffect(() => {
+    const cols = document.querySelector("#board .bd-cols");
+    if (!cols) {
+      flipPrev.current = new Map();
+      return;
+    }
+    const els = [...cols.querySelectorAll("[data-card]")];
+    els.forEach((el) => {
+      el.style.transition = "none";
+      el.style.transform = "";
+    });
+    const base = cols.getBoundingClientRect();
+    const now = new Map(
+      els.map((el) => {
+        const r = el.getBoundingClientRect();
+        return [el.dataset.card, { x: r.left - base.left + cols.scrollLeft, y: r.top - base.top }];
+      })
+    );
+    const moved = [];
+    els.forEach((el) => {
+      const a = flipPrev.current.get(el.dataset.card);
+      const b = now.get(el.dataset.card);
+      if (a && b && (Math.abs(a.x - b.x) > 1 || Math.abs(a.y - b.y) > 1)) {
+        el.style.transform = `translate(${a.x - b.x}px, ${a.y - b.y}px)`;
+        moved.push(el);
+      }
+    });
+    if (moved.length) {
+      void cols.offsetHeight;
+      moved.forEach((el) => {
+        el.style.transition = "transform .2s ease";
+        el.style.transform = "";
+      });
+    }
+    flipPrev.current = now;
+  });
 
   useEffect(() => {
     Promise.all([
@@ -513,6 +551,7 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
       label: bar.label,
       sub: bar.sub,
       active: false,
+      fromBoard: !!bar.fromBoard,
       x: e.clientX,
       y: e.clientY,
       offX: e.clientX - r.left,
@@ -2835,7 +2874,7 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
     });
     return { ...col, all, cards, hours: col.machine ? all.reduce((s, o) => s + remainingOf(o), 0) : 0, late: all.filter(isLateOrder).length };
   });
-  const boardCardOf = (o, col) => {
+  const boardCardOf = (o, col, ghost = false) => {
     const g = groupByKey.get(groupKeyOf(o));
     const it = col.machine ? itemById.get(o.id)?.it : null;
     const pill = pillOf(g);
@@ -2849,19 +2888,19 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
       else when = "Arbeit erledigt";
     } else when = o.extern_start ? `ab ${fmtShort(o.extern_start)} · ${fmtDuration(daysIn(o))}` : "ohne Beginn";
     const waiting = it && it.scheduled && it.waitFrom != null && it.start > it.waitFrom ? waitShort(it) : null;
-    const dragged = dragActive && drag.ids.includes(o.id);
+    const dragged = !ghost && dragActive && drag.ids.includes(o.id);
     return (
       <div
-        key={o.id}
-        data-card={o.id}
-        className={`bd-card${boardDrag ? " can" : ""}${dragged ? " dragging" : ""}${detailId === o.id || (laneDetail && laneDetail.includes(o.id)) ? " sel" : ""}`}
-        title={dueText}
+        key={ghost ? "ghost" : o.id}
+        {...(ghost ? {} : { "data-card": o.id })}
+        className={`bd-card${boardDrag && !ghost ? " can" : ""}${dragged ? " dragging" : ""}${ghost ? " ghosting" : ""}${!ghost && (detailId === o.id || (laneDetail && laneDetail.includes(o.id))) ? " sel" : ""}`}
+        title={ghost ? undefined : dueText}
         onPointerDown={
-          boardDrag
-            ? (e) => startDrag(e, { ids: [o.id], label: o.source || posNo(o), sub: o.product || "", toggle: null, ...(col.machine ? { select: o.id } : { laneSelect: [o.id] }) })
+          boardDrag && !ghost
+            ? (e) => startDrag(e, { ids: [o.id], label: o.source || posNo(o), sub: o.product || "", toggle: null, fromBoard: true, ...(col.machine ? { select: o.id } : { laneSelect: [o.id] }) })
             : undefined
         }
-        onClick={boardDrag ? undefined : () => openDetail(o.id)}
+        onClick={boardDrag || ghost ? undefined : () => openDetail(o.id)}
       >
         <div className="bd-top">
           <Thumb src={partImg(o)} size={36} />
@@ -3440,12 +3479,19 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
       {tab === "auf" && <div className="rise" style={{ "--i": 3 }}>{ordersCard}</div>}
       {tab === "einst" && <div className="rise" style={{ "--i": 3 }}>{settings}</div>}
 
-      {draggedBar && (
-        <div className="ghost" style={{ left: draggedBar.x - draggedBar.offX, top: draggedBar.y - draggedBar.offY, width: draggedBar.w, height: draggedBar.h }}>
-          <b>{draggedBar.label}</b>
-          <span>{draggedBar.sub}</span>
-        </div>
-      )}
+      {draggedBar && (() => {
+        // Aus dem Maschinen-Board: die ganze Karte hängt am Mauszeiger, die anderen rücken zur Seite und lassen eine Lücke
+        const go = draggedBar.fromBoard && draggedBar.ids.length === 1 ? orders.find((x) => x.id === draggedBar.ids[0]) : null;
+        const gcol = go ? boardColumns.find((c) => c.id === go.machine) : null;
+        const pos = { left: draggedBar.x - draggedBar.offX, top: draggedBar.y - draggedBar.offY, width: draggedBar.w };
+        if (go && gcol) return <div className="cardghost" style={pos}>{boardCardOf(go, gcol, true)}</div>;
+        return (
+          <div className="ghost" style={{ ...pos, height: draggedBar.h }}>
+            <b>{draggedBar.label}</b>
+            <span>{draggedBar.sub}</span>
+          </div>
+        );
+      })()}
       {layer}
     </>
   );
