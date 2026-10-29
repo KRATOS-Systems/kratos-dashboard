@@ -4,6 +4,7 @@ import { useNow, clock, since, fmtTime, splitProduct, odooLink, act, useBdeSessi
 import Avatar from "./Avatar.jsx";
 import { JobRef } from "./BdeControls.jsx";
 import { askLaufzeit, afterStop } from "./Laufzeit.jsx";
+import { AmpelLeiste } from "./Ampel.jsx";
 
 // Team-Tafel: eine Karte pro Mitarbeiter, wer ist da und woran wird gerade gearbeitet.
 // Farbe statt Text: grün = da und Buchung läuft, grau = da, nichts gebucht, orange = doppelt gestempelt, rot = Buchung vergessen,
@@ -307,6 +308,7 @@ export default function Team({ kiosk, goTo }) {
       </div>
       {(error || (data && data.notice)) && <div className="bnote">{error || data.notice}</div>}
       {!data && !error && <div className="bnote quiet">Lade Daten aus Odoo …</div>}
+      <AmpelLeiste />
       {data && (
         <TeamGrid
           data={data}

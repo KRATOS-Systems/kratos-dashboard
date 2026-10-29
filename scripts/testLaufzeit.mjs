@@ -371,6 +371,13 @@ try {
   assert.equal(r.status, 200, JSON.stringify(r));
   r = await api("POST", "/api/bde/act", { action: "start", workorderId: woPerson });
   assert.equal(r.status, 200, JSON.stringify(r));
+  // Maschinenampel: Fräsen läuft = grün (vor Rüsten = gelb)
+  let amp = await api("GET", "/api/maschinen/ampel");
+  assert.equal(amp.status, 200, JSON.stringify(amp));
+  assert.equal(amp.machines.dmu40.state, "lauf");
+  assert.equal(amp.machines.dmu40.runs.find((x) => x.step === "Fräsen").who, "Frank Häckl");
+  assert.ok(["frei", "steht"].includes(amp.machines.dmu50.state));
+  ok("Ampel: auf der DMU 40 läuft ein Fräsen (Frank) und gleichzeitig wird gerüstet, die Ampel zeigt grün");
   await api("POST", "/api/bde/login", { id: 2, pin: "2222" }); // Aurel, keine Leitung
   r = await api("POST", "/api/bde/act", { action: "stop", workorderId: woPerson, employeeId: 3 });
   assert.equal(r.status, 403);
@@ -381,6 +388,9 @@ try {
   const lines = (await odoo("/__state"))["mrp.workcenter.productivity"].filter((x) => x.workorder_id === woMachine);
   assert.equal(lines.length, 1);
   assert.ok(lines[0].date_end, "der Maschinenlauf ist beendet");
+  amp = await api("GET", "/api/maschinen/ampel?fresh=1");
+  assert.equal(amp.machines.dmu40.state, "ruesten");
+  ok("Ampel: nach dem Beenden des Fräsens bleibt nur das Rüsten, die Ampel zeigt gelb");
   ok("Jeder angemeldete Mitarbeiter darf den Maschinenlauf eines Kollegen beenden; seine Personenzeit beenden oder etwas für ihn starten darf er nicht");
 
   // Sperre im Odoo-Zugang

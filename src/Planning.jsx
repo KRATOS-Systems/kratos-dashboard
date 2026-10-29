@@ -1,3 +1,4 @@
+import { Ampel } from "./Ampel.jsx";
 import React, { useState, useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import { isNewPlan, DEFAULT_WEEK_CAPACITY, MACHINES, SHIFT_MODELS, addDays, daysBetween, fmtH, fmtShort, isoWeekOf, mondayOf } from "./lib.js";
 import { parseOdooExport } from "./odooImport.js";
@@ -2371,6 +2372,7 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
             <small>{p.rate ? `${fmtH(p.rate)} h/Woche` : "keine Wochenleistung"}</small>
 
           </div>
+          <Ampel machine={p.m.id} />
           <button type="button" className="btn icon quiet addb" title="Auftrag von Hand hinzufügen" aria-label={`Auftrag zu ${p.m.short} hinzufügen`} onClick={() => addOrder(p.m.id)}>
             <Ico n="plus" s={15} />
           </button>

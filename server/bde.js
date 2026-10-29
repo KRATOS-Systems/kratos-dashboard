@@ -20,6 +20,7 @@ import registerBdeMessages from "./bdeMessages.js";
 import registerBdeParts from "./bdeParts.js";
 import registerBdeLaufzeit from "./bdeLaufzeit.js";
 import registerBdeRechnung from "./bdeRechnung.js";
+import registerBdeAmpel from "./bdeAmpel.js";
 import { createOverhead } from "./bdeOverhead.js";
 
 const TZ = "Europe/Berlin";
@@ -649,6 +650,7 @@ export default function registerBde(app, db, staff) {
   registerBdeMessages(app, ctx);
   registerBdeLaufzeit(app, ctx);
   registerBdeRechnung(app, ctx);
+  registerBdeAmpel(app, db, ctx);
   if (staff) registerBdeParts(app, db, ctx, staff);
 
   // Für Erinnerungen über Talos (n8n): offene Hinweise mit Odoo-Benutzer, nur mit eigenem Schlüssel

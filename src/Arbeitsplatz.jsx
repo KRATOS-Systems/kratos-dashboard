@@ -12,6 +12,7 @@ import { useNow, clock, since, fmtTime, hm, splitProduct, act, isPhoneView, book
 import Avatar from "./Avatar.jsx";
 import { afterStop, LaufzeitOffen } from "./Laufzeit.jsx";
 import RechnungBereit from "./Rechnung.jsx";
+import { AmpelLeiste } from "./Ampel.jsx";
 
 // Mein Arbeitsplatz: persönliche Seite nach Anmeldung mit PIN.
 // Oben groß die laufende Tätigkeit mit den drei Knöpfen Wechseln, Unterbrechen/Weiter, Stopp; darunter Zeiten der Woche, Resturlaub,
@@ -235,6 +236,7 @@ function ArbeitsplatzInner({ onGreet, goTo }) {
       </div>
       {(error || data.notice || data.stale) && <div className="bnote">{error || data.notice || "Odoo ist gerade nicht erreichbar, es werden die letzten Daten gezeigt."}</div>}
       {own && data.write === false && data.me.leitung && <div className="bnote quiet">Bedienen ist noch nicht freigeschaltet. Die Seite zeigt nur an.</div>}
+      {own && <AmpelLeiste />}
 
       <section className={`bhero card st-${!b && own ? "idle-warn" : data.card ? data.card.state : "away"}`}>
         {data.card && data.card.double && <div className="bflag">Doppelt gestempelt</div>}

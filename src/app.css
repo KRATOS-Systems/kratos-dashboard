@@ -113,7 +113,7 @@ button.stat:hover { background: var(--sunken); }
 
 /* Zeitstrahl */
 .tl-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 14px 18px; border-bottom: 1px solid var(--line); }
-.tl { position: relative; --lab: 176px; padding: 4px 18px 12px; overflow-x: auto; }
+.tl { position: relative; --lab: 204px; padding: 4px 18px 12px; overflow-x: auto; }
 .tl-in { min-width: 760px; position: relative; }
 .tl-head, .lane { display: grid; grid-template-columns: var(--lab) minmax(0, 1fr); }
 .days { display: grid; grid-template-columns: repeat(var(--n), 1fr); }
@@ -1289,3 +1289,32 @@ a.btn { text-decoration: none; }
 .dragchip.warn { box-shadow: 0 0 0 2px var(--warn), 0 10px 26px rgba(0,0,0,.4); }
 .dragchip.ok { box-shadow: 0 0 0 2px var(--ok), 0 10px 26px rgba(0,0,0,.4); }
 .dragchip.mute b { font-weight: 500; }
+
+/* Maschinenampel (src/Ampel.jsx): Signalleuchte, rot oben, gelb in der Mitte, grün unten; nur die aktive Lampe leuchtet */
+.amp-tower { display: block; overflow: visible; }
+.amp-body { fill: var(--sunken); stroke: var(--line-strong); stroke-width: 1.2; }
+.amp-pole { fill: var(--line-strong); }
+.amp-lamp { opacity: .22; }
+.amp-lamp.amp-r { fill: #E5484D; }
+.amp-lamp.amp-y { fill: #F5B301; }
+.amp-lamp.amp-g { fill: #2DBE6C; }
+.amp-lamp.on { opacity: 1; }
+.amp-lamp.amp-r.on { filter: drop-shadow(0 0 5px #E5484D); }
+.amp-lamp.amp-y.on { filter: drop-shadow(0 0 5px #F5B301); }
+.amp-lamp.amp-g.on { filter: drop-shadow(0 0 5px #2DBE6C); }
+.amp-btn { background: none; border: 0; padding: 2px 4px; cursor: pointer; display: flex; align-self: center; margin-left: auto; border-radius: 8px; }
+.amp-btn:hover { background: var(--sunken); }
+.lane .lab .amp-btn + .addb { margin-left: 0; }
+.amp-leiste { display: flex; flex-wrap: wrap; gap: 10px; margin: 0 0 14px; }
+.amp-card { display: flex; gap: 10px; align-items: center; padding: 8px 14px 8px 10px; cursor: pointer; text-align: left; min-width: 190px; color: var(--ink); }
+.amp-txt { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.amp-txt b { font: 600 14px/1.2 var(--f-display); }
+.amp-txt small { color: var(--muted); font-size: 12px; }
+.amp-unk { align-self: center; font-size: 12px; color: var(--warn); }
+.amp-dlg { width: min(520px, 100%); }
+.amp-dlg-head { display: flex; gap: 16px; align-items: center; margin-bottom: 8px; }
+.amp-dlg-head h3 { margin: 0; }
+.amp-dlg-head p { margin: 2px 0 0; color: var(--muted); }
+.amp-hint { color: var(--muted); margin: 12px 0; }
+.amp-run { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; justify-content: space-between; padding: 10px 0; border-top: 1px solid var(--line); }
+.amp-run small { display: block; color: var(--muted); }
