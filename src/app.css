@@ -1302,9 +1302,8 @@ a.btn { text-decoration: none; }
 .amp-lamp.amp-r.on { filter: drop-shadow(0 0 5px #E5484D); }
 .amp-lamp.amp-y.on { filter: drop-shadow(0 0 5px #F5B301); }
 .amp-lamp.amp-g.on { filter: drop-shadow(0 0 5px #2DBE6C); }
-.amp-btn { background: none; border: 0; padding: 2px 4px; cursor: pointer; display: flex; align-self: center; margin-left: auto; border-radius: 8px; }
+.amp-btn { background: none; border: 0; padding: 2px 3px; cursor: pointer; display: flex; align-self: center; border-radius: 8px; flex: none; }
 .amp-btn:hover { background: var(--sunken); }
-.lane .lab .amp-btn + .addb { margin-left: 0; }
 .amp-leiste { display: flex; flex-wrap: wrap; gap: 10px; margin: 0 0 14px; }
 .amp-card { display: flex; gap: 10px; align-items: center; padding: 8px 14px 8px 10px; cursor: pointer; text-align: left; min-width: 190px; color: var(--ink); }
 .amp-txt { display: flex; flex-direction: column; gap: 2px; min-width: 0; }

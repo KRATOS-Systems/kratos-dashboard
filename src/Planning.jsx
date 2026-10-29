@@ -2366,13 +2366,13 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
     return (
       <div className="lane" key={p.m.id}>
         <div className="lab">
+          <Ampel machine={p.m.id} />
           <MTile c={p.m.c} img={p.m.img} imgZoom={p.m.imgZoom} title={p.m.name} />
           <div className="lt">
             <b>{p.m.name}</b>
             <small>{p.rate ? `${fmtH(p.rate)} h/Woche` : "keine Wochenleistung"}</small>
 
           </div>
-          <Ampel machine={p.m.id} />
           <button type="button" className="btn icon quiet addb" title="Auftrag von Hand hinzufügen" aria-label={`Auftrag zu ${p.m.short} hinzufügen`} onClick={() => addOrder(p.m.id)}>
             <Ico n="plus" s={15} />
           </button>
