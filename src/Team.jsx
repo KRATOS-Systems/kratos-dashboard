@@ -219,7 +219,8 @@ export function TeamCard({ c, now, odooUrl, session, onChanged }) {
       ) : (
         <div className="bnow none">{c.present && !c.machine.length ? "Nichts gebucht" : ""}</div>
       )}
-      <MachineRuns list={c.machine} now={now} odooUrl={odooUrl} canStop={mayStop} employeeId={own ? undefined : c.id} onChanged={onChanged} />
+      {/* Einen Maschinenlauf darf jeder angemeldete Mitarbeiter beenden, auch den eines Kollegen, der schon gegangen ist */}
+      <MachineRuns list={c.machine} now={now} odooUrl={odooUrl} canStop={operate} employeeId={own ? undefined : c.id} onChanged={onChanged} />
       {mayStop && c.persons.length > 0 && (
         <div className="bcard-act">
           {own && (

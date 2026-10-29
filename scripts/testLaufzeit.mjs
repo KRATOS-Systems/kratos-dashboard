@@ -362,6 +362,27 @@ try {
   assert.equal(r.items[0].partner, "Frank Häckl");
   ok("Leitung sieht A07001 (alle Teile gefertigt, auch das mit nur erledigten Arbeitsgängen); A07002 (QS läuft), A07003 (berechnet) und A07004 (nichts gefertigt) fehlen");
 
+  // --- Maschinenlauf eines Kollegen beenden ---
+  const pm = await mk("mrp.production", { name: "FA08001", state: "confirmed", origin: "A08001", product_id: 2901 });
+  const woMachine = await mk("mrp.workorder", { name: "Fräsen", production_id: pm, workcenter_id: 14, product_id: 2901, state: "ready", sequence: 1 });
+  const woPerson = await mk("mrp.workorder", { name: "Rüsten", production_id: pm, workcenter_id: 16, product_id: 2901, state: "ready", sequence: 0 });
+  await api("POST", "/api/bde/login", { id: 3, pin: "3333" }); // Frank
+  r = await api("POST", "/api/bde/act", { action: "start", workorderId: woMachine });
+  assert.equal(r.status, 200, JSON.stringify(r));
+  r = await api("POST", "/api/bde/act", { action: "start", workorderId: woPerson });
+  assert.equal(r.status, 200, JSON.stringify(r));
+  await api("POST", "/api/bde/login", { id: 2, pin: "2222" }); // Aurel, keine Leitung
+  r = await api("POST", "/api/bde/act", { action: "stop", workorderId: woPerson, employeeId: 3 });
+  assert.equal(r.status, 403);
+  r = await api("POST", "/api/bde/act", { action: "start", workorderId: woPerson, employeeId: 3 });
+  assert.equal(r.status, 403);
+  r = await api("POST", "/api/bde/act", { action: "stop", workorderId: woMachine, employeeId: 3 });
+  assert.equal(r.status, 200, JSON.stringify(r));
+  const lines = (await odoo("/__state"))["mrp.workcenter.productivity"].filter((x) => x.workorder_id === woMachine);
+  assert.equal(lines.length, 1);
+  assert.ok(lines[0].date_end, "der Maschinenlauf ist beendet");
+  ok("Jeder angemeldete Mitarbeiter darf den Maschinenlauf eines Kollegen beenden; seine Personenzeit beenden oder etwas für ihn starten darf er nicht");
+
   // Sperre im Odoo-Zugang
   process.env.BDE_ODOO_URL = env.BDE_ODOO_URL;
   process.env.BDE_ODOO_API_KEY = "test";

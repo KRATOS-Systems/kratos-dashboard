@@ -135,9 +135,13 @@ export default function registerBdeActions(app, db, ctx) {
     const target = employeeId != null ? Number(employeeId) : s.e;
     try {
       if (target !== s.e) {
-        // Fremde Buchungen: nur die Leitung, und nur beenden
-        if (!s.leitung) throw Object.assign(new Error("Nur die eigenen Buchungen"), { forbidden: true });
-        if (action !== "stop") throw Object.assign(new Error("Fremde Buchungen kann die Leitung nur beenden"), { forbidden: true });
+        // Fremde Buchungen kann man nur beenden. Die Leitung darf jede beenden, jeder andere nur einen laufenden Maschinenlauf
+        // (der Mitarbeiter ist gegangen, die Maschine lief weiter und ist nun fertig)
+        if (action !== "stop") throw Object.assign(new Error("Fremde Buchungen kann man nur beenden"), { forbidden: true });
+        if (!s.leitung) {
+          const run = task == null ? (await running(target)).find((r) => r.workorderId === Number(workorderId)) : null;
+          if (!run || run.kind !== "maschine") throw Object.assign(new Error("Nur die eigenen Buchungen, bei Kollegen nur ein laufender Maschinenlauf"), { forbidden: true });
+        }
       }
       await ctx.ensureEmployees();
       const byName = target !== s.e ? ctx.employees().get(s.e)?.name : null;
