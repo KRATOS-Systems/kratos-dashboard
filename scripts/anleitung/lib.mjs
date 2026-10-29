@@ -75,7 +75,7 @@ export class Rec {
     }
     const n = String(this.steps.length + 1).padStart(2, "0");
     const file = `${n}.webp`;
-    await this.page.screenshot({ path: path.join(this.dir, file), type: "webp", quality: 82 });
+    await this.page.screenshot({ path: path.join(this.dir, file), type: "webp", quality: 80 });
     const pad = 5;
     this.steps.push({
       img: `${this.demo.id}/${file}`,

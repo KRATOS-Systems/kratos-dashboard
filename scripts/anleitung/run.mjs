@@ -14,7 +14,7 @@ try {
     if (want.length && !want.includes(demo.id)) continue;
     console.log("Demo", demo.id);
     const page = await env.browser.newPage();
-    await page.setViewport({ width: 1280, height: 800 });
+    await page.setViewport({ width: 1280, height: 800, deviceScaleFactor: 2 });
     await page.emulateMediaFeatures([{ name: "prefers-color-scheme", value: "dark" }]);
     const rec = new Rec(page, OUT, demo);
     try {

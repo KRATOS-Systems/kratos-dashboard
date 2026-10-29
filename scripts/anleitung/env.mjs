@@ -11,7 +11,7 @@ export const APP_PORT = 3091;
 export const APP = `http://localhost:${APP_PORT}`;
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-export async function startEnv() {
+export async function startEnv({ sync = false } = {}) {
   const dir = mkdtempSync(path.join(tmpdir(), "anleitung-"));
   const env = {
     ...process.env,
@@ -22,8 +22,8 @@ export async function startEnv() {
     BDE_ODOO_API_KEY: "test",
     BDE_WRITE: "1",
     BDE_SECRET: "demogeheimnis",
-    ODOO_URL: "",
-    ODOO_API_KEY: "",
+    ODOO_URL: sync ? `http://localhost:${ODOO_PORT}` : "",
+    ODOO_API_KEY: sync ? "test" : "",
   };
   const procs = [spawn("node", ["scripts/mockOdoo.mjs"], { env, cwd: PROJECT, stdio: "ignore" }), spawn("node", ["server/index.js"], { env, cwd: PROJECT, stdio: "ignore" })];
   for (let i = 0; i < 60; i++) {
@@ -35,7 +35,7 @@ export async function startEnv() {
       await sleep(250);
     }
   }
-  const browser = await puppeteer.launch({ executablePath: "C:/Program Files/Google/Chrome/Application/chrome.exe", headless: "new", defaultViewport: { width: 1280, height: 800, deviceScaleFactor: 1 }, args: ["--no-sandbox", "--hide-scrollbars"] });
+  const browser = await puppeteer.launch({ executablePath: "C:/Program Files/Google/Chrome/Application/chrome.exe", headless: "new", defaultViewport: { width: 1280, height: 800, deviceScaleFactor: 2 }, args: ["--no-sandbox", "--hide-scrollbars"] });
   const stop = async () => {
     await browser.close().catch(() => {});
     procs.forEach((p) => p.kill());

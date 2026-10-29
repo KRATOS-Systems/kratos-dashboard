@@ -18,7 +18,7 @@
   .embed a.btn.toapp { display: none; }
   .embed .wrap { padding-top: 6px; }
   body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
-  .wrap { max-width: 1280px; margin: 0 auto; padding: 18px max(16px, env(safe-area-inset-left, 0px)) 40px max(16px, env(safe-area-inset-right, 0px)); }
+  .wrap { max-width: 2200px; margin: 0 auto; padding: 18px max(16px, env(safe-area-inset-left, 0px)) 40px max(16px, env(safe-area-inset-right, 0px)); }
   header { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 18px; }
   header h1 { margin: 0; font-size: 22px; letter-spacing: .01em; }
   header .sp { flex: 1; }
@@ -35,16 +35,16 @@
   .tile .n { margin-top: auto; color: var(--muted); font-size: 13px; }
   .lead { color: var(--muted); max-width: 70ch; margin: 0 0 18px; }
   /* Spieler */
-  .player { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 18px; align-items: start; }
-  .stage { position: relative; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: #000; aspect-ratio: 1280 / 800; }
+  .player { display: flex; gap: 22px; align-items: flex-start; justify-content: center; }
+  .stage { position: relative; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: #000; aspect-ratio: 1280 / 800; flex: 1 1 auto; width: min(100%, calc((100vh - 130px) * 1.6)); min-width: 0; }
   .stage img { position: absolute; inset: 0; width: 100%; height: 100%; display: block; user-select: none; -webkit-user-drag: none; }
   .hot { position: absolute; border: 3px solid var(--hot); border-radius: 12px; background: color-mix(in srgb, var(--hot) 14%, transparent); box-shadow: 0 0 0 4px color-mix(in srgb, var(--hot) 25%, transparent), 0 0 24px color-mix(in srgb, var(--hot) 55%, transparent); cursor: pointer; animation: puls 1.6s ease-in-out infinite; }
   @keyframes puls { 0%, 100% { box-shadow: 0 0 0 3px color-mix(in srgb, var(--hot) 25%, transparent), 0 0 14px color-mix(in srgb, var(--hot) 45%, transparent); } 50% { box-shadow: 0 0 0 9px color-mix(in srgb, var(--hot) 12%, transparent), 0 0 30px color-mix(in srgb, var(--hot) 65%, transparent); } }
   @media (prefers-reduced-motion: reduce) { .hot { animation: none; } }
-  .side { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 20px; display: flex; flex-direction: column; gap: 16px; }
+  .side { flex: 0 0 400px; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 20px; display: flex; flex-direction: column; gap: 16px; }
   .side .count { color: var(--muted); font-size: 13px; text-transform: uppercase; letter-spacing: .08em; }
   .side h2 { margin: 0; font-size: 18px; line-height: 1.25; }
-  .side .cap { font-size: 18px; line-height: 1.45; margin: 0; text-wrap: pretty; }
+  .side .cap { font-size: 21px; line-height: 1.45; margin: 0; text-wrap: pretty; }
   .dots { display: flex; gap: 5px; flex-wrap: wrap; }
   .dots i { width: 9px; height: 9px; border-radius: 50%; background: var(--line); }
   .dots i.on { background: var(--hot); }
@@ -55,7 +55,7 @@
   .fin h2 { font-size: 22px; }
   .tip { position: absolute; left: 50%; bottom: 12px; transform: translateX(-50%); background: var(--ink); color: var(--bg); padding: 8px 14px; border-radius: 999px; font-size: 14px; opacity: 0; transition: opacity .2s; pointer-events: none; white-space: nowrap; }
   .tip.show { opacity: .92; }
-  @media (max-width: 900px) { .player { grid-template-columns: 1fr; } .side .cap { font-size: 17px; } }
+  @media (max-width: 1000px) { .player { flex-direction: column; align-items: stretch; } .stage { width: 100%; } .side { flex: none; } .side .cap { font-size: 18px; } }
 </style>
 </head>
 <body>
