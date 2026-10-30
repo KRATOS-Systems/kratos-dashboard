@@ -7,6 +7,7 @@ import { existsSync, mkdirSync } from "node:fs";
 import { createHash, timingSafeEqual } from "node:crypto";
 import registerPartImages from "./partImages.js";
 import registerAutoBackup from "./backupAuto.js";
+import registerFeedback from "./feedback.js";
 import registerOdooSync from "./odooSync.js";
 import registerOdooFiles from "./odooFiles.js";
 import registerBde from "./bde.js";
@@ -1100,6 +1101,7 @@ registerOdooSync(app, db, { isDate, nextPosition });
 registerOdooFiles(app, db);
 const staff = registerStaff(app, db);
 registerBde(app, db, staff);
+registerFeedback(app, db);
 registerTalosChat(app);
 
 if (existsSync(DIST_PATH)) {
