@@ -4,3 +4,4 @@ server/dashboard.db
 server/dashboard.db-shm
 server/dashboard.db-wal
 .env
+server/backups/

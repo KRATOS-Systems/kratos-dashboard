@@ -156,3 +156,14 @@ Code: `server/bdeLaufzeit.js` (Wege `/api/bde/fertig`, `/api/bde/auftrag`, `/api
 **Schreibrechte** (`server/odooClient.js`), zusätzlich zu oben: `mrp.workorder` `create` nur mit Name, Arbeitsplatz, Fertigungsauftrag, Reihenfolge, Plandauer, Abhängigkeit; `write` nur Reihenfolge und Abhängigkeit; `mrp.production` `write` nur `qty_producing`, dazu `button_mark_done`. Keine Zeiten, kein Status, kein Löschen.
 
 **Nur gegen das Test-Odoo geprüft.** Offen vor dem Livegang an einem echten Auftrag: ob Odoo beim Anlegen der Arbeitsgänge die Abhängigkeit (`blocked_by_workorder_ids`) so annimmt, ob die QS danach tatsächlich auf das neue Fräsen wartet, und ob `button_mark_done` bei euch ohne Rückfrage durchläuft.
+
+## Automatische Datensicherung
+
+`server/backupAuto.js`: Einmal täglich (ab 2 Uhr Berliner Zeit, beim Start sofort, falls noch keine da ist) wird die ganze Datenbank als Datei kopiert (`VACUUM INTO`, stimmig auch bei laufender App, enthält auch Zeiterfassung und Odoo-Abgleich, anders als das JSON-Backup). Die Kopie wird mit `PRAGMA integrity_check` geprüft und erst dann als `dashboard-JJJJ-MM-TT.db` behalten. Aufbewahrt: die letzten 14 Tage plus je der Monatserste für etwa 200 Tage.
+
+- Ordner: `BACKUP_DIR`, sonst `backups` neben der Datenbank (`DB_PATH`). Liegt `DB_PATH` außerhalb des Deploy-Ordners, überstehen die Sicherungen auch einen neuen Deploy.
+- `BACKUP_AUTO=0` schaltet den Zeitplan ab (Tests); „Jetzt sichern“ geht trotzdem.
+- Anzeige und „Jetzt sichern“ im Dialog Datensicherung. Schnittstellen: `GET /api/backup/status`, `POST /api/backup/run`, `GET /api/backup/auto/latest` (oder ein Dateiname).
+- Das ist eine Kopie auf demselben Server. Gegen Serverausfall muss sie zusätzlich woanders landen: ein n8n-Ablauf, der täglich `GET /api/backup/auto/latest` (mit Anmeldung) abholt und ablegt. Noch nicht eingerichtet.
+- Wiederherstellen: App anhalten, die Datenbankdatei (`DB_PATH`, samt `-wal`/`-shm`) durch die gewünschte Sicherung ersetzen, App starten.
+- Test: `node scripts/testBackup.mjs`.

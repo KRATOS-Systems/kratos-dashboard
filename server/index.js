@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { existsSync, mkdirSync } from "node:fs";
 import { createHash, timingSafeEqual } from "node:crypto";
 import registerPartImages from "./partImages.js";
+import registerAutoBackup from "./backupAuto.js";
 import registerOdooSync from "./odooSync.js";
 import registerOdooFiles from "./odooFiles.js";
 import registerBde from "./bde.js";
@@ -1093,6 +1094,7 @@ app.post("/api/restore", (req, res) => {
   res.json({ counts });
 });
 
+registerAutoBackup(app, db, { dbPath: DB_PATH });
 registerPartImages(app, db);
 registerOdooSync(app, db, { isDate, nextPosition });
 registerOdooFiles(app, db);

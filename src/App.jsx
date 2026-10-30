@@ -325,6 +325,30 @@ function DataDialog({ onClose }) {
       setRestore({ error: "Die Datei konnte nicht gelesen werden" });
     }
   }
+  const [auto, setAuto] = useState(null); // Stand der automatischen Sicherung
+  const [autoBusy, setAutoBusy] = useState(false);
+  const [autoErr, setAutoErr] = useState("");
+  const loadAuto = () =>
+    fetch("/api/backup/status")
+      .then((r) => (r.ok ? r.json() : null))
+      .then(setAuto)
+      .catch(() => {});
+  useEffect(() => {
+    loadAuto();
+  }, []);
+  async function runAuto() {
+    setAutoBusy(true);
+    setAutoErr("");
+    try {
+      const res = await fetch("/api/backup/run", { method: "POST" });
+      if (!res.ok) setAutoErr((await res.json().catch(() => ({}))).error || "Die Sicherung ist fehlgeschlagen");
+      await loadAuto();
+    } catch {
+      setAutoErr("Keine Verbindung zum Server");
+    }
+    setAutoBusy(false);
+  }
+  const fmtDay = (d) => d.split("-").reverse().join(".");
   async function doRestore() {
     const res = await fetch("/api/restore", {
       method: "POST",
@@ -339,6 +363,33 @@ function DataDialog({ onClose }) {
     <div className="modal" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="dialog" role="dialog" aria-modal="true" aria-label="Datensicherung">
         <h3>Datensicherung</h3>
+        {auto && (
+          <div className="note" style={{ marginBottom: 16 }}>
+            <b>Automatische Sicherung{auto.auto ? "" : " (ausgeschaltet)"}</b>
+            <div style={{ marginTop: 4 }}>
+              {auto.latest ? (
+                <>
+                  Letzte Sicherung: {fmtDay(auto.latest.day)} ({Math.max(1, Math.round(auto.latest.size / 1024))} KB). Es liegen {auto.files.length} Sicherungen auf dem Server, jede Nacht kommt eine neue dazu, die ältesten werden gelöscht.
+                </>
+              ) : (
+                "Noch keine Sicherung vorhanden. Die erste wird kurz nach dem Start angelegt."
+              )}
+            </div>
+            {auto.lastError && <div style={{ color: "var(--bad)", marginTop: 4 }}>Letzter Fehler: {auto.lastError}</div>}
+            {autoErr && <div style={{ color: "var(--bad)", marginTop: 4 }}>{autoErr}</div>}
+            <div className="actions" style={{ marginTop: 10 }}>
+              <button type="button" className="btn sm" disabled={autoBusy} onClick={runAuto}>
+                {autoBusy ? "Sichere …" : "Jetzt sichern"}
+              </button>
+              {auto.latest && (
+                <a className="btn sm" href="/api/backup/auto/latest" download>
+                  <Ico n="down" s={14} />
+                  Letzte Sicherung laden
+                </a>
+              )}
+            </div>
+          </div>
+        )}
         <p>Speichert alle Zählerstände, Aufträge, Arbeitsvorbereitung und Einstellungen als Datei.</p>
         <div className="actions">
           <a className="btn primary" href="/api/backup" download>
