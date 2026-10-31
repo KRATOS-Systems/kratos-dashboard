@@ -1,0 +1,31 @@
+# Prüft jede Änderung, bevor sie in main (und damit live) darf: Build und alle Testskripte.
+# Die Tests laufen nur gegen das Test-Odoo (scripts/mockOdoo.mjs) mit Wegwerf-Datenbanken, nie gegen echte Daten.
+name: Tests
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  tests:
+    name: Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Build
+        run: npx vite build
+      - name: Programmlaufzeit
+        run: node scripts/testLaufzeit.mjs
+      - name: Odoo-Abgleich (Lücken)
+        run: node scripts/testLuecken.mjs
+      - name: Datensicherung
+        run: node scripts/testBackup.mjs
+      - name: Rückmeldungen
+        run: node scripts/testFeedback.mjs
