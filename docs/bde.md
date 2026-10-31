@@ -176,3 +176,13 @@ Knopf „Feedback“ im Menü links unten (`src/Feedback.jsx`, `server/feedback.
 - Reiter „Alle“ nur für die Leitung: Liste (Offene zuerst), Bilder ansehen, Status (Neu, In Arbeit, Erledigt, Nicht geplant) und Antwort an den Absender. Neue Rückmeldungen zeigt ein Zähler am Knopf (einmal beim Laden, kein Dauerabruf).
 - Tabelle `feedback` in der App-Datenbank, damit auch in der automatischen Datensicherung. Bilder werden nach 90 Tagen gelöscht, der Text bleibt. Höchstens 10 Rückmeldungen je Adresse in 10 Minuten.
 - Test: `node scripts/testFeedback.mjs`.
+
+## Offline-Stand (Server nicht erreichbar)
+
+`public/sw.js` (Service Worker) und `src/offline.js`. Ist der Server nicht erreichbar, öffnet sich die App auf Geräten, die sie schon einmal geöffnet haben, trotzdem und zeigt den letzten gemerkten Stand der Planung zum Ansehen. Unten erscheint ein Hinweis mit dem Zeitpunkt des Stands und „Erneut versuchen“; Änderungen werden in dieser Zeit nicht gespeichert.
+
+- Gemerkt werden Seiten, Programmdateien (`/assets/`) und nur diese Planungsdaten per GET: orders, week-capacity, readings, free-days, plan-settings, plan-rates, av, staff (mit defaults, order, info), odoo/status (Liste `DATA_RE` in `sw.js`).
+- Nicht gemerkt: alles Persönliche (`/api/bde/*`, Anmeldung), Bilder, Rückmeldungen, Sicherung, Talos. Schreibzugriffe laufen nie über den Speicher; 401 wird unverändert durchgereicht.
+- Server zuerst: erst bei Fehler, 502/503/504 oder Warten über 6 s (Seiten) bzw. 8 s (Daten) kommt der gemerkte Stand.
+- Neue Planungsdaten-Endpunkte für den Offline-Stand: in `DATA_RE` ergänzen und `VERSION` in `sw.js` erhöhen.
+- Prüfen im Browser: Seite öffnen, in den Entwicklertools (F12, Netzwerk) „Offline“ anhaken, F5.
