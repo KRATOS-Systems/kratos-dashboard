@@ -167,3 +167,12 @@ Code: `server/bdeLaufzeit.js` (Wege `/api/bde/fertig`, `/api/bde/auftrag`, `/api
 - Das ist eine Kopie auf demselben Server. Gegen Serverausfall muss sie zusätzlich woanders landen: ein n8n-Ablauf, der täglich `GET /api/backup/auto/latest` (mit Anmeldung) abholt und ablegt. Noch nicht eingerichtet.
 - Wiederherstellen: App anhalten, die Datenbankdatei (`DB_PATH`, samt `-wal`/`-shm`) durch die gewünschte Sicherung ersetzen, App starten.
 - Test: `node scripts/testBackup.mjs`.
+
+## Rückmeldungen (Feedback)
+
+Knopf „Feedback“ im Menü links unten (`src/Feedback.jsx`, `server/feedback.js`). Mitarbeiter wählen Fehler, Idee oder Lob, schreiben einen Text und hängen optional ein Bild an (Datei wählen oder Strg+V, im Browser auf längste Seite 1600 px als JPEG verkleinert). Seite, Fenstergröße, Gerät und Uhrzeit kommen automatisch dazu, ist ein Mitarbeiter angemeldet auch sein Name.
+
+- Reiter „Meine“: eigene Rückmeldungen mit Status und Antwort (nur angemeldet).
+- Reiter „Alle“ nur für die Leitung: Liste (Offene zuerst), Bilder ansehen, Status (Neu, In Arbeit, Erledigt, Nicht geplant) und Antwort an den Absender. Neue Rückmeldungen zeigt ein Zähler am Knopf (einmal beim Laden, kein Dauerabruf).
+- Tabelle `feedback` in der App-Datenbank, damit auch in der automatischen Datensicherung. Bilder werden nach 90 Tagen gelöscht, der Text bleibt. Höchstens 10 Rückmeldungen je Adresse in 10 Minuten.
+- Test: `node scripts/testFeedback.mjs`.

@@ -6,6 +6,7 @@ import Team from "./Team.jsx";
 import Arbeitsplatz from "./Arbeitsplatz.jsx";
 import Kiosk from "./Kiosk.jsx";
 import LaufzeitHost from "./Laufzeit.jsx";
+import { FeedbackDialog, useFeedbackCount } from "./Feedback.jsx";
 import { MiniProvider } from "./MiniWindow.jsx";
 import { Palette, Alerts, alertsList } from "./Overlays.jsx";
 import { BrandMark, WordMark, Ico, SvgDefs, ToastProvider } from "./ui.jsx";
@@ -141,6 +142,8 @@ export default function App() {
   const [talosQ, setTalosQ] = useState(null);
   const [showAlerts, setShowAlerts] = useState(false);
   const [showData, setShowData] = useState(false);
+  const [showFeedback, setShowFeedback] = useState(false);
+  const [fbNew, reloadFbNew] = useFeedbackCount();
   useEffect(() => {
     const onKey = (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
@@ -235,6 +238,15 @@ export default function App() {
               <Ico n="help" />
               <span className="lbl">Hilfe</span>
             </button>
+            <button type="button" className="ghost-dark" aria-label="Feedback" onClick={() => setShowFeedback(true)}>
+              <Ico n="chat" />
+              <span className="lbl">Feedback</span>
+              {fbNew > 0 && (
+                <span className="cnt2" key={fbNew}>
+                  {fbNew}
+                </span>
+              )}
+            </button>
             <button type="button" className="ghost-dark" onClick={() => setShowData(true)}>
               <Ico n="save" />
               <span className="lbl">Datensicherung</span>
@@ -299,6 +311,7 @@ export default function App() {
         />
       )}
       {showData && <DataDialog onClose={() => setShowData(false)} />}
+      {showFeedback && <FeedbackDialog onClose={() => setShowFeedback(false)} onChanged={reloadFbNew} />}
       <LaufzeitHost />
       </MiniProvider>
     </ToastProvider>
