@@ -21,6 +21,8 @@ jobs:
       - run: npm ci
       - name: Build
         run: npx vite build
+      - name: Abfrage-Takt
+        run: node scripts/testPoll.mjs
       - name: Programmlaufzeit
         run: node scripts/testLaufzeit.mjs
       - name: Odoo-Abgleich (Lücken)
