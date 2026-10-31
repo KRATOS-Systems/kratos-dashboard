@@ -6,6 +6,7 @@ import Team from "./Team.jsx";
 import Arbeitsplatz from "./Arbeitsplatz.jsx";
 import Kiosk from "./Kiosk.jsx";
 import LaufzeitHost from "./Laufzeit.jsx";
+import { useOffline } from "./offline.js";
 import { FeedbackDialog, useFeedbackCount } from "./Feedback.jsx";
 import { MiniProvider } from "./MiniWindow.jsx";
 import { Palette, Alerts, alertsList } from "./Overlays.jsx";
@@ -142,6 +143,7 @@ export default function App() {
   const [talosQ, setTalosQ] = useState(null);
   const [showAlerts, setShowAlerts] = useState(false);
   const [showData, setShowData] = useState(false);
+  const offline = useOffline();
   const [showFeedback, setShowFeedback] = useState(false);
   const [fbNew, reloadFbNew] = useFeedbackCount();
   useEffect(() => {
@@ -313,8 +315,24 @@ export default function App() {
       {showData && <DataDialog onClose={() => setShowData(false)} />}
       {showFeedback && <FeedbackDialog onClose={() => setShowFeedback(false)} onChanged={reloadFbNew} />}
       <LaufzeitHost />
+      {offline.offline && <OfflineBar at={offline.at} />}
       </MiniProvider>
     </ToastProvider>
+  );
+}
+
+// Hinweis, wenn der Server nicht erreichbar ist und der letzte gemerkte Stand gezeigt wird (siehe public/sw.js, src/offline.js)
+function OfflineBar({ at }) {
+  const when = at ? new Date(at).toLocaleString("de-DE", { timeZone: "Europe/Berlin", weekday: "short", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : null;
+  return (
+    <div className="offline-bar" role="status">
+      <div>
+        <b>Server nicht erreichbar.</b> {when ? `Du siehst den Stand von ${when} Uhr.` : "Es kann sein, dass nicht alles angezeigt wird."} Änderungen werden jetzt nicht gespeichert.
+      </div>
+      <button type="button" className="btn sm" onClick={() => window.location.reload()}>
+        Erneut versuchen
+      </button>
+    </div>
   );
 }
 
