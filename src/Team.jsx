@@ -5,6 +5,7 @@ import Avatar from "./Avatar.jsx";
 import { JobRef } from "./BdeControls.jsx";
 import { askLaufzeit, afterStop } from "./Laufzeit.jsx";
 import { AmpelLeiste } from "./Ampel.jsx";
+import { pollEvery } from "./poll.js";
 
 // Team-Tafel: eine Karte pro Mitarbeiter, wer ist da und woran wird gerade gearbeitet.
 // Farbe statt Text: grün = da und Buchung läuft, grau = da, nichts gebucht, orange = doppelt gestempelt, rot = Buchung vergessen,
@@ -28,13 +29,7 @@ export function useBdeTeam() {
   }, []);
   useEffect(() => {
     load();
-    const t = setInterval(load, REFRESH_MS);
-    const onVis = () => document.visibilityState === "visible" && load();
-    document.addEventListener("visibilitychange", onVis);
-    return () => {
-      clearInterval(t);
-      document.removeEventListener("visibilitychange", onVis);
-    };
+    return pollEvery(load, REFRESH_MS);
   }, [load]);
   return { data, error, reload: load };
 }
