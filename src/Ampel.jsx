@@ -3,6 +3,7 @@ import { MACHINES } from "./lib.js";
 import { useToast } from "./ui.jsx";
 import { useBdeSession, canOperate, act, since, useNow, toLocalInput, fromLocalInput } from "./bdeLib.js";
 import { afterStop } from "./Laufzeit.jsx";
+import { pollEvery } from "./poll.js";
 
 // Maschinenampel wie eine Signalleuchte an der Maschine (Daten: /api/maschinen/ampel, Server: server/bdeAmpel.js).
 //   grün = Fräsen läuft, gelb = es wird gerüstet, rot = nichts läuft, obwohl Arbeitszeit ist und Arbeit wartet, keine Lampe = nichts zu tun.
@@ -13,16 +14,24 @@ const notifyChanged = () => window.dispatchEvent(new Event("bde-changed"));
 // gemeinsamer Stand für alle Ampeln auf der Seite, alle 60 Sekunden und nach jeder Buchung neu
 let current = null;
 const listeners = new Set();
-let timer = null;
-async function fetchAmpel(fresh) {
-  try {
-    const r = await fetch(`/api/maschinen/ampel${fresh ? "?fresh=1" : ""}`);
-    if (!r.ok) return;
-    current = await r.json();
-    listeners.forEach((l) => l(current));
-  } catch {
-    /* ohne Verbindung bleibt der letzte Stand stehen */
-  }
+let stopPoll = null;
+const pending = { plain: null, fresh: null }; // mehrere Ampeln auf einer Seite teilen sich eine laufende Abfrage
+function fetchAmpel(fresh) {
+  const key = fresh ? "fresh" : "plain";
+  if (pending[key]) return pending[key];
+  pending[key] = (async () => {
+    try {
+      const r = await fetch(`/api/maschinen/ampel${fresh ? "?fresh=1" : ""}`);
+      if (!r.ok) return;
+      current = await r.json();
+      listeners.forEach((l) => l(current));
+    } catch {
+      /* ohne Verbindung bleibt der letzte Stand stehen */
+    } finally {
+      pending[key] = null;
+    }
+  })();
+  return pending[key];
 }
 function useAmpel() {
   const [d, setD] = useState(current);
@@ -30,15 +39,15 @@ function useAmpel() {
     listeners.add(setD);
     if (!current) fetchAmpel();
     else setD(current);
-    if (!timer) timer = setInterval(() => fetchAmpel(), 60000);
+    if (!stopPoll) stopPoll = pollEvery(() => fetchAmpel(), 60000);
     const on = () => fetchAmpel(true);
     window.addEventListener("bde-changed", on);
     return () => {
       listeners.delete(setD);
       window.removeEventListener("bde-changed", on);
-      if (!listeners.size && timer) {
-        clearInterval(timer);
-        timer = null;
+      if (!listeners.size && stopPoll) {
+        stopPoll();
+        stopPoll = null;
       }
     };
   }, []);

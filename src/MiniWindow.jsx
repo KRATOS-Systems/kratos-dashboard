@@ -4,6 +4,7 @@ import { MachineGlyph, Clock } from "./Team.jsx";
 import { useNow, act, isPhoneView, bookingRef, bookingKey } from "./bdeLib.js";
 import Avatar from "./Avatar.jsx";
 import { ActButtons, JobRef } from "./BdeControls.jsx";
+import { pollEvery } from "./poll.js";
 
 // Kleines schwebendes Fenster (Document Picture-in-Picture, Chrome/Edge am PC): laufende Tätigkeit mit Uhr, darunter
 // Unterbrechen/Weiter, Stopp, Wechseln (nur wenn Bedienen freigeschaltet ist). Es hängt an der App, nicht an einer Seite,
@@ -145,10 +146,10 @@ function MiniContent({ goTo, onGone, win }) {
   }, []);
   useEffect(() => {
     load();
-    const t = setInterval(load, REFRESH_MS);
+    const stop = pollEvery(load, REFRESH_MS);
     window.addEventListener(BDE_CHANGED, load);
     return () => {
-      clearInterval(t);
+      stop();
       window.removeEventListener(BDE_CHANGED, load);
     };
   }, [load]);
@@ -333,8 +334,7 @@ function MiniMessages() {
           /* nächster Versuch beim nächsten Takt */
         });
     load();
-    const t = setInterval(load, MSG_REFRESH_MS);
-    return () => clearInterval(t);
+    return pollEvery(load, MSG_REFRESH_MS);
   }, []);
   if (!items.length) return null;
   const more = items.length - MSG_SHOW;

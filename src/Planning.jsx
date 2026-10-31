@@ -8,6 +8,7 @@ import { AV_ITEMS, AV_STATUS, AV_TEAM, isNewAv, avKey, avState, avSummary } from
 import { STAFF, ACTIVITIES, STAFF_DEFAULTS, responsible, avResponsible, sharedMachine } from "./staffLib.js";
 import Avatar from "./Avatar.jsx";
 import { AppTile, Ico, LaneTile, MTile, Thumb, useToast, partImg } from "./ui.jsx";
+import { pollEvery } from "./poll.js";
 import {
   DEFAULT_TIGHT_DAYS,
   DRAG_THRESHOLD,
@@ -259,10 +260,10 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
         })
         .catch(() => {});
     load();
-    const t = setInterval(load, 2 * 60 * 1000);
+    const stopPoll = pollEvery(load, 2 * 60 * 1000);
     return () => {
       stop = true;
-      clearInterval(t);
+      stopPoll();
     };
   }, []);
 

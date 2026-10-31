@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { Ico, useToast } from "./ui.jsx";
 import { daysBetween, addDays } from "./lib.js";
+import { pollEvery } from "./poll.js";
 import Avatar from "./Avatar.jsx";
 
 // Meine Aufgaben: offene Odoo-Aktivitäten des Mitarbeiters, nach Frist sortiert.
@@ -67,8 +68,7 @@ export default function Aufgaben({ viewId, canStamp, onStamp }) {
   }, [viewId]);
   useEffect(() => {
     load();
-    const t = setInterval(load, 60 * 1000);
-    return () => clearInterval(t);
+    return pollEvery(load, 60 * 1000);
   }, [load]);
 
   async function done(a) {
@@ -255,8 +255,7 @@ function Thread({ id, view, onRead }) {
   );
   useEffect(() => {
     get(true);
-    const t = setInterval(() => get(false), 30 * 1000);
-    return () => clearInterval(t);
+    return pollEvery(() => get(false), 30 * 1000);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
   useEffect(() => {

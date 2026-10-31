@@ -13,6 +13,7 @@ import Avatar from "./Avatar.jsx";
 import { afterStop, LaufzeitOffen } from "./Laufzeit.jsx";
 import RechnungBereit from "./Rechnung.jsx";
 import { AmpelLeiste } from "./Ampel.jsx";
+import { pollEvery } from "./poll.js";
 
 // Mein Arbeitsplatz: persönliche Seite nach Anmeldung mit PIN.
 // Oben groß die laufende Tätigkeit mit den drei Knöpfen Wechseln, Unterbrechen/Weiter, Stopp; darunter Zeiten der Woche, Resturlaub,
@@ -70,8 +71,7 @@ function ArbeitsplatzInner({ onGreet, goTo }) {
   }, [viewId]);
   useEffect(() => {
     load();
-    const t = setInterval(load, REFRESH_MS);
-    return () => clearInterval(t);
+    return pollEvery(load, REFRESH_MS);
   }, [load]);
 
   // Abmelden; mit Knopf verabschiedet die Seite den Mitarbeiter (schon ausgestempelt oder ab 12 Uhr: Feierabend, sonst "Bis später"),

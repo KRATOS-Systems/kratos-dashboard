@@ -2,6 +2,7 @@ import React, { Suspense, lazy, useCallback, useEffect, useState } from "react";
 import { Ico, Thumb, partImg } from "./ui.jsx";
 import { odooLink, splitProduct } from "./bdeLib.js";
 import { daysBetween, fmtShort } from "./lib.js";
+import { pollEvery } from "./poll.js";
 
 // Meine nächsten Teile: was als Nächstes zu tun ist, aus Planung, Arbeitsvorbereitung und Odoo.
 // Je Teil: Bild, Auftrag, Artikel, meine offenen Tätigkeiten, Liefertermin, ob die Arbeitsvorbereitung bereit ist, Zeichnung.
@@ -42,8 +43,7 @@ export default function Teile({ viewId, today, canStart, onStart, goTo }) {
   }, [viewId]);
   useEffect(() => {
     load();
-    const t = setInterval(load, 60 * 1000);
-    return () => clearInterval(t);
+    return pollEvery(load, 60 * 1000);
   }, [load]);
   if (!data || !data.name) return null;
 
