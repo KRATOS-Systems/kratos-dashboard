@@ -143,8 +143,8 @@ function Rings({ cap, sp }) {
   return (
     <svg viewBox="0 0 140 140" width="150" height="150" aria-hidden="true">
       <g transform="rotate(-90 70 70)">
-        {ring(59, cap, capCol(cap))}
-        {ring(43, sp, spCol(sp))}
+        <g className="ring-cap">{ring(59, cap, capCol(cap))}</g>
+        <g className="ring-sp" style={{ color: spCol(sp) }}>{ring(43, sp, spCol(sp))}</g>
       </g>
     </svg>
   );
@@ -543,6 +543,13 @@ export default function Dashboard({ weekCap, saveCapacity, today, openTalos }) {
         <div>
           <h1>Produktionsdashboard</h1>
           <p>{selected ? `Auswertung ${selected.label} aus den Zählerständen vom ${fmtShort(period.to)}` : "Noch keine Auswertung"}</p>
+          {selected && (
+            <div className="pills">
+              <span className="pill">{selected.label}</span>
+              <span className="pill">{cur.filter((c) => c.e).length} Maschinen</span>
+              <span className="pill">Stand {fmtShort(period.to)}</span>
+            </div>
+          )}
         </div>
         <div className="actions">
           <select value={selectedKey || ""} onChange={(ev) => setPickedWeek(ev.target.value)} disabled={!weekOptions.length} aria-label="Woche">
