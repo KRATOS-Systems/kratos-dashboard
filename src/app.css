@@ -626,6 +626,8 @@ a.btn { text-decoration: none; }
 .hrow svg { color: var(--faint); flex: none; }
 /* Verbindung Terminlinie und Balken */
 .bar.linked { outline: 2px solid var(--ink); outline-offset: 1px; z-index: 5; }
+/* Alle Balken eines Auftrags: leuchtender roter Rahmen (statt die anderen abzudunkeln) */
+.bar.grpx, .bar.grpx:hover { outline: 2px solid var(--brand); outline-offset: 1px; z-index: 6; box-shadow: inset 4px 0 0 var(--mc), 0 0 0 5px color-mix(in srgb, var(--brand) 22%, transparent), 0 0 20px color-mix(in srgb, var(--brand) 55%, transparent); }
 .dl.hot .dl-line { height: 3px; top: 3.5px; opacity: 1; }
 .dl.hot .dl-dia { width: 10px; height: 10px; top: 0; }
 .dl-text.hot { font-weight: 700; }
