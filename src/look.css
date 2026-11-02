@@ -12,10 +12,10 @@ html[data-look="neu"] {
   --nl-glow: 0 8px 24px rgba(229, 50, 59, .42);
 }
 html[data-look="neu"]:not([data-theme="dark"]) {
-  --nl-glass: linear-gradient(145deg, rgba(255, 255, 255, .86), rgba(255, 255, 255, .52));
-  --nl-edge: rgba(255, 255, 255, .85);
-  --nl-shadow: 0 14px 36px rgba(40, 52, 90, .13), 0 1px 3px rgba(40, 52, 90, .08), inset 0 1px 0 rgba(255, 255, 255, 1);
-  --nl-blur: blur(22px) saturate(1.5);
+  --nl-glass: linear-gradient(145deg, rgba(255, 255, 255, .62), rgba(255, 255, 255, .26) 55%, rgba(255, 255, 255, .20));
+  --nl-edge: rgba(255, 255, 255, .95);
+  --nl-shadow: 0 16px 40px rgba(50, 60, 120, .16), 0 1px 2px rgba(50, 60, 120, .10), inset 0 1px 0 rgba(255, 255, 255, 1), inset 0 -1px 0 rgba(255, 255, 255, .35);
+  --nl-blur: blur(30px) saturate(1.9);
 }
 
 /* ---------- 1 Grund und Hintergrund ---------- */
@@ -38,10 +38,12 @@ html[data-look="neu"][data-theme="dark"] body::before {
 }
 html[data-look="neu"]:not([data-theme="dark"]) body {
   background:
-    radial-gradient(900px 560px at 4% -6%, rgba(229, 50, 59, .16), transparent 66%),
-    radial-gradient(1000px 680px at 104% 108%, rgba(80, 120, 210, .22), transparent 66%),
-    radial-gradient(700px 520px at 60% 36%, rgba(160, 140, 225, .13), transparent 70%),
-    #E7EAF2;
+    radial-gradient(700px 520px at 2% 4%, rgba(255, 86, 100, .42), transparent 68%),
+    radial-gradient(800px 600px at 98% 98%, rgba(60, 110, 255, .42), transparent 68%),
+    radial-gradient(640px 480px at 96% 6%, rgba(60, 200, 190, .30), transparent 70%),
+    radial-gradient(700px 520px at 40% 62%, rgba(150, 110, 240, .30), transparent 70%),
+    radial-gradient(520px 420px at 8% 96%, rgba(255, 170, 80, .28), transparent 70%),
+    #E4E8F3;
   background-attachment: fixed;
 }
 html[data-look="neu"] #root { position: relative; z-index: 1; }
