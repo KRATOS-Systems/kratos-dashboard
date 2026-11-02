@@ -710,8 +710,17 @@ a.btn { text-decoration: none; }
 .fano.plain { font: 600 13px var(--f-mono); color: var(--ink); }
 .tbl tbody tr.row.oc.t1 td { background: color-mix(in srgb, var(--ink) 6%, transparent); }
 .tbl tbody tr.row.oc.t0 td { background: color-mix(in srgb, var(--ink) 1.5%, transparent); }
-.tbl tbody tr.row.dimrow td { opacity: .42; }
-.tbl tbody tr.row td { transition: opacity .18s ease; }
+/* Zusammengehörige Zeilen eines Auftrags: leuchtender Rahmen um den ganzen Block, nichts wird abgedunkelt */
+.tbl tbody tr.row td { transition: background-color .18s ease, box-shadow .18s ease; }
+.tbl tbody tr.row.grpf td {
+  --grp: var(--brand);
+  background: color-mix(in srgb, var(--grp) 9%, transparent);
+  box-shadow: var(--e-t, 0 0 #0000), var(--e-b, 0 0 #0000), var(--e-l, 0 0 #0000), var(--e-r, 0 0 #0000), inset 0 0 26px color-mix(in srgb, var(--grp) 16%, transparent);
+}
+.tbl tbody tr.row.grpf.grpf-first td { --e-t: inset 0 2px 0 var(--grp); }
+.tbl tbody tr.row.grpf.grpf-last td { --e-b: inset 0 -2px 0 var(--grp); }
+.tbl tbody tr.row.grpf td:first-child { --e-l: inset 3px 0 0 var(--grp); }
+.tbl tbody tr.row.grpf td:last-child { --e-r: inset -3px 0 0 var(--grp); }
 
 /* Kompakte Vorschau: Zeichnung und 3D untereinander, Klick öffnet das große Fenster */
 .fthumbs { display: flex; flex-direction: column; gap: 10px; width: 100%; }

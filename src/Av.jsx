@@ -198,6 +198,7 @@ export default function AvView({ avStdOf = () => null, orders, checks, planStart
   const [query, setQuery] = useState("");
   const [popKey, setPopKey] = useState(null);
   const [hoverOrder, setHoverOrder] = useState(null); // Auftrag, über dessen Zeile die Maus steht
+  const [pinOrder, setPinOrder] = useState(null); // Auftrag der zuletzt aufgeklappten Zeile (bleibt umrandet)
   const [open, setOpen] = useState(() => new Set()); // aufgeklappte Zeilen (Zeichnung und 3D-Modell)
   const toggleOpen = (id) =>
     setOpen((prev) => {
@@ -378,7 +379,10 @@ export default function AvView({ avStdOf = () => null, orders, checks, planStart
     );
   };
 
-  const dataRow = (r, showOrder, tone = 0) => {
+  // Zusammengehörige Zeilen (derselbe Auftrag) bekommen beim Darüberfahren und nach dem Aufklappen einen leuchtenden Rahmen, die anderen bleiben unverändert
+  const activeOrder = hoverOrder || pinOrder;
+  const framed = (o, edges) => (edges && activeOrder && groupKey(o) === activeOrder ? ` grpf${edges.first ? " grpf-first" : ""}${edges.last ? " grpf-last" : ""}` : "");
+  const dataRow = (r, showOrder, tone = 0, edges = null) => {
     const { o, sum, plan } = r;
     const dueLate = o.due && o.due < today;
     const isOpen = open.has(o.id);
@@ -394,10 +398,13 @@ export default function AvView({ avStdOf = () => null, orders, checks, planStart
     return (
       <React.Fragment key={o.id}>
       <tr
-        className={`row${r.late && !showOrder ? " ovd" : ""}${showOrder ? " oc t" + tone : ""}${isOpen ? " xopen sel" : ""}${showOrder && hoverOrder && hoverOrder !== groupKey(o) ? " dimrow" : ""}`}
+        className={`row${r.late && !showOrder ? " ovd" : ""}${showOrder ? " oc t" + tone : ""}${isOpen ? " xopen sel" : ""}${framed(o, edges)}`}
         onMouseEnter={showOrder ? () => setHoverOrder(groupKey(o)) : undefined}
         onMouseLeave={showOrder ? () => setHoverOrder(null) : undefined}
-        onClick={() => toggleOpen(o.id)}
+        onClick={() => {
+          setPinOrder(open.has(o.id) ? null : groupKey(o));
+          toggleOpen(o.id);
+        }}
         data-avrow={o.id}
       >
         <td>{posCell(r, showOrder)}</td>
@@ -556,7 +563,13 @@ export default function AvView({ avStdOf = () => null, orders, checks, planStart
                   </td>
                 </tr>
               )}
-              {view === "dring" && sorted.map((r, ix) => dataRow(r, true, bands[ix]))}
+              {view === "dring" &&
+                sorted.map((r, ix) =>
+                  dataRow(r, true, bands[ix], {
+                    first: ix === 0 || groupKey(sorted[ix - 1].o) !== groupKey(r.o),
+                    last: ix === sorted.length - 1 || groupKey(sorted[ix + 1].o) !== groupKey(r.o),
+                  })
+                )}
               {view === "auftrag" &&
                 groups.map((g) => {
                   const due = g.rows.map((r) => r.o.due).filter(Boolean).sort()[0];
