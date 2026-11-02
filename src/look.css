@@ -230,7 +230,13 @@ html:not([data-look="neu"]) .assist-sw { display: none; }
 
 /* ---------- 9 Rechte Leiste "Assistent" (standardmäßig zu) ---------- */
 html[data-look="neu"] .assist { position: fixed; top: 14px; right: 14px; bottom: 14px; width: 340px; z-index: 35; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; scrollbar-width: thin; padding: 0 2px; }
-html[data-look="neu"] .ap-hero { flex: none; padding: 18px; border-radius: 22px; color: #fff; background: linear-gradient(160deg, #E5323B, #A5232B 70%, #6E1A20); box-shadow: 0 20px 50px rgba(229, 50, 59, .28), inset 0 1px 0 rgba(255, 255, 255, .25); }
+html[data-look="neu"] .ap-hero .ap-sub { margin-top: 16px; }
+html[data-look="neu"] .ap-hero .ap-tile { background: rgba(255, 255, 255, .13); border-color: rgba(255, 255, 255, .26); color: #fff; backdrop-filter: blur(10px); }
+html[data-look="neu"] .ap-hero .ap-tile:not(:disabled):hover { background: rgba(255, 255, 255, .22); }
+html[data-look="neu"] .ap-hero .ap-tile small { color: #FFE3E5; }
+html[data-look="neu"] .ap-hero .ap-tile span { color: rgba(255, 255, 255, .86); }
+html[data-look="neu"] .ap-hero .ap-none { color: rgba(255, 255, 255, .85); margin: 0; }
+html[data-look="neu"] .ap-hero { flex: none; padding: 18px; border-radius: 22px; color: #fff; background: radial-gradient(420px 260px at 8% 0%, rgba(255, 140, 150, .55), transparent 70%), linear-gradient(160deg, #EC3A44, #B02630 62%, #7A1B22); box-shadow: 0 20px 50px rgba(229, 50, 59, .28), inset 0 1px 0 rgba(255, 255, 255, .25); }
 html[data-look="neu"] .ap-hero header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
 html[data-look="neu"] .ap-tag { display: inline-flex; align-items: center; gap: 8px; font: 600 11px/1 var(--f-mono); letter-spacing: .16em; text-transform: uppercase; }
 html[data-look="neu"] .ap-x { width: 28px; height: 28px; border: 0; border-radius: 50%; background: rgba(255, 255, 255, .16); color: #fff; font-size: 18px; line-height: 1; cursor: pointer; }

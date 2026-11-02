@@ -14,7 +14,7 @@ export default function Assist({ shared, onClose, onOpenPosition, onAsk }) {
   const [late, soon, mat] = [0, 1, 2].map((i) => (groups[i] ? groups[i].items.length : 0));
 
   const planText = !shared
-    ? "Die Daten der Planung werden geladen …"
+    ? "Die Planung ist in dieser Sitzung noch nicht geöffnet. Öffne einmal die Produktionsplanung, dann stehen hier Termine und Tipps."
     : late + soon + mat === 0
       ? "In der Planung ist aktuell nichts gefährdet."
       : [
@@ -49,10 +49,7 @@ export default function Assist({ shared, onClose, onOpenPosition, onAsk }) {
         <h3>Lagebericht</h3>
         <p>{planText}</p>
         {dashText && <p>{dashText}</p>}
-      </section>
-
-      <section className="ap-card">
-        <h3>Live Insights</h3>
+        <h3 className="ap-sub">Live Insights</h3>
         {tiles.length ? (
           <div className="ap-tiles">
             {tiles.slice(0, 6).map((t, i) => (
