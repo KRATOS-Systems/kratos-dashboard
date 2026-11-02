@@ -36,8 +36,9 @@
     backdrop-filter: blur(22px); -webkit-backdrop-filter: blur(22px);
   }
   .mark { width: 54px; height: 54px; margin: 0 auto 14px; display: block; }
-  h1 { margin: 0; font-size: 22px; font-weight: 700; letter-spacing: .22em; text-transform: uppercase; }
-  .sub { margin: 4px 0 24px; color: var(--muted); font-size: 12px; letter-spacing: .3em; text-transform: uppercase; }
+  h1 { margin: 0; line-height: 0; }
+  .wm { width: 190px; max-width: 70%; height: auto; display: block; margin: 0 auto; }
+  .sub { margin: 12px 0 24px; color: var(--muted); font-size: 12px; letter-spacing: .3em; text-transform: uppercase; }
   .field { position: relative; }
   input[type=password], input[type=text] {
     width: 100%; height: 50px; padding: 0 16px; border-radius: 14px; font: inherit; font-size: 16px; color: var(--ink);
@@ -67,7 +68,7 @@
 <main>
   <form method="post" action="/login" autocomplete="on">
     <svg class="mark" viewBox="0 0 1932 1932" role="img" aria-label="Kratos"><path d="M0 0H703L0 703Z" fill="#F6F6F6"/><path d="M1053 0H1580L0 1580V1053Z" fill="#F6F6F6"/><path d="M0 1932L965 965 1932 1932H1405L965 1492 526 1932Z" fill="#EE3340"/></svg>
-    <h1>Kratos</h1>
+    <h1><svg class="wm" viewBox="0 0 2000 403" role="img" aria-label="Kratos"><path d="M0 10H77V181L208 10H297L153 198 304 398H216L77 216V398H0Z" fill="#F6F6F6"/><path fill-rule="evenodd" d="M337 10H495C570 10 622 70 622 140C622 200 585 240 547 252L632 398H550L472 264H414V398H337ZM414 82V196H495C525 196 546 170 546 139C546 108 525 82 495 82Z" fill="#F6F6F6"/><path d="M789 10H884L1021 398H938L837 98 736 398H653Z" fill="#F6F6F6"/><path d="M782 398L837 233 893 398Z" fill="#EE3340"/><path d="M987 10H1273V84H1168V398H1092V84H987Z" fill="#F6F6F6"/><path d="M1444 6A203 203 0 0 0 1444 404V326A127 127 0 0 1 1444 84Z" fill="#F6F6F6"/><path d="M1521 6A203 203 0 0 1 1521 404V326A127 127 0 0 0 1521 84Z" fill="#F6F6F6"/><path d="M1962 100C1936 55 1902 37 1862 37C1805 37 1763 68 1763 114C1763 160 1800 177 1860 195C1920 213 1962 227 1962 290C1962 336 1925 365 1862 365C1805 365 1772 340 1750 292" fill="none" stroke="#F6F6F6" stroke-width="76"/></svg></h1>
     <p class="sub">Produktion</p>
     <input class="user" type="text" name="username" value="{{USER}}" autocomplete="username" tabindex="-1" aria-hidden="true">
     <input type="hidden" name="next" value="{{NEXT}}">
