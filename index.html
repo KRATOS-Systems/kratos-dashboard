@@ -8,6 +8,14 @@
     <link rel="icon" type="image/svg+xml" href="/favicon-dark.svg" media="(prefers-color-scheme: dark)" />
     <link rel="icon" type="image/svg+xml" href="/favicon-light.svg" media="(prefers-color-scheme: light)" />
     <title>Kratos Produktion</title>
+    <script>
+      /* Look vor dem ersten Zeichnen setzen, damit nichts flackert (siehe src/look.css) */
+      try {
+        document.documentElement.dataset.look = localStorage.getItem("kratos-look") === "alt" ? "alt" : "neu";
+      } catch (e) {
+        document.documentElement.dataset.look = "neu";
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>

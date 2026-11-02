@@ -20,6 +20,21 @@ const PAGES = [
   { id: "team", label: "Team", icon: "team" },
   { id: "platz", label: "Mein Arbeitsplatz", icon: "user" },
 ];
+// Einstellungen dieses Geräts (Look, Leiste); ohne Speicher gilt die Standardansicht
+const lsGet = (k) => {
+  try {
+    return window.localStorage.getItem(k);
+  } catch {
+    return null;
+  }
+};
+const lsSet = (k, v) => {
+  try {
+    window.localStorage.setItem(k, v);
+  } catch {
+    /* ohne Speicher gilt die Standardansicht */
+  }
+};
 const PLAN_PAGES = ["planung", "av"];
 // "#team/vollbild" = Team-Tafel ohne Seitenleiste (Tablet an der Maschine), "#kiosk" = Terminal für Kommen und Gehen
 const readHash = () => window.location.hash.replace(/^#/, "");
@@ -43,6 +58,37 @@ function initialMode() {
 
 export default function App() {
   const [mode, setMode] = useState(initialMode);
+  // Neuer Look (Glas-Flächen, schmale Leiste) zum Testen umschaltbar; die schmale Leiste klappt beim Darüberfahren auf, per Klick auf das Logo bleibt sie offen
+  const [look, setLook] = useState(() => lsGet("kratos-look") === "alt" ? "alt" : "neu");
+  const [railPinned, setRailPinned] = useState(() => lsGet("kratos-rail") === "1");
+  const [railHover, setRailHover] = useState(false);
+  const [touch, setTouch] = useState(() => typeof window !== "undefined" && window.matchMedia("(hover: none)").matches);
+  const hoverTimer = useRef(null);
+  useEffect(() => {
+    document.documentElement.dataset.look = look;
+    lsSet("kratos-look", look);
+  }, [look]);
+  useEffect(() => {
+    const mq = window.matchMedia("(hover: none)");
+    const on = () => setTouch(mq.matches);
+    mq.addEventListener("change", on);
+    return () => mq.removeEventListener("change", on);
+  }, []);
+  const railWide = look === "neu" && (railPinned || touch);
+  const openRail = (e) => {
+    if (look !== "neu" || railWide || (e && e.buttons)) return; // beim Ziehen (Maustaste gedrückt) nicht aufklappen
+    clearTimeout(hoverTimer.current);
+    hoverTimer.current = setTimeout(() => setRailHover(true), 140);
+  };
+  const closeRail = () => {
+    clearTimeout(hoverTimer.current);
+    setRailHover(false);
+  };
+  const togglePin = () => {
+    const v = !railPinned;
+    setRailPinned(v);
+    lsSet("kratos-rail", v ? "1" : "0");
+  };
   useLayoutEffect(() => {
     document.documentElement.setAttribute("data-theme", mode);
     try {
@@ -176,9 +222,10 @@ export default function App() {
     <ToastProvider>
       <MiniProvider goTo={goTo}>
       <SvgDefs />
-      <div className={`app${kiosk ? " kiosk" : ""}`}>
-        {!kiosk && <aside className="side">
-          <div className="brand">
+      <div className={`app${kiosk ? " kiosk" : ""}${railWide ? " rail-wide" : ""}`}>
+        {!kiosk && <aside className={`side${railHover || railWide ? " open" : ""}`} onMouseEnter={openRail} onMouseLeave={closeRail}>
+          <div className="side-in">
+          <div className="brand" onClick={look === "neu" && !touch ? togglePin : undefined} title={look === "neu" && !touch ? (railPinned ? "Leiste wieder schmal stellen" : "Leiste offen halten") : undefined}>
             <BrandMark size={34} />
             <div>
               <WordMark width={92} />
@@ -257,6 +304,11 @@ export default function App() {
               <Ico n={mode === "dark" ? "sun" : "moon"} />
               <span className="lbl">{mode === "dark" ? "Hell" : "Dunkel"}</span>
             </button>
+            <button type="button" className="ghost-dark look-sw" onClick={() => setLook(look === "neu" ? "alt" : "neu")} title="Neuen und alten Look vergleichen">
+              <Ico n="spark" />
+              <span className="lbl">{look === "neu" ? "Alter Look" : "Neuer Look"}</span>
+            </button>
+          </div>
           </div>
         </aside>}
         <main className={`main${anim ? " anim" : ""}`} key={PLAN_PAGES.includes(page) ? "plan" : page}>
