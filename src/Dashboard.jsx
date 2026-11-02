@@ -143,8 +143,8 @@ function Rings({ cap, sp }) {
   return (
     <svg viewBox="0 0 140 140" width="150" height="150" aria-hidden="true">
       <g transform="rotate(-90 70 70)">
-        {ring(59, cap, capCol(cap))}
-        {ring(43, sp, spCol(sp))}
+        <g className="ring-cap">{ring(59, cap, capCol(cap))}</g>
+        <g className="ring-sp" style={{ color: spCol(sp) }}>{ring(43, sp, spCol(sp))}</g>
       </g>
     </svg>
   );
