@@ -50,7 +50,7 @@ html[data-look="neu"] #root { position: relative; z-index: 1; }
 /* ---------- 2 Seitenleiste: schmal, klappt beim Darüberfahren auf ---------- */
 @media (min-width: 861px) {
   html[data-look="neu"] .app { grid-template-columns: 76px minmax(0, 1fr); transition: grid-template-columns .2s ease; }
-  html[data-look="neu"] .app.rail-wide { grid-template-columns: 236px minmax(0, 1fr); }
+  html[data-look="neu"] .app.rail-wide { grid-template-columns: 272px minmax(0, 1fr); }
   html[data-look="neu"] .app.kiosk { grid-template-columns: minmax(0, 1fr); }
   html[data-look="neu"] .side { background: none; background-image: none; padding: 0; position: sticky; top: 0; height: 100vh; z-index: 40; overflow: visible; display: block; }
   html[data-look="neu"] .side-in {
@@ -61,7 +61,7 @@ html[data-look="neu"] #root { position: relative; z-index: 1; }
     backdrop-filter: var(--nl-blur);
     transition: width .18s ease, box-shadow .18s ease;
   }
-  html[data-look="neu"] .side.open .side-in { width: 212px; }
+  html[data-look="neu"] .side.open .side-in { width: 248px; }
   html[data-look="neu"]:not([data-theme="dark"]) .side-in { background: linear-gradient(145deg, rgba(255, 255, 255, .9), rgba(255, 255, 255, .6)); }
   html[data-look="neu"]:not([data-theme="dark"]) .nav button { background: rgba(255, 255, 255, .55); border-color: rgba(40, 52, 90, .08); color: #4A5565; }
   html[data-look="neu"]:not([data-theme="dark"]) .nav button:hover { background: #fff; color: #14181D; }
@@ -82,6 +82,8 @@ html[data-look="neu"] #root { position: relative; z-index: 1; }
   html[data-look="neu"] .nav button:hover { background: rgba(255, 255, 255, .09); color: var(--side-ink); }
   html[data-look="neu"] .nav button.on { background: linear-gradient(145deg, var(--nl-acc), var(--nl-acc2)); color: #fff; border-color: transparent; box-shadow: var(--nl-glow); }
   html[data-look="neu"] .nav button svg { flex: none; }
+  html[data-look="neu"] .nav button > span:not(.badges) { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  html[data-look="neu"] .nav .badges { flex: none; }
   html[data-look="neu"] .side:not(.open) .nav button > span:not(.badges) { display: none; }
   html[data-look="neu"] .side:not(.open) .nav .badges { position: absolute; top: -5px; right: -5px; margin: 0; gap: 2px; }
   html[data-look="neu"] .side:not(.open) .nav .badge { padding: 0 5px; font-size: 10px; line-height: 16px; box-shadow: 0 0 0 2px #14171c; }
@@ -226,6 +228,8 @@ html[data-look="neu"] .kpi .val small { font: 500 14px var(--f-mono); letter-spa
 html[data-look="neu"] .page-head h1 { font-size: 30px; }
 html[data-look="neu"] .ringbox svg { filter: drop-shadow(0 0 8px rgba(255, 255, 255, .20)); }
 html[data-look="neu"] .assist-sw.on { color: var(--nl-acc); }
+html[data-look="neu"] .pin-sw.on { color: var(--nl-acc); }
+html:not([data-look="neu"]) .pin-sw { display: none; }
 html:not([data-look="neu"]) .assist-sw { display: none; }
 
 /* ---------- 9 Rechte Leiste "Assistent" (standardmäßig zu) ---------- */

@@ -11,9 +11,9 @@
     <script>
       /* Look vor dem ersten Zeichnen setzen, damit nichts flackert (siehe src/look.css) */
       try {
-        document.documentElement.dataset.look = localStorage.getItem("kratos-look") === "neu" ? "neu" : "alt";
+        document.documentElement.dataset.look = localStorage.getItem("kratos-look2") === "alt" ? "alt" : "neu";
       } catch (e) {
-        document.documentElement.dataset.look = "alt";
+        document.documentElement.dataset.look = "neu";
       }
     </script>
   </head>
