@@ -420,8 +420,10 @@ try {
   process.env.BDE_WRITE = "1";
   const { createOdooClient } = await import("../server/odooClient.js");
   const c = createOdooClient();
-  await assert.rejects(c.write("mrp.workorder", "write", { ids: [6533], vals: { state: "done" } }), /nur Reihenfolge und Abhängigkeit/);
-  await assert.rejects(c.write("mrp.workorder", "write", { ids: [6533], vals: { duration: 5 } }), /nur Reihenfolge und Abhängigkeit/);
+  await assert.rejects(c.write("mrp.workorder", "write", { ids: [6533], vals: { state: "done" } }), /nur Reihenfolge, Abhängigkeit und der Arbeitsplatz/);
+  await assert.rejects(c.write("mrp.workorder", "write", { ids: [6533], vals: { duration: 5 } }), /nur Reihenfolge, Abhängigkeit und der Arbeitsplatz/);
+  await assert.rejects(c.write("mrp.workorder", "write", { ids: [6533], vals: { workcenter_id: 21, state: "done" } }), /nur Reihenfolge, Abhängigkeit und der Arbeitsplatz/); // Arbeitsplatz nur allein, nie zusammen mit anderen Feldern
+  await assert.rejects(c.write("mrp.workorder", "write", { ids: [6533], vals: {} }), /nur Reihenfolge, Abhängigkeit und der Arbeitsplatz/);
   await assert.rejects(c.write("mrp.workorder", "create", { vals_list: [{ name: "Rüsten", workcenter_id: 16, production_id: 1307, state: "done" }] }), /nur Name, Arbeitsplatz/);
   await assert.rejects(c.write("mrp.production", "write", { ids: [1307], vals: { product_qty: 1 } }), /nur die produzierte Menge/);
   await assert.rejects(c.write("mrp.production", "message_post", { ids: [1307], body: "x", message_type: "comment", subtype_xmlid: "mail.mt_comment" }), /Nur interne Notizen/);

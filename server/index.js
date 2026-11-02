@@ -398,7 +398,26 @@ app.post("/api/orders", (req, res) => {
   res.json(orderOut(row));
 });
 
-app.put("/api/orders/:id", (req, res) => {
+// Wird eine Karte auf eine andere Maschine gezogen, stellt Odoo-seitig (server/bdeLaufzeit.js) der noch nicht begonnene Arbeitsplan mit um.
+// `rows` sind die Aufträge vor der Änderung. Je Fertigungsauftrag ein Ergebnis { id, ref, status, text }; die App zeigt Hinweise, wenn etwas nicht umgestellt wurde.
+// Express 4 fängt Fehler in async-Handlern nicht von selbst ab: sonst würde ein Fehler den Server beenden
+const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
+async function odooMachineMoves(rows, to) {
+  const hook = app.locals.odooMaschine;
+  if (!hook || !MACHINES.includes(to)) return [];
+  const seen = new Set();
+  const out = [];
+  for (const r of rows) {
+    if (!r.odoo_id || r.done || r.machine === to || seen.has(r.odoo_id)) continue;
+    if (r.machine !== "" && !MACHINES.includes(r.machine)) continue; // aus QS oder Extern zurück: kein Maschinenwechsel
+    seen.add(r.odoo_id);
+    const res = await hook(r.odoo_id, r.machine, to);
+    if (res && res.status !== "nichts") out.push({ id: r.id, ref: r.odoo_ref, ...res });
+  }
+  return out;
+}
+
+app.put("/api/orders/:id", wrap(async (req, res) => {
   const id = Number(req.params.id);
   const { order_no, hours, done_hours, due, done, machine, extern_tags, extern_days, extern_start, earliest_start, hours_plan, progress_date, qs_required, qs_days, from_machine, produced_date, checked_date, done_date, source, product, quantity } = req.body || {};
   const sets = [];
@@ -533,10 +552,13 @@ app.put("/api/orders/:id", (req, res) => {
   }
   if (!Number.isInteger(id) || sets.length === 0) return res.status(400).json({ error: "invalid payload" });
 
+  const before = machine !== undefined ? db.prepare("SELECT id, machine, odoo_id, odoo_ref, done FROM orders WHERE id = ?").get(id) : null;
   const info = db.prepare(`UPDATE orders SET ${sets.join(", ")} WHERE id = ?`).run(...values, id);
   if (info.changes === 0) return res.status(404).json({ error: "not found" });
-  res.json(orderOut(db.prepare("SELECT * FROM orders WHERE id = ?").get(id)));
-});
+  const out = orderOut(db.prepare("SELECT * FROM orders WHERE id = ?").get(id));
+  if (before) out.odoo = await odooMachineMoves([before], machine);
+  res.json(out);
+}));
 
 app.delete("/api/orders/:id", (req, res) => {
   const id = Number(req.params.id);
@@ -686,11 +708,12 @@ app.post("/api/orders/due", (req, res) => {
   res.json({ ids, due });
 });
 
-app.post("/api/orders/reorder", (req, res) => {
+app.post("/api/orders/reorder", wrap(async (req, res) => {
   const { machine, ids } = req.body || {};
   if (!MACHINES.includes(machine) || !Array.isArray(ids) || !ids.every(Number.isInteger)) {
     return res.status(400).json({ error: "invalid payload" });
   }
+  const before = ids.length ? db.prepare(`SELECT id, machine, odoo_id, odoo_ref, done FROM orders WHERE id IN (${ids.map(() => "?").join(",")})`).all(...ids) : [];
   // Setzt Reihenfolge und Maschine, so lassen sich Aufträge auch zwischen Maschinen verschieben
   const update = db.prepare("UPDATE orders SET machine = ?, position = ? WHERE id = ?");
   db.exec("BEGIN");
@@ -701,8 +724,19 @@ app.post("/api/orders/reorder", (req, res) => {
     db.exec("ROLLBACK");
     throw err;
   }
-  res.json({ machine, ids });
-});
+  res.json({ machine, ids, odoo: await odooMachineMoves(before, machine) });
+}));
+
+// Maschine der Karte nachträglich in Odoo übernehmen (Arbeitsvorbereitung: "In Odoo umstellen"), wenn Karte und Arbeitsplan abweichen und noch nichts begonnen hat
+app.post("/api/planung/odoo-maschine", wrap(async (req, res) => {
+  const { orderId, from } = req.body || {};
+  const row = db.prepare("SELECT id, machine, odoo_id, odoo_ref, done FROM orders WHERE id = ?").get(Number(orderId));
+  if (!row || !row.odoo_id) return res.status(404).json({ error: "Der Auftrag hat keine Verbindung zu einem Odoo-Fertigungsauftrag" });
+  if (!MACHINES.includes(row.machine)) return res.status(400).json({ error: "Der Auftrag steht in der Planung auf keiner Maschine" });
+  if (!app.locals.odooMaschine) return res.status(503).json({ error: "Odoo ist nicht angebunden" });
+  const result = await app.locals.odooMaschine(row.odoo_id, MACHINES.includes(from) ? from : "", row.machine);
+  res.json({ id: row.id, ref: row.odoo_ref, ...result });
+}));
 
 // Mindestpuffer in Tagen: darunter wird ein Auftrag gelb markiert
 const DEFAULT_TIGHT_DAYS = 3;

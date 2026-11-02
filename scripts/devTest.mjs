@@ -23,6 +23,7 @@ const env = {
   BDE_ODOO_URL: `http://localhost:${ODOO_PORT}`,
   BDE_ODOO_API_KEY: "test",
   BDE_WRITE: "1",
+  MOCK_ARBEITSPLAN: "1",
   BDE_SECRET: "testgeheimnis",
   ODOO_URL: "",
   ODOO_API_KEY: "",
@@ -81,3 +82,16 @@ setTimeout(async () => {
     console.error("Testdaten konnten nicht angelegt werden:", err.message);
   }
 }, 4000);
+
+// Beispielkarten für die Arbeitsvorbereitung (FA01310 bis FA01314, siehe MOCK_ARBEITSPLAN in scripts/mockOdoo.mjs): 1310 steht auf der M1, in Odoo noch auf der EVO
+setTimeout(async () => {
+  try {
+    const { DatabaseSync } = await import("node:sqlite");
+    const db = new DatabaseSync(env.DB_PATH);
+    const add = db.prepare("INSERT INTO orders (machine, order_no, position, odoo_ref, odoo_id, product, quantity, hours, extern_days) VALUES (?, ?, ?, ?, ?, 'Motorplatte für RFID', 5, 5, 7)");
+    [["m1", 1310], ["dmu40", 1311], ["dmu50", 1312], ["dmu40", 1313], ["h800u", 1314]].forEach(([m, id], i) => add.run(m, `FA0${id}`, i, `FA0${id}`, id));
+    db.close();
+  } catch (err) {
+    console.error("Beispielkarten konnten nicht angelegt werden:", err.message);
+  }
+}, 5000);

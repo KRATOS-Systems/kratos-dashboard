@@ -523,7 +523,7 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
       const next = applyMove(current, i.ids, target.machine, target.index);
       if (next.ids.length === before.length && next.ids.every((id, k) => id === before[k])) return;
       setOrders(next.orders);
-      send("/api/orders/reorder", "POST", { machine: target.machine, ids: next.ids });
+      send("/api/orders/reorder", "POST", { machine: target.machine, ids: next.ids }).then((r) => odooHint(r));
     };
 
     const cancel = () => {
@@ -683,6 +683,17 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
     send("/api/orders/reorder", "POST", { machine, ids: next.ids });
   }
 
+  // Beim Ziehen auf eine andere Maschine stellt der Server in Odoo den noch nicht begonnenen Arbeitsplan mit um. Hier die Rückmeldung dazu:
+  // Probleme immer, den Erfolg nur, wenn nicht gerade ein anderer Hinweis (Rückgängig) steht (quiet)
+  const BAD = ["begonnen", "mehrdeutig", "fehlt", "fehler"];
+  function odooHint(r, quiet) {
+    const list = (r && r.odoo) || [];
+    const bad = list.filter((x) => BAD.includes(x.status));
+    const ok = list.filter((x) => x.status === "umgestellt");
+    if (bad.length) toast(bad.length === 1 ? bad[0].text : `${bad.length} Aufträge in Odoo nicht umgestellt (${bad.map((x) => x.ref).join(", ")}). Bitte im Arbeitsplan prüfen`);
+    else if (ok.length && !quiet) toast(ok.length === 1 ? ok[0].text : `${ok.length} Arbeitspläne in Odoo umgestellt`);
+  }
+
   // Zuweisen hängt die Positionen hinten in der Reihenfolge der Maschine an
   async function assignMany(list, machine) {
     if (list.length === 0) return;
@@ -703,7 +714,12 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
       setOrders((prev) => prev.map((x) => (prevState.some((p) => p.id === x.id) ? { ...x, machine: "", position: prevState.find((p) => p.id === x.id).position } : x)));
       prevState.forEach((p) => send(`/api/orders/${p.id}`, "PUT", { machine: "" }));
     });
-    for (const o of list) await send(`/api/orders/${o.id}`, "PUT", { machine });
+    const odoo = [];
+    for (const o of list) {
+      const r = await send(`/api/orders/${o.id}`, "PUT", { machine });
+      if (r && Array.isArray(r.odoo)) odoo.push(...r.odoo);
+    }
+    odooHint({ odoo }, true);
   }
 
   // Liefertermin eines ganzen Auftrags: gilt für alle seine offenen Positionen
