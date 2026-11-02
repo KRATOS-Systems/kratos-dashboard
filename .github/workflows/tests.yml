@@ -29,5 +29,7 @@ jobs:
         run: node scripts/testLuecken.mjs
       - name: Datensicherung
         run: node scripts/testBackup.mjs
+      - name: Maschine im Arbeitsplan
+        run: node scripts/testArbeitsplan.mjs
       - name: Rückmeldungen
         run: node scripts/testFeedback.mjs

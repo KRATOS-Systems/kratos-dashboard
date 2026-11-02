@@ -186,3 +186,14 @@ Knopf „Feedback“ im Menü links unten (`src/Feedback.jsx`, `server/feedback.
 - Server zuerst: erst bei Fehler, 502/503/504 oder Warten über 6 s (Seiten) bzw. 8 s (Daten) kommt der gemerkte Stand.
 - Neue Planungsdaten-Endpunkte für den Offline-Stand: in `DATA_RE` ergänzen und `VERSION` in `sw.js` erhöhen.
 - Prüfen im Browser: Seite öffnen, in den Entwicklertools (F12, Netzwerk) „Offline“ anhaken, F5.
+
+## Maschine im Arbeitsplan (Karte gezogen)
+
+Die Karte in der Planung und der Arbeitsplan im Odoo-Fertigungsauftrag (Arbeitsgänge Rüsten und Fräsen) müssen dieselbe Maschine haben, denn gestempelt wird auf den Arbeitsgang in Odoo (Zeiten, Kosten, Ampel, Team-Tafel). In Odoo steht beim Anlegen meist die DMU 40 EVO.
+
+- **Automatisch beim Ziehen** (`odooMachineMoves` in `server/index.js`, `moveMachine` in `server/bdeLaufzeit.js`): Zieht man eine Karte von einer Maschine (oder aus „nicht eingeplant“) auf eine andere Maschine, stellt der Server Rüsten und Fräsen in Odoo auf die neue Maschine (samt „… Rüsten“) um. Nur wenn **noch nichts begonnen** hat (Status wartet oder bereit, keine Zeit gebucht, Rüsten und Fräsen). Sonst bleibt Odoo unverändert und die App zeigt einen Hinweis. QS, Extern und Reihenfolge ändern nichts. Eine Notiz im Fertigungsauftrag hält die Änderung fest.
+- **Mehrere offene Fräsen** (zweiter Arbeitsschritt auf einer anderen Maschine): umgestellt wird das auf der bisherigen Maschine bzw. dem Sammelplatz FRÄSEN; ist das nicht eindeutig, bleibt Odoo unverändert („Bitte im Arbeitsplan prüfen“).
+- **Nachträglich:** In der Arbeitsvorbereitung zeigt jede aufgeklappte Position den **Arbeitsplan in Odoo** (Reihenfolge, Arbeitsplatz, Status, Soll und Ist), in der Zeile eine Kurzkette. Weicht die Maschine von der Karte ab, steht eine Warnung mit „In Odoo umstellen“; oben auf der Seite gibt es „n in Odoo umstellen“ für alle abweichenden, noch nicht begonnenen Positionen. Server: `GET /api/planung/arbeitsplaene?ids=…`, `POST /api/planung/odoo-maschine`.
+- **Ampel:** Zu welcher Maschine ein Lauf gehört, bestimmt die Karte (steht der Auftrag dort auf genau einer Maschine), sonst der Arbeitsplatz in Odoo.
+- Schreibrecht in Odoo: nur das Feld `workcenter_id` am Arbeitsgang (`UMSTELL_WRITE_FIELDS` in `server/odooClient.js`), nur mit `BDE_WRITE=1`.
+- Test: `node scripts/testArbeitsplan.mjs` (Test-Odoo mit `MOCK_ARBEITSPLAN=1`); `node scripts/devTest.mjs` legt Beispielkarten dazu an.

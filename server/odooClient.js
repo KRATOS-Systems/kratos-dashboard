@@ -33,6 +33,8 @@ const PRODUCTIVITY_FIELDS = new Set(["date_end", "description"]);
 // Weiterer Arbeitsschritt: erlaubte Felder beim Anlegen und Ändern von Arbeitsgängen, an Zeiten und Status geht nichts
 const SCHRITT_CREATE_FIELDS = new Set(["name", "workcenter_id", "production_id", "sequence", "duration_expected", "blocked_by_workorder_ids"]);
 const SCHRITT_WRITE_FIELDS = new Set(["sequence", "blocked_by_workorder_ids"]);
+// Maschine eines noch nicht begonnenen Arbeitsgangs umstellen (Karte in der Planung auf eine andere Maschine gezogen): nur der Arbeitsplatz
+const UMSTELL_WRITE_FIELDS = new Set(["workcenter_id"]);
 // Am Fertigungsauftrag darf nur die produzierte Menge gesetzt werden
 const PRODUCTION_WRITE_FIELDS = new Set(["qty_producing"]);
 // Kiosk-Wege von Odoo (Anwesenheit); die Firma wird über ihren Kiosk-Schlüssel erkannt
@@ -129,8 +131,12 @@ export function createOdooClient() {
       return Promise.reject(new Error("Am Zeiteintrag dürfen nur Ende und Beschreibung geändert werden"));
     if (model === "mrp.workorder" && method === "create" && (!Array.isArray(params.vals_list) || params.vals_list.some((v) => Object.keys(v).some((f) => !SCHRITT_CREATE_FIELDS.has(f)))))
       return Promise.reject(new Error("Beim Anlegen eines Arbeitsgangs sind nur Name, Arbeitsplatz, Fertigungsauftrag, Reihenfolge, Plandauer und Abhängigkeit erlaubt"));
-    if (model === "mrp.workorder" && method === "write" && (!params.vals || Object.keys(params.vals).some((f) => !SCHRITT_WRITE_FIELDS.has(f))))
-      return Promise.reject(new Error("Am Arbeitsgang dürfen nur Reihenfolge und Abhängigkeit geändert werden"));
+    if (model === "mrp.workorder" && method === "write") {
+      const keys = params.vals ? Object.keys(params.vals) : [];
+      const reihenfolge = keys.length > 0 && keys.every((f) => SCHRITT_WRITE_FIELDS.has(f));
+      const umstellen = keys.length > 0 && keys.every((f) => UMSTELL_WRITE_FIELDS.has(f));
+      if (!reihenfolge && !umstellen) return Promise.reject(new Error("Am Arbeitsgang dürfen nur Reihenfolge, Abhängigkeit und der Arbeitsplatz geändert werden"));
+    }
     if (model === "mrp.production" && method === "write" && (!params.vals || Object.keys(params.vals).some((f) => !PRODUCTION_WRITE_FIELDS.has(f))))
       return Promise.reject(new Error("Am Fertigungsauftrag darf nur die produzierte Menge gesetzt werden"));
     return queued(() => json2(model, method, params));

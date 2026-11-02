@@ -1,8 +1,10 @@
 import React, { Suspense, lazy, useEffect, useMemo, useState } from "react";
 import { addDays, daysBetween, fmtShort, MACHINES } from "./lib.js";
 import { AV_ITEMS, isNewAv, AV_STATUS, avCycle, avDone, avState, avSummary } from "./avLib.js";
-import { AppTile, Ico, Thumb, partImg } from "./ui.jsx";
+import { AppTile, Ico, Thumb, partImg, useToast } from "./ui.jsx";
 import { ODOO_URL } from "./planLogic.js";
+import { ArbeitsplanKette, ArbeitsplanPanel } from "./Arbeitsplan.jsx";
+import { deviation, fixInOdoo, useArbeitsplaene } from "./arbeitsplan.js";
 
 // Zeichnung und 3D-Modell werden erst geladen, wenn eine Zeile aufgeklappt wird (three.js ist groß)
 const FileThumbs = lazy(() => import("./PartDocs.jsx").then((m) => ({ default: m.FileThumbs })));
@@ -37,7 +39,7 @@ const store = (k, v) => {
 };
 
 // Aufgeklapptes Fenster einer Position: links Zeichnung und 3D-Modell als Vorschau (Klick = groß), rechts Plan und Checkliste
-function AvPanel({ avStdOf = () => null, r, checks, orders, onSet, onBulk, people, repeatSrc, onApplyRepeat, leadDays, today, openPlanning, matText }) {
+function AvPanel({ avStdOf = () => null, r, checks, orders, onSet, onBulk, people, repeatSrc, onApplyRepeat, leadDays, today, openPlanning, matText, ap }) {
   const { o, sum, plan, muss } = r;
   const ids = orders.filter((x) => !x.done && !LANE_IDS.includes(x.machine) && groupKey(x) === groupKey(o)).map((x) => x.id);
   const late = !sum.ready && muss && muss < today;
@@ -157,6 +159,7 @@ function AvPanel({ avStdOf = () => null, r, checks, orders, onSet, onBulk, peopl
               Fräsen laut Odoo: {[o.odoo_machine && (MACHINES.find((m) => m.id === o.odoo_machine) || {}).short, o.odoo_hours > 0 && `${String(o.odoo_hours).replace(".", ",")} h`].filter(Boolean).join(", ")}
             </div>
           )}
+          {ap && <ArbeitsplanPanel order={o} steps={ap.plans[o.odoo_id]} loaded={ap.loaded} error={ap.error} onFixed={ap.reload} />}
         </div>
       </div>
     </div>
@@ -168,6 +171,30 @@ function AvPanel({ avStdOf = () => null, r, checks, orders, onSet, onBulk, peopl
 // planStart = Map (Position -> { machine, start }) für eingeplante Positionen,
 // leadDays = Vorlauf: So viele Tage vor dem Start auf der Maschine muss alles bereit sein ("Muss bis").
 export default function AvView({ avStdOf = () => null, orders, checks, planStart, today, onSet, onBulk, selectedId, onOpen, filter, setFilter, leadDays, repeatOf, people, onApplyRepeat, openPlanning, focusId, onFocusDone }) {
+  const toast = useToast();
+  // Arbeitspläne aller offenen Positionen aus Odoo (Reihenfolge, Maschine, Status); Abweichung zur Karte wird markiert
+  const openIds = useMemo(() => orders.filter((x) => !x.done && x.odoo_id && !LANE_IDS.includes(x.machine)).map((x) => x.odoo_id), [orders]);
+  const ap = useArbeitsplaene(openIds);
+  const deviations = useMemo(() => orders.filter((x) => !x.done && x.odoo_id && deviation(ap.plans[x.odoo_id], x.machine)), [orders, ap.plans]);
+  const fixable = deviations.filter((x) => deviation(ap.plans[x.odoo_id], x.machine).canFix);
+  const [fixing, setFixing] = useState(false);
+  async function fixAll() {
+    setFixing(true);
+    let ok = 0;
+    const problems = [];
+    for (const x of fixable) {
+      try {
+        const r = await fixInOdoo(x.id, deviation(ap.plans[x.odoo_id], x.machine).fromId);
+        if (r.status === "umgestellt") ok++;
+        else if (r.status !== "passt") problems.push(x.odoo_ref || posNo(x));
+      } catch {
+        problems.push(x.odoo_ref || posNo(x));
+      }
+    }
+    await ap.reload();
+    setFixing(false);
+    toast(`${ok} Arbeitspläne in Odoo umgestellt${problems.length ? `, nicht möglich bei ${problems.join(", ")}` : ""}`);
+  }
   const [query, setQuery] = useState("");
   const [popKey, setPopKey] = useState(null);
   const [hoverOrder, setHoverOrder] = useState(null); // Auftrag, über dessen Zeile die Maus steht
@@ -385,6 +412,7 @@ export default function AvView({ avStdOf = () => null, orders, checks, planStart
           ) : (
             <span style={{ color: "var(--faint)" }}>nicht eingeplant</span>
           )}
+          {o.odoo_id && ap.plans[o.odoo_id] && <div><ArbeitsplanKette steps={ap.plans[o.odoo_id]} cardMachineId={o.machine} /></div>}
         </td>
         <td>{mussCell(r)}</td>
         {AV_ITEMS.map((it) => cell(r, it))}
@@ -408,6 +436,7 @@ export default function AvView({ avStdOf = () => null, orders, checks, planStart
               today={today}
               openPlanning={openPlanning}
               matText={matText}
+              ap={ap}
             />
           </td>
         </tr>
@@ -423,6 +452,19 @@ export default function AvView({ avStdOf = () => null, orders, checks, planStart
         <div>
           <h1>Arbeitsvorbereitung</h1>
           <p>Was ist bereit, was fehlt noch? Die Maschine weist die Planung zu.</p>
+          {deviations.length > 0 && (
+            <div className="apl-warn apl-top" role="status">
+              <span>
+                Bei {deviations.length} {deviations.length === 1 ? "Position" : "Positionen"} steht in Odoo eine andere Maschine im Arbeitsplan als die Karte in der Planung
+                {fixable.length < deviations.length ? ` (${deviations.length - fixable.length} davon haben schon begonnen)` : ""}. Gestempelt wird auf den Arbeitsgang in Odoo.
+              </span>
+              {fixable.length > 0 && (
+                <button type="button" className="btn sm" disabled={fixing} onClick={fixAll}>
+                  {fixing ? "Stelle um …" : `${fixable.length} in Odoo umstellen`}
+                </button>
+              )}
+            </div>
+          )}
         </div>
         <div className="actions filters">
           {FILTERS.map(([id, label]) => (

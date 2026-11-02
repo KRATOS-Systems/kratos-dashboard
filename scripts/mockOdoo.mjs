@@ -106,6 +106,8 @@ const T = {
     { id: 17, name: "DMG M1 Rüsten" },
     { id: 21, name: "DMU 50" },
     { id: 22, name: "DMU 50 Rüsten" },
+    // nur mit MOCK_ARBEITSPLAN=1 (Umstellen der Maschine beim Ziehen der Karte): POS H 800 U samt Rüsten
+    ...(process.env.MOCK_ARBEITSPLAN ? [{ id: 23, name: "POS H 800 U" }, { id: 24, name: "POS H 800 U Rüsten" }] : []),
   ],
   "product.template": [{ id: 70, name: "Grundplatte" }, { id: 71, name: "Motorplatte" }],
   "product.product": [
@@ -118,11 +120,36 @@ const T = {
     // früherer, erledigter Auftrag desselben Artikels (Wiederholteil)
     { id: 1100, name: "FA01100", product_id: 2901, state: "done", origin: "A01100" },
     // offener Auftrag, der in keiner Odoo-Planungsaufgabe steht (nur mit MOCK_A01378=1, für POST /api/odoo/nachholen)
+    // Arbeitspläne zum Umstellen der Maschine (nur mit MOCK_ARBEITSPLAN=1): 1310 noch nichts begonnen, 1311 Fräsen läuft, 1312 zwei Fräsen, 1313 Sammelplätze, 1314 wie 1310
+    ...(process.env.MOCK_ARBEITSPLAN
+      ? [1310, 1311, 1312, 1313, 1314].map((id) => ({ id, name: `FA0${id}`, product_id: 2902, state: "confirmed", origin: `A0${id + 100}`, product_qty: 5, qty_producing: 0 }))
+      : []),
     ...(process.env.MOCK_A01378 ? [{ id: 1302, name: "FA01302", product_id: 2902, state: "confirmed", origin: "A01378" }, { id: 1304, name: "FA01304", product_id: 2902, state: "confirmed", origin: "A01379" }] : []),
   ],
   "mrp.workorder": [
     // Fräsen von FA01302 auf der DMU 40 EVO mit 10 Stunden Plan (nur mit MOCK_A01378=1)
     ...(process.env.MOCK_A01378 ? [{ id: 6514, name: "Fräsen", sequence: 2, production_id: 1304, workcenter_id: 14, product_id: 2902, state: "blocked", duration_expected: 60000, duration: 0, qty_production: 1000 }, { id: 6513, name: "Fräsen", sequence: 2, production_id: 1302, workcenter_id: 14, product_id: 2902, state: "blocked", duration_expected: 600, duration: 0, qty_production: 4 }] : []),
+    ...(process.env.MOCK_ARBEITSPLAN
+      ? [
+          // 1310 und 1314: Rüsten und Fräsen auf der EVO, noch nichts begonnen
+          ...[1310, 1314].flatMap((p, k) => [
+            { id: 7100 + k * 10, name: "Rüsten", sequence: 1, production_id: p, workcenter_id: 16, product_id: 2902, state: "ready", duration_expected: 60, duration: 0 },
+            { id: 7101 + k * 10, name: "Fräsen", sequence: 2, production_id: p, workcenter_id: 14, product_id: 2902, state: "blocked", duration_expected: 300, duration: 0, qty_production: 5 },
+            { id: 7102 + k * 10, name: "Qualitätssicherung", sequence: 3, production_id: p, workcenter_id: 5, product_id: 2902, state: "blocked", duration_expected: 0, duration: 0 },
+          ]),
+          // 1311: Rüsten fertig, Fräsen läuft schon mit Zeit
+          { id: 7200, name: "Rüsten", sequence: 1, production_id: 1311, workcenter_id: 16, product_id: 2902, state: "done", duration_expected: 60, duration: 45 },
+          { id: 7201, name: "Fräsen", sequence: 2, production_id: 1311, workcenter_id: 14, product_id: 2902, state: "progress", duration_expected: 300, duration: 30, qty_production: 5 },
+          // 1312: zwei Fräsen, eins auf der EVO, das zweite auf der M1
+          { id: 7300, name: "Rüsten", sequence: 1, production_id: 1312, workcenter_id: 16, product_id: 2902, state: "ready", duration_expected: 60, duration: 0 },
+          { id: 7301, name: "Fräsen", sequence: 2, production_id: 1312, workcenter_id: 14, product_id: 2902, state: "blocked", duration_expected: 300, duration: 0, qty_production: 5 },
+          { id: 7302, name: "Rüsten", sequence: 3, production_id: 1312, workcenter_id: 17, product_id: 2902, state: "blocked", duration_expected: 60, duration: 0 },
+          { id: 7303, name: "Fräsen", sequence: 4, production_id: 1312, workcenter_id: 15, product_id: 2902, state: "blocked", duration_expected: 300, duration: 0, qty_production: 5 },
+          // 1313: Sammelplätze FRÄSEN und RÜSTEN
+          { id: 7400, name: "Rüsten", sequence: 1, production_id: 1313, workcenter_id: 10, product_id: 2902, state: "ready", duration_expected: 60, duration: 0 },
+          { id: 7401, name: "Fräsen", sequence: 2, production_id: 1313, workcenter_id: 1, product_id: 2902, state: "blocked", duration_expected: 300, duration: 0, qty_production: 5 },
+        ]
+      : []),
     { id: 5000, name: "Fräsen", production_id: 1100, workcenter_id: 1, product_id: 2901, state: "done", duration_expected: 60, duration: 300, qty_production: 10 },
     { id: 6531, name: "Programmierung", sequence: 0, production_id: 1307, workcenter_id: 6, product_id: 2901, state: "ready", duration_expected: 900, duration: 0 },
     { id: 6532, name: "Rüsten", sequence: 1, production_id: 1307, workcenter_id: 10, product_id: 2901, state: "blocked", duration_expected: 120, duration: 0 },

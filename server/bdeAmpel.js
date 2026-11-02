@@ -3,6 +3,7 @@
 //   gelb  = es wird gerüstet (und es läuft kein Fräsen)
 //   rot   = nichts läuft, obwohl Arbeitszeit ist und in der Planung noch Arbeit für die Maschine wartet
 //   keine Lampe = nichts läuft und das ist in Ordnung (Nacht, Wochenende oder keine Arbeit offen)
+// Zu welcher Maschine ein Lauf gehört, bestimmt die Karte in der Planung (steht der Auftrag dort auf einer Maschine), sonst der Arbeitsplatz in Odoo.
 // Die Ampel zeigt, was gestempelt ist, nicht, was die Maschine wirklich tut. Nur lesen (Odoo und Planungsdatenbank), ohne Anmeldung wie die Planung selbst.
 
 import { m2o, parseOdoo, stepOf } from "./bde.js";
@@ -28,6 +29,8 @@ export default function registerBdeAmpel(app, db, ctx) {
   // Maschine des Arbeitsplatzes ("DMU 40 EVO", "DMU 40 EVO Rüsten"); beim Sammelplatz FRÄSEN/RÜSTEN gilt die Maschine aus der Planung
   const machineOfCenter = (name) => BY_WORKCENTER[String(name || "").replace(/\s+Rüsten$/i, "").trim().toUpperCase()] || null;
   const planned = db.prepare("SELECT machine FROM orders WHERE odoo_id = ? AND done = 0 AND is_split = 0 LIMIT 1");
+  // Maschine der Karte in der Planung: gilt, wenn der Auftrag dort auf genau einer Maschine steht (die Karte kann gezogen sein, während in Odoo noch die alte Maschine am Arbeitsgang hängt)
+  const cardMachines = db.prepare("SELECT DISTINCT machine FROM orders WHERE odoo_id = ? AND done = 0 AND machine IN ('dmu40', 'dmu50', 'm1', 'h800u')");
   const waiting = db.prepare("SELECT COUNT(*) AS n FROM orders WHERE machine = ? AND done = 0");
 
   async function compute() {
@@ -48,7 +51,12 @@ export default function registerBdeAmpel(app, db, ctx) {
       const step = stepOf(wo ? woName.get(wo.id) : null) || stepOf(wc?.name);
       if (step !== "Fräsen" && step !== "Rüsten") continue;
       const prod = m2o(l.production_id);
-      let machine = machineOfCenter(wc?.name);
+      let machine = null;
+      if (prod) {
+        const cards = cardMachines.all(prod.id);
+        if (cards.length === 1) machine = cards[0].machine;
+      }
+      if (!machine) machine = machineOfCenter(wc?.name);
       if (!machine && prod) {
         const row = planned.get(prod.id);
         if (row && MACHINES.includes(row.machine)) machine = row.machine;

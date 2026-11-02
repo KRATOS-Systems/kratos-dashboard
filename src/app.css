@@ -1346,3 +1346,27 @@ a.btn { text-decoration: none; }
 /* Offline-Stand */
 .offline-bar { position: fixed; z-index: 90; left: 50%; bottom: 14px; transform: translateX(-50%); width: min(720px, calc(100% - 32px)); display: flex; gap: 14px; align-items: center; justify-content: space-between; padding: 11px 15px; border: 1px solid var(--warn); border-radius: 12px; background: var(--warn-soft); color: var(--ink); box-shadow: var(--shadow); font-size: 13.5px; line-height: 1.45; }
 .offline-bar .btn { flex: none; }
+
+/* Arbeitsplan aus Odoo (Arbeitsvorbereitung) */
+.apk { display: inline-flex; flex-wrap: wrap; gap: 3px; margin-top: 4px; }
+.apk-i { font-style: normal; font-size: 11px; line-height: 1; padding: 3px 6px; border-radius: 6px; border: 1px solid var(--line-strong); color: var(--muted); background: var(--sunken); white-space: nowrap; }
+.apk-i.done { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 45%, var(--line)); background: transparent; text-decoration: line-through; text-decoration-thickness: 1px; }
+.apk-i.progress { color: var(--warn); border-color: var(--warn); background: var(--warn-soft); font-weight: 600; }
+.apk-i.ready { color: var(--ink); border-color: var(--ink); background: var(--surface); }
+.apk-i.wrong { color: var(--bad); border-color: var(--bad); background: var(--bad-soft); font-weight: 600; text-decoration: none; }
+.apl { margin-top: 14px; border-top: 1px dashed var(--line); padding-top: 12px; }
+.apl-head { font: 600 12px var(--f-display); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; }
+.apl-warn { display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; border: 1px solid var(--warn); background: var(--warn-soft); border-radius: 10px; padding: 9px 12px; font-size: 13px; line-height: 1.45; margin-bottom: 10px; }
+.apl-warn .btn { flex: none; }
+.apl-top { margin: 10px 0 0; max-width: 760px; }
+.apl-empty { color: var(--muted); font-size: 13px; }
+.apl-tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
+.apl-tbl th { text-align: left; font-weight: 600; color: var(--muted); padding: 5px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+.apl-tbl td { padding: 6px 8px; border-top: 1px solid var(--line); }
+.apl-tbl .num { text-align: right; font-family: var(--f-mono); }
+.apl-tbl tr.done td { color: var(--muted); }
+.apl-off { color: var(--bad); font-weight: 600; }
+.apl-st.done { color: var(--ok); }
+.apl-st.progress { color: var(--warn); font-weight: 600; }
+.apl-st.ready { color: var(--ink); font-weight: 600; }
+.apl-st.blocked, .apl-st.pending, .apl-st.waiting { color: var(--muted); }

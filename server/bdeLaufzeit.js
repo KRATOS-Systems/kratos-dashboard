@@ -468,6 +468,85 @@ export default function registerBdeLaufzeit(app, ctx) {
   // Fertigungsauftrag schon hat. Für jeden weiteren, den es in Odoo auf dieser Maschine noch nicht gibt, werden Rüsten und Fräsen vor der QS angelegt.
   // Fehlt für eine Maschine der Arbeitsplatz in Odoo, wird nichts angelegt und die App sagt, welcher fehlt.
   const PLAN_MACHINES = { dmu40: "DMU 40 EVO", dmu50: "DMU 50", m1: "DMG M1", h800u: "POS H 800 U" };
+
+  // Karte in der Planung auf eine andere Maschine gezogen: Rüsten und Fräsen des Fertigungsauftrags in Odoo auf die neue Maschine umstellen, damit
+  // Stempeln, Zeiten, Kosten und Ampel zur Karte passen. Nur wenn noch nichts begonnen hat (nicht gestartet, keine Zeit, nicht fertig, Rüsten und
+  // Fräsen). Gibt es mehrere offene Fräsen, wird das auf der bisherigen Maschine umgestellt; ist es nicht eindeutig, bleibt Odoo unverändert.
+  // Ergebnis: { status: umgestellt | passt | begonnen | mehrdeutig | fehlt | aus | nichts, text }
+  const UNSTARTED = ["blocked", "pending", "waiting", "ready"];
+  const lc = (v) => String(v || "").trim().toLowerCase();
+  const started = (w) => !UNSTARTED.includes(w.state) || (w.duration || 0) > 0;
+  async function moveMachine(productionId, fromKey, toKey) {
+    const target = PLAN_MACHINES[toKey];
+    if (!target || !Number.isInteger(productionId) || productionId <= 0) return { status: "nichts", text: "" };
+    if (!odoo.writeEnabled) return { status: "aus", text: "Bedienen ist nicht freigeschaltet, in Odoo wurde nichts geändert" };
+    const pair = (await machinePairs()).find((p) => lc(p.name) === lc(target));
+    if (!pair) return { status: "fehlt", text: `In Odoo fehlt der Arbeitsplatz „${target}“ samt „… Rüsten“, dort wurde nichts geändert` };
+    const rows = await odoo.read("mrp.workorder", "search_read", { domain: [["production_id", "=", productionId], ["state", "!=", "cancel"]], fields: WO_FIELDS, order: "sequence asc, id asc", limit: 40 });
+    const open = rows.filter((w) => !FINAL.includes(w.state));
+    const fraesen = open.filter((w) => stepOfWo(w) === "Fräsen");
+    if (!fraesen.length) return { status: "nichts", text: "" };
+    const fromName = PLAN_MACHINES[fromKey] || null;
+    let cands = fraesen;
+    if (cands.length > 1) cands = fraesen.filter((w) => (fromName && lc(machineOf(w)) === lc(fromName)) || lc(machineOf(w)) === "fräsen");
+    if (cands.length !== 1) return { status: "mehrdeutig", text: "Der Auftrag hat mehrere offene Fräsen in Odoo, deshalb wurde dort nichts geändert. Bitte im Arbeitsplan prüfen" };
+    const f = cands[0];
+    const fromCenter = machineOf(f);
+    if (lc(fromCenter) === lc(pair.name)) return { status: "passt", text: "" };
+    const expected = lc(fromCenter) === "fräsen" ? "rüsten" : `${lc(fromCenter)} rüsten`;
+    const r =
+      open
+        .filter((w) => stepOfWo(w) === "Rüsten" && w.id !== f.id && (w.sequence || 0) <= (f.sequence || 0) && lc(machineOf(w)) === expected)
+        .sort((a, b) => (b.sequence || 0) - (a.sequence || 0))[0] || null;
+    const [prod] = await odoo.read("mrp.production", "read", { ids: [productionId], fields: ["name"] });
+    const fa = prod ? prod.name : null;
+    if (started(f) || (r && started(r))) return { status: "begonnen", fa, text: `${fa || "Der Auftrag"} hat in Odoo schon begonnen (Rüsten oder Fräsen läuft oder hat Zeit), deshalb bleibt er dort auf ${fromCenter}` };
+    await odoo.write("mrp.workorder", "write", { ids: [f.id], vals: { workcenter_id: pair.id } });
+    if (r) await odoo.write("mrp.workorder", "write", { ids: [r.id], vals: { workcenter_id: pair.ruestenId } });
+    await postNote(productionId, `Maschine in der Planung geändert: ${r ? "Rüsten und Fräsen" : "Fräsen"} in Odoo von ${fromCenter} auf ${pair.name} umgestellt (Planung, ${today()})`).catch(() => {});
+    ctx.invalidate();
+    return { status: "umgestellt", fa, text: `${fa || "Der Auftrag"}: in Odoo von ${fromCenter} auf ${pair.name} umgestellt` };
+  }
+  app.locals.odooMaschine = async (productionId, fromKey, toKey) => {
+    try {
+      return await moveMachine(productionId, fromKey, toKey);
+    } catch (err) {
+      return { status: "fehler", text: `In Odoo konnte die Maschine nicht umgestellt werden: ${err.message}` };
+    }
+  };
+
+  // Arbeitspläne mehrerer Fertigungsaufträge (Arbeitsvorbereitung, Planung): Reihenfolge, Maschine, Status und Zeiten so wie in Odoo
+  app.get("/api/planung/arbeitsplaene", async (req, res) => {
+    try {
+      const ids = [...new Set(String(req.query.ids || "").split(",").map((x) => toInt(x)).filter((x) => Number.isInteger(x) && x > 0))].slice(0, 80);
+      const plans = {};
+      if (ids.length) {
+        const rows = await odoo.read("mrp.workorder", "search_read", {
+          domain: [["production_id", "in", ids], ["state", "!=", "cancel"]],
+          fields: [...WO_FIELDS, "duration_expected"],
+          order: "sequence asc, id asc",
+          limit: 600,
+        });
+        for (const w of rows) {
+          const pid = m2o(w.production_id)?.id;
+          if (!pid) continue;
+          (plans[pid] = plans[pid] || []).push({
+            id: w.id,
+            step: stepOfWo(w) || w.name,
+            name: w.name,
+            machine: machineOf(w),
+            state: w.state,
+            sequence: w.sequence || 0,
+            expectedMin: Math.round(w.duration_expected || 0),
+            durationMin: Math.round(w.duration || 0),
+          });
+        }
+      }
+      res.json({ plans, odooUrl: odoo.url || null });
+    } catch (err) {
+      ctx.fail(res, err);
+    }
+  });
   app.post("/api/planung/odoo-schritte", async (req, res) => {
     try {
       if (!odoo.writeEnabled) throw Object.assign(new Error("Bedienen ist noch nicht freigeschaltet (BDE_WRITE), in Odoo wurde nichts angelegt"), { forbidden: true });
