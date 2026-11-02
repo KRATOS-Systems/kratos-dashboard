@@ -59,8 +59,8 @@ function initialMode() {
 export default function App() {
   const [mode, setMode] = useState(initialMode);
   // Neuer Look (Glas-Flächen, schmale Leiste) zum Testen umschaltbar; die schmale Leiste klappt beim Darüberfahren auf, per Klick auf das Logo bleibt sie offen
-  const [look, setLook] = useState(() => lsGet("kratos-look") === "alt" ? "alt" : "neu");
-  const [railPinned, setRailPinned] = useState(() => lsGet("kratos-rail") === "1");
+  const [look, setLook] = useState(() => lsGet("kratos-look") === "neu" ? "neu" : "alt");
+  const [railPinned, setRailPinned] = useState(() => lsGet("kratos-rail") !== "0");
   const [railHover, setRailHover] = useState(false);
   const [touch, setTouch] = useState(() => typeof window !== "undefined" && window.matchMedia("(hover: none)").matches);
   const hoverTimer = useRef(null);
@@ -225,7 +225,7 @@ export default function App() {
       <div className={`app${kiosk ? " kiosk" : ""}${railWide ? " rail-wide" : ""}`}>
         {!kiosk && <aside className={`side${railHover || railWide ? " open" : ""}`} onMouseEnter={openRail} onMouseLeave={closeRail}>
           <div className="side-in">
-          <div className="brand" onClick={look === "neu" && !touch ? togglePin : undefined} title={look === "neu" && !touch ? (railPinned ? "Leiste wieder schmal stellen" : "Leiste offen halten") : undefined}>
+          <div className="brand" onClick={look === "neu" && !touch ? togglePin : undefined} title={look === "neu" && !touch ? (railPinned ? "Leiste einklappen (klappt beim Darüberfahren auf)" : "Leiste offen halten") : undefined}>
             <BrandMark size={34} />
             <div>
               <WordMark width={92} />
