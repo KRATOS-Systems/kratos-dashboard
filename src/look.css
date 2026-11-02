@@ -21,10 +21,10 @@ html[data-look="neu"]:not([data-theme="dark"]) {
 /* ---------- 1 Grund und Hintergrund ---------- */
 html[data-look="neu"][data-theme="dark"] body {
   background:
-    radial-gradient(900px 560px at 4% -6%, rgba(229, 50, 59, .34), transparent 68%),
-    radial-gradient(1000px 640px at 104% 108%, rgba(70, 100, 190, .30), transparent 68%),
-    radial-gradient(700px 520px at 62% 38%, rgba(140, 90, 200, .12), transparent 70%),
-    #090B0F;
+    radial-gradient(900px 560px at 4% -6%, rgba(205, 213, 226, .20), transparent 68%),
+    radial-gradient(1000px 640px at 104% 108%, rgba(150, 165, 192, .22), transparent 68%),
+    radial-gradient(700px 520px at 60% 40%, rgba(255, 255, 255, .045), transparent 70%),
+    #0B0D11;
   background-attachment: fixed;
 }
 html[data-look="neu"][data-theme="dark"] body::before {
@@ -38,12 +38,11 @@ html[data-look="neu"][data-theme="dark"] body::before {
 }
 html[data-look="neu"]:not([data-theme="dark"]) body {
   background:
-    radial-gradient(700px 520px at 2% 4%, rgba(255, 86, 100, .42), transparent 68%),
-    radial-gradient(800px 600px at 98% 98%, rgba(60, 110, 255, .42), transparent 68%),
-    radial-gradient(640px 480px at 96% 6%, rgba(60, 200, 190, .30), transparent 70%),
-    radial-gradient(700px 520px at 40% 62%, rgba(150, 110, 240, .30), transparent 70%),
-    radial-gradient(520px 420px at 8% 96%, rgba(255, 170, 80, .28), transparent 70%),
-    #E4E8F3;
+    radial-gradient(800px 560px at 2% 0%, rgba(255, 255, 255, .95), transparent 66%),
+    radial-gradient(900px 640px at 100% 100%, rgba(110, 126, 154, .42), transparent 68%),
+    radial-gradient(700px 520px at 92% 4%, rgba(190, 200, 216, .55), transparent 70%),
+    radial-gradient(760px 560px at 36% 64%, rgba(150, 162, 184, .34), transparent 70%),
+    linear-gradient(160deg, #E9ECF1, #C9CFDA);
   background-attachment: fixed;
 }
 html[data-look="neu"] #root { position: relative; z-index: 1; }
@@ -168,7 +167,7 @@ html[data-look="neu"] .bar.late { box-shadow: inset 4px 0 0 var(--mc), 0 0 0 1.5
 html[data-look="neu"]:not([data-theme="dark"]) .kpi.hero { color: var(--ink); }
 html[data-look="neu"]:not([data-theme="dark"]) .kpi.hero .lab, html[data-look="neu"]:not([data-theme="dark"]) .kpi.hero .val small, html[data-look="neu"]:not([data-theme="dark"]) .kpi.hero .row { color: var(--muted); }
 html[data-look="neu"]:not([data-theme="dark"]) .btn:not(.primary) { background: rgba(255, 255, 255, .75); }
-html[data-look="neu"]:not([data-theme="dark"]) .kpi.hero::before, html[data-look="neu"]:not([data-theme="dark"]) .kpi.hero::after { display: none; }
+html[data-look="neu"] .kpi.hero::before, html[data-look="neu"] .kpi.hero::after { display: none; }
 html[data-look="neu"]:not([data-theme="dark"]) .seg { background: rgba(255, 255, 255, .6); border-color: rgba(40, 52, 90, .10); }
 html[data-look="neu"]:not([data-theme="dark"]) .tabs { border-bottom-color: rgba(40, 52, 90, .12); }
 html[data-look="neu"]:not([data-theme="dark"]) .tl-bar, html[data-look="neu"]:not([data-theme="dark"]) .tl-foot { border-color: rgba(40, 52, 90, .10); }
