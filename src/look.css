@@ -138,6 +138,56 @@ html[data-look="neu"] .card:has(.rings)::after, html[data-look="neu"] .card:has(
     linear-gradient(var(--c), var(--c)) bottom right / 1px 14px no-repeat;
 }
 
+/* ---------- 8 Beschriftungen und Zahlen wie im Entwurf ---------- */
+html[data-look="neu"] .stat .k, html[data-look="neu"] .stat .k span, html[data-look="neu"] .kpi .lab, html[data-look="neu"] .sec-head p,
+html[data-look="neu"] .mcard .lab { font: 500 11px/1.3 var(--f-mono); letter-spacing: .13em; text-transform: uppercase; color: var(--muted); }
+html[data-look="neu"] .stat b:has(> span) { display: flex; align-items: baseline; gap: 8px; font: 500 15px/1.1 var(--f-body); color: var(--muted); }
+html[data-look="neu"] .stat b > span { font: 500 40px/1 var(--f-mono); letter-spacing: -.03em; color: var(--ink); }
+html[data-look="neu"] .stat b { font-weight: 600; }
+html[data-look="neu"] .kpi .val, html[data-look="neu"] .kpi .val > span { font-family: var(--f-mono); font-weight: 500; letter-spacing: -.03em; }
+html[data-look="neu"] .kpi .val { font-size: 44px; }
+html[data-look="neu"] .kpi .val small { font: 500 14px var(--f-mono); letter-spacing: 0; }
+html[data-look="neu"] .page-head h1 { font-size: 30px; }
+html[data-look="neu"] .ringbox svg { filter: drop-shadow(0 0 8px rgba(255, 255, 255, .20)); }
+html[data-look="neu"] .assist-sw.on { color: var(--nl-acc); }
+html:not([data-look="neu"]) .assist-sw { display: none; }
+
+/* ---------- 9 Rechte Leiste "Assistent" (standardmäßig zu) ---------- */
+html[data-look="neu"] .assist { position: fixed; top: 14px; right: 14px; bottom: 14px; width: 340px; z-index: 35; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; scrollbar-width: thin; padding: 0 2px; }
+html[data-look="neu"] .ap-hero { flex: none; padding: 18px; border-radius: 22px; color: #fff; background: linear-gradient(160deg, #E5323B, #A5232B 70%, #6E1A20); box-shadow: 0 20px 50px rgba(229, 50, 59, .28), inset 0 1px 0 rgba(255, 255, 255, .25); }
+html[data-look="neu"] .ap-hero header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+html[data-look="neu"] .ap-tag { display: inline-flex; align-items: center; gap: 8px; font: 600 11px/1 var(--f-mono); letter-spacing: .16em; text-transform: uppercase; }
+html[data-look="neu"] .ap-x { width: 28px; height: 28px; border: 0; border-radius: 50%; background: rgba(255, 255, 255, .16); color: #fff; font-size: 18px; line-height: 1; cursor: pointer; }
+html[data-look="neu"] .ap-x:hover { background: rgba(255, 255, 255, .28); }
+html[data-look="neu"] .ap-hero h3, html[data-look="neu"] .ap-card h3 { margin: 0 0 8px; font: 600 11px/1.2 var(--f-mono); letter-spacing: .16em; text-transform: uppercase; }
+html[data-look="neu"] .ap-hero p { margin: 0 0 8px; font-size: 13.5px; line-height: 1.5; }
+html[data-look="neu"] .ap-hero p:last-child { margin-bottom: 0; }
+html[data-look="neu"] .ap-card { flex: none; padding: 16px; border-radius: 22px; background: var(--nl-glass); border: 1px solid var(--nl-edge); box-shadow: var(--nl-shadow); backdrop-filter: blur(16px); }
+html[data-look="neu"] .ap-card h3 { color: var(--muted); }
+html[data-look="neu"] .ap-tiles { display: grid; gap: 8px; }
+html[data-look="neu"] .ap-tile { display: flex; flex-direction: column; gap: 3px; padding: 10px 12px; border-radius: 14px; text-align: left; font: inherit; color: var(--ink); background: rgba(255, 255, 255, .04); border: 1px solid var(--nl-edge); cursor: pointer; }
+html[data-look="neu"] .ap-tile:disabled { cursor: default; }
+html[data-look="neu"] .ap-tile:not(:disabled):hover { background: rgba(255, 255, 255, .09); }
+html[data-look="neu"] .ap-tile small { font: 600 10px/1.2 var(--f-mono); letter-spacing: .14em; text-transform: uppercase; color: var(--warn); }
+html[data-look="neu"] .ap-tile.bad small { color: var(--bad); }
+html[data-look="neu"] .ap-tile b { font-size: 13.5px; font-weight: 600; }
+html[data-look="neu"] .ap-tile span { font-size: 12.5px; line-height: 1.4; color: var(--muted); }
+html[data-look="neu"] .ap-none, html[data-look="neu"] .ap-note { margin: 0 4px; font-size: 12px; color: var(--muted); }
+html[data-look="neu"] .ap-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+html[data-look="neu"] .ap-chips button { padding: 6px 12px; border-radius: 999px; font: inherit; font-size: 12.5px; color: var(--ink); background: rgba(255, 255, 255, .06); border: 1px solid var(--nl-edge); cursor: pointer; text-align: left; }
+html[data-look="neu"] .ap-chips button:hover { background: rgba(255, 255, 255, .12); }
+html[data-look="neu"] .app.assist-open .main { margin-right: 372px; }
+@media (max-width: 1900px) {
+  html[data-look="neu"] .app.assist-open .mcards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 1180px) {
+  html[data-look="neu"] .app.assist-open .main { margin-right: 0; }
+  html[data-look="neu"] .assist { width: min(340px, calc(100% - 28px)); z-index: 60; padding: 0; }
+}
+@media (min-width: 861px) {
+  html[data-look="neu"] .side-in { overflow-x: hidden; overflow-y: auto; scrollbar-width: none; }
+}
+
 /* ---------- Weniger Effekte, wenn gewünscht ---------- */
 @media (prefers-reduced-motion: reduce) {
   html[data-look="neu"] .app, html[data-look="neu"] .side-in { transition: none; }
