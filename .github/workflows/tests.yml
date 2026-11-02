@@ -31,3 +31,5 @@ jobs:
         run: node scripts/testBackup.mjs
       - name: Rückmeldungen
         run: node scripts/testFeedback.mjs
+      - name: Anmeldung
+        run: node scripts/testLogin.mjs
