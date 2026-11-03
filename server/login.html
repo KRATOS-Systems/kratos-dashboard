@@ -18,14 +18,13 @@
     display: grid; place-items: center; min-height: 100dvh; overflow: hidden;
     padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
   }
-  .bg, .loop, .shade { position: fixed; inset: 0; width: 100%; height: 100%; }
-  .bg { background: #090B0F url(/login-assets/halle.webp) center / cover no-repeat; transform: scale(1.04); filter: saturate(1.05); }
-  .loop { object-fit: cover; opacity: 0; transition: opacity 1.4s ease; transform: scale(1.04); }
-  .loop.on { opacity: 1; }
+  .bg, .shade { position: fixed; inset: 0; width: 100%; height: 100%; }
+  .bg { background: #090B0F url(/login-assets/halle-oben.webp) center / cover no-repeat; transform: scale(1.03); filter: saturate(.95) brightness(1); }
   .shade {
     background:
-      radial-gradient(70% 60% at 50% 48%, rgba(9, 11, 15, .15), rgba(9, 11, 15, .78) 100%),
-      radial-gradient(800px 460px at 6% -6%, rgba(229, 50, 59, .24), transparent 70%);
+      radial-gradient(75% 65% at 50% 50%, rgba(9, 11, 15, .22), rgba(9, 11, 15, .70) 100%),
+      linear-gradient(180deg, rgba(9, 11, 15, .30), rgba(9, 11, 15, .05) 40%, rgba(9, 11, 15, .35)),
+      radial-gradient(800px 460px at 4% -6%, rgba(205, 213, 226, .14), transparent 70%);
   }
   main { position: relative; width: min(100%, 400px); }
   form {
@@ -57,13 +56,11 @@
   button:active { transform: translateY(1px); }
   button:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
   .foot { margin-top: 18px; font-size: 12px; color: #858D9B; }
-  @media (prefers-reduced-motion: reduce) { .loop { display: none; } }
   @media (max-width: 420px) { form { padding: 28px 20px 22px; } }
 </style>
 </head>
 <body>
 <div class="bg" aria-hidden="true"></div>
-<video class="loop" id="loop" muted loop playsinline preload="none" aria-hidden="true" tabindex="-1"></video>
 <div class="shade" aria-hidden="true"></div>
 <main>
   <form method="post" action="/login" autocomplete="on">
@@ -78,20 +75,5 @@
     <div class="foot">Kratos Precision GmbH</div>
   </form>
 </main>
-<script>
-  // Das Video läuft nur am Rechner (Maus, breiter Bildschirm), nicht mit Datensparmodus und nicht bei reduzierter Bewegung; sonst bleibt das Standbild
-  (function () {
-    try {
-      var c = navigator.connection || {};
-      var ok = window.matchMedia("(hover: hover) and (min-width: 900px)").matches && !window.matchMedia("(prefers-reduced-motion: reduce)").matches && !c.saveData;
-      if (!ok) return;
-      var v = document.getElementById("loop");
-      v.addEventListener("canplay", function () { v.classList.add("on"); }, { once: true });
-      v.src = "/login-assets/halle.mp4";
-      var p = v.play();
-      if (p && p.catch) p.catch(function () {});
-    } catch (e) {}
-  })();
-</script>
 </body>
 </html>
