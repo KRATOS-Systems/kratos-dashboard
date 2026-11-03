@@ -59,8 +59,9 @@ function initialMode() {
 
 export default function App() {
   const [mode, setMode] = useState(initialMode);
-  // Neuer Look (Glas-Flächen, schmale Leiste) zum Testen umschaltbar; die schmale Leiste klappt beim Darüberfahren auf, per Klick auf das Logo bleibt sie offen
-  const [look, setLook] = useState(() => lsGet("kratos-look") === "neu" ? "neu" : "alt");
+  // Neuer Look (Glas-Flächen, schmale Leiste) ist der Start; gespeichert wird nur die ausdrückliche Wahl ("alt") im Menü, nicht der Standard.
+  // Die schmale Leiste klappt beim Darüberfahren auf; "Leiste immer offen" (Schalter im Menü oder Klick aufs Logo) hält sie dauerhaft offen.
+  const [look, setLook] = useState(() => (lsGet("kratos-look2") === "alt" ? "alt" : "neu"));
   const [railPinned, setRailPinned] = useState(() => lsGet("kratos-rail") === "1");
   const [assistOpen, setAssistOpen] = useState(() => lsGet("kratos-assist") === "1");
   const [railHover, setRailHover] = useState(false);
@@ -68,8 +69,11 @@ export default function App() {
   const hoverTimer = useRef(null);
   useEffect(() => {
     document.documentElement.dataset.look = look;
-    lsSet("kratos-look", look);
   }, [look]);
+  const chooseLook = (v) => {
+    setLook(v);
+    lsSet("kratos-look2", v);
+  };
   useEffect(() => {
     const mq = window.matchMedia("(hover: none)");
     const on = () => setTouch(mq.matches);
@@ -315,7 +319,20 @@ export default function App() {
               <SparkIcon s={18} />
               <span className="lbl">Assistent</span>
             </button>
-            <button type="button" className="ghost-dark look-sw" onClick={() => setLook(look === "neu" ? "alt" : "neu")} title="Neuen und alten Look vergleichen">
+            {!touch && (
+              <button
+                type="button"
+                className={`ghost-dark pin-sw${railPinned ? " on" : ""}`}
+                aria-pressed={railPinned}
+                aria-label="Leiste immer offen"
+                onClick={togglePin}
+                title={railPinned ? "Leiste ist immer offen. Klicken: nur beim Darüberfahren öffnen" : "Leiste öffnet beim Darüberfahren. Klicken: immer offen halten"}
+              >
+                <Ico n="pin" />
+                <span className="lbl">{railPinned ? "Leiste: immer offen" : "Leiste: automatisch"}</span>
+              </button>
+            )}
+            <button type="button" className="ghost-dark look-sw" onClick={() => chooseLook(look === "neu" ? "alt" : "neu")} title="Zwischen neuem und altem Look wechseln">
               <Ico n="spark" />
               <span className="lbl">{look === "neu" ? "Alter Look" : "Neuer Look"}</span>
             </button>
