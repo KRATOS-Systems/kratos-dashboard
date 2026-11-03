@@ -3,6 +3,7 @@ import { addDays, daysBetween, fmtShort, MACHINES } from "./lib.js";
 import { AV_ITEMS, isNewAv, AV_STATUS, avCycle, avDone, avState, avSummary } from "./avLib.js";
 import { AppTile, Ico, Thumb, partImg, useToast } from "./ui.jsx";
 import { ODOO_URL } from "./planLogic.js";
+import BomHinweis from "./BomHinweis.jsx";
 import { ArbeitsplanKette, ArbeitsplanPanel } from "./Arbeitsplan.jsx";
 import { deviation, fixInOdoo, useArbeitsplaene } from "./arbeitsplan.js";
 
@@ -159,6 +160,9 @@ function AvPanel({ avStdOf = () => null, r, checks, orders, onSet, onBulk, peopl
               Fräsen laut Odoo: {[o.odoo_machine && (MACHINES.find((m) => m.id === o.odoo_machine) || {}).short, o.odoo_hours > 0 && `${String(o.odoo_hours).replace(".", ",")} h`].filter(Boolean).join(", ")}
             </div>
           )}
+          {o.odoo_bom === "muster" && <div className="avp-odoo">Stückliste in Odoo: nur Musterwerte (Referenz MUSTER), Maschine und Zeit noch nicht geprüft</div>}
+          {o.odoo_bom === "none" && <div className="avp-odoo">Stückliste in Odoo: fehlt, damit gibt es keine Arbeitsgänge</div>}
+          {o.odoo_bom === "leer" && <div className="avp-odoo">Stückliste in Odoo: ohne Arbeitsgänge</div>}
           {ap && <ArbeitsplanPanel order={o} steps={ap.plans[o.odoo_id]} loaded={ap.loaded} error={ap.error} onFixed={ap.reload} />}
         </div>
       </div>
@@ -459,6 +463,7 @@ export default function AvView({ avStdOf = () => null, orders, checks, planStart
         <div>
           <h1>Arbeitsvorbereitung</h1>
           <p>Was ist bereit, was fehlt noch? Die Maschine weist die Planung zu.</p>
+          <BomHinweis />
           {deviations.length > 0 && (
             <div className="apl-warn apl-top" role="status">
               <span>

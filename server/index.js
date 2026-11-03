@@ -156,6 +156,7 @@ const orderColumns = columnsOf();
   ["hours_plan", "REAL"],
   ["odoo_hours", "REAL"],
   ["odoo_machine", "TEXT"],
+  ["odoo_bom", "TEXT"], // Stückliste laut Odoo: none (keine), leer (ohne Arbeitsgänge), muster (Musterwerte), ok
   ["odoo_hours_applied", "INTEGER NOT NULL DEFAULT 0"],
   ["qs_required", "INTEGER NOT NULL DEFAULT 1"],
   ["is_split", "INTEGER NOT NULL DEFAULT 0"],
@@ -358,6 +359,7 @@ const orderOut = (r) => ({
   hours_plan: r.hours_plan,
   odoo_hours: r.odoo_hours,
   odoo_machine: r.odoo_machine,
+  odoo_bom: r.odoo_bom || null,
   qs_required: r.qs_required === 1,
   is_split: r.is_split === 1,
   part_label: r.part_label,

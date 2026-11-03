@@ -20,7 +20,7 @@ const M2O = {
   "hr.employee": { user_id: "res.users", resource_calendar_id: "resource.calendar" },
   "hr.attendance": { employee_id: "hr.employee" },
   "mrp.workorder": { production_id: "mrp.production", workcenter_id: "mrp.workcenter", product_id: "product.product" },
-  "mrp.production": { product_id: "product.product" },
+  "mrp.production": { product_id: "product.product", bom_id: "mrp.bom" },
   "sale.order": { partner_id: "res.partner" },
   "mrp.workcenter.productivity": { employee_id: "hr.employee", user_id: "res.users", workorder_id: "mrp.workorder", workcenter_id: "mrp.workcenter", production_id: "mrp.production" },
   "hr.leave.allocation": { employee_id: "hr.employee" },
@@ -110,6 +110,8 @@ const T = {
     ...(process.env.MOCK_ARBEITSPLAN ? [{ id: 23, name: "POS H 800 U" }, { id: 24, name: "POS H 800 U Rüsten" }] : []),
   ],
   "product.template": [{ id: 70, name: "Grundplatte" }, { id: 71, name: "Motorplatte" }],
+  // Stücklisten: 901 normal, 902 mit der Referenz MUSTER (Platzhalterwerte)
+  "mrp.bom": [{ id: 901, name: "Grundplatte", code: false }, { id: 902, name: "Motorplatte", code: "MUSTER" }],
   "product.product": [
     { id: 2901, name: "Grundplatte Bauteilaufnahme", default_code: "KSS.P2322-361", product_tmpl_id: 70 },
     { id: 2902, name: "Motorplatte für RFID", default_code: "212-12-025_R4", product_tmpl_id: 71 },
@@ -195,6 +197,7 @@ function computed(model, r, f) {
   if (model === "hr.employee" && f === "attendance_state") return T["hr.attendance"].some((a) => a.employee_id === r.id && !a.check_out) ? "checked_in" : "checked_out";
   if (model === "hr.employee" && f === "hours_today")
     return T["hr.attendance"].filter((a) => a.employee_id === r.id).reduce((s, a) => s + ((a.check_out ? parse(a.check_out) : now()) - parse(a.check_in)) / 3600000, 0);
+  if (model === "mrp.production" && f === "workorder_ids") return T["mrp.workorder"].filter((w) => w.production_id === r.id).map((w) => w.id);
   if (model === "mrp.workorder" && f === "production_state") return byId("mrp.production", r.production_id)?.state;
   if (model === "mrp.workcenter.productivity" && f === "duration") return r.date_end ? (parse(r.date_end) - parse(r.date_start)) / 60000 : 0;
   return undefined;

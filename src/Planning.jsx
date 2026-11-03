@@ -4,6 +4,7 @@ import { isNewPlan, DEFAULT_WEEK_CAPACITY, MACHINES, SHIFT_MODELS, addDays, days
 import { parseOdooExport } from "./odooImport.js";
 import { holidaysBavaria } from "./holidays.js";
 import AvView, { avUrgentCount } from "./Av.jsx";
+import BomHinweis from "./BomHinweis.jsx";
 import { AV_ITEMS, AV_STATUS, AV_TEAM, isNewAv, avKey, avState, avSummary } from "./avLib.js";
 import { STAFF, ACTIVITIES, STAFF_DEFAULTS, responsible, avResponsible, sharedMachine } from "./staffLib.js";
 import Avatar from "./Avatar.jsx";
@@ -1499,6 +1500,9 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
             {wt && <span className="pill warn">{it.waitReason === "dep" ? "wartet auf Arbeitsgang" : it.waitReason === "av" ? "wartet auf AV" : "wartet auf Start"}</span>}
             <span className={`pill ${sum.ready ? "ok" : "mute"}`}>AV {avDone}/{sum.states.length}</span>
             <MaterialBadge o={o} />
+            {o.odoo_bom === "muster" && <span className="pill warn" title="Die Stückliste in Odoo hat nur Musterwerte (Referenz MUSTER). Maschine und Zeit sind nicht geprüft.">Zeit ungeprüft (Muster)</span>}
+            {o.odoo_bom === "none" && <span className="pill warn" title="In Odoo hat der Fertigungsauftrag keine Stückliste, damit auch keine Arbeitsgänge.">keine Stückliste</span>}
+            {o.odoo_bom === "leer" && <span className="pill warn" title="Die Stückliste in Odoo hat keine Arbeitsgänge.">keine Arbeitsgänge</span>}
           </div>
           {(o.odoo_id || goTo) && (
             <div style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -3467,6 +3471,8 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
           </button>
         </div>
       </div>
+
+      <BomHinweis />
 
       {preview && (
         <div className="note warn rise" style={{ "--i": 1 }}>
