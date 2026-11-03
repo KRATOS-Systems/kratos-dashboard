@@ -129,6 +129,7 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
   const [tab, setTab] = useState("zeit"); // zeit | auf | einst
   const [hl, setHl] = useState(null); // late | pool | soon: Hervorhebung über die Kennzahlen
   const [hoverGroup, setHoverGroup] = useState(null);
+  const [hoverAuftrag, setHoverAuftrag] = useState(null); // Auftrag des Balkens, über dem die Maus steht (alle Balken des Auftrags bekommen einen Rahmen)
   const [odooStatus, setOdooStatus] = useState(null); // { enabled, baselineDone, lastSync, lastChange, pendingClosing }
   const [syncDlg, setSyncDlg] = useState(null); // { loading, error, result, closeSel }
   const lastChangeSeen = useRef(null);
@@ -2303,7 +2304,12 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
         const isCause = hlSet && !inHl && part.ids.some((id) => causeSet.has(id));
         const hlCls = hlSet ? (inHl ? " hl" : isCause ? " cause" : " dim") : "";
         const linked = hoverStrip && part.ids.some((id) => hoverStrip.includes(id));
-        const dim2 = hoverStrip ? (linked ? "" : " dim2") : hoverGroup && hoverGroup !== block.key ? " dim2" : "";
+        const dim2 = hoverStrip && !linked ? " dim2" : "";
+        // Rahmen um alle Balken desselben Auftrags (beim Darüberfahren, sonst um den Auftrag der geöffneten Position)
+        const partOrder = orders.find((x) => x.id === part.ids[0]);
+        const auftragKey = partOrder ? groupKeyOf(partOrder) : null;
+        const activeAuftrag = hoverAuftrag || (detailId != null ? (orders.find((x) => x.id === detailId) ? groupKeyOf(orders.find((x) => x.id === detailId)) : null) : null);
+        const grpCls = activeAuftrag && !hoverStrip && part.ids.some((id) => { const o = orders.find((x) => x.id === id); return o && groupKeyOf(o) === activeAuftrag; }) ? " grpx" : "";
         const isSel = part.select != null && part.select === detailId;
         const isFresh = fresh != null && part.ids.includes(fresh);
         const tag = status === "late" ? <em className="tag bad" style={{ fontStyle: "normal" }}>+{g.lateDays} T</em> : status === "tight" && g && g.diff != null ? <em className="tag warn" style={{ fontStyle: "normal" }}>Puffer {Math.max(1, Math.floor(-g.diff))} T</em> : null;
@@ -2311,7 +2317,7 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
         bars.push(
           <div
             key={`${block.key}-${part.ids[0]}`}
-            className={`bar amp-${ampel(g)}${status === "late" ? " late" : ""}${hlCls}${dim2}${isSel ? " sel" : ""}${linked ? " linked" : ""}${isFresh ? " fresh" : ""}${isDragged ? " dragged" : ""}`}
+            className={`bar amp-${ampel(g)}${status === "late" ? " late" : ""}${hlCls}${dim2}${grpCls}${isSel ? " sel" : ""}${linked ? " linked" : ""}${isFresh ? " fresh" : ""}${isDragged ? " dragged" : ""}`}
             data-bar="1"
             data-ids={part.ids.map((id) => `i${id}`).join(" ")}
             role="button"
@@ -2324,10 +2330,14 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
                 else if (part.toggle) setExpanded((prev) => ({ ...prev, [part.toggle]: !prev[part.toggle] }));
               }
             }}
-            onMouseEnter={() => setHoverGroup(block.key)}
+            onMouseEnter={() => {
+              setHoverGroup(block.key);
+              setHoverAuftrag(auftragKey);
+            }}
             onMouseMove={(e) => onBarMove(e, tipHtml)}
             onMouseLeave={() => {
               setHoverGroup(null);
+              setHoverAuftrag(null);
               hideTip();
             }}
             style={{ "--mc": p.m.c, "--i": bIdx + idx, left: `${posPct(cs)}%`, width: `calc(${((ce - cs) / total) * 100}% - 2px)`, minWidth: MIN_BAR_PX, zIndex: Math.max(1, 20 - bIdx - idx) }}
