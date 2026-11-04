@@ -9,7 +9,14 @@ wer die Referenz MUSTER entfernt, nimmt die Kennzeichnung weg.
 Wichtig: Die Arbeitsgänge werden beim Eintragen der Stückliste in den Auftrag **kopiert**. Spätere Änderungen an der Stückliste ändern
 einen schon angelegten Auftrag nicht. Dort wird am Auftrag selbst geändert (Maschine umhängen geht im Dashboard).
 
-Die Schnittstelle (MCP) darf Automatisierungsregeln nicht anlegen, deshalb einmalig von Hand:
+**Stand 4.11.2026:** Beide Regeln sind in Odoo eingerichtet und aktiv (Automatisierungsregeln Nr. 17 und 18, per Browser angelegt, weil die Schnittstelle (MCP)
+Automatisierungsregeln sperrt). Getestet mit einem Test-Fertigungsauftrag ohne Stückliste: Regel 1 hat die Musterstückliste mit vier Arbeitsgängen angelegt
+und eingetragen (Test danach storniert, Musterstückliste archiviert). Regel 2 ist ungetestet; sie greift praktisch nur noch, wenn eine Stückliste
+angelegt wird, während ein Entwurf ohne Stückliste existiert.
+
+Im Regelcode sind Zuweisungen wie `mo.bom_id = bom` in Odoo verboten (Validierungsfehler „forbidden opcode STORE_ATTR"), deshalb `mo.write({...})`.
+
+Neu einrichten (falls nötig) von Hand:
 Odoo → Einstellungen → Entwicklermodus aktivieren → Technisch → Automatisierung → Automatisierungsregeln → Neu.
 
 ## Regel 1: Fertigungsauftrag ohne Stückliste
@@ -36,7 +43,7 @@ for mo in records:
                 'code': 'MUSTER',
                 'operation_ids': [(0, 0, {'name': n, 'workcenter_id': w, 'sequence': s, 'time_mode': 'manual', 'time_cycle_manual': 0.0}) for (n, w, s) in ops],
             })
-        mo.bom_id = bom
+        mo.write({'bom_id': bom.id})
     except Exception as e:
         log('Musterstückliste fehlgeschlagen für %s: %s' % (mo.display_name, e), level='error')
 ```
@@ -60,7 +67,7 @@ for bom in records:
             continue
         mos = env['mrp.production'].search([('product_id.product_tmpl_id', '=', tmpl.id), ('bom_id', '=', False), ('state', '=', 'draft')])
         for mo in mos:
-            mo.bom_id = bom
+            mo.write({'bom_id': bom.id})
     except Exception as e:
         log('Stückliste in Entwürfe eintragen fehlgeschlagen für %s: %s' % (bom.display_name, e), level='error')
 ```
