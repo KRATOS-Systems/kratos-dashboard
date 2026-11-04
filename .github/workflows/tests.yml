@@ -35,3 +35,5 @@ jobs:
         run: node scripts/testFeedback.mjs
       - name: Anmeldung
         run: node scripts/testLogin.mjs
+      - name: Stücklisten-Kennzeichnung
+        run: node scripts/testStueckliste.mjs
