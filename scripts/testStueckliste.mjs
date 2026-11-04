@@ -32,12 +32,12 @@ try {
 
   const mo = (id, name, state, bom) => ({ id, name, product_id: 2901, state, origin: `A0${id}`, product_qty: 1, ...(bom ? { bom_id: bom } : {}) });
   // Das Test-Odoo vergibt die Nummern selbst, deshalb die zurückgegebenen Nummern verwenden
-  const [id1, id2, id3, , , id6] = await mock("mrp.production", "create", {
-    vals_list: [mo(1401, "FA01401", "confirmed", 901), mo(1402, "FA01402", "confirmed", 902), mo(1403, "FA01403", "confirmed"), mo(1404, "FA01404", "confirmed", 901), mo(1405, "FA01405", "draft"), mo(1406, "FA01406", "draft", 901)],
+  const [id1, id2, id3, , , id6, id7] = await mock("mrp.production", "create", {
+    vals_list: [mo(1401, "FA01401", "confirmed", 901), mo(1402, "FA01402", "confirmed", 902), mo(1403, "FA01403", "confirmed"), mo(1404, "FA01404", "confirmed", 901), mo(1405, "FA01405", "draft"), mo(1406, "FA01406", "draft", 901), mo(1407, "FA01407", "confirmed")],
   });
   const wo = (production_id) => ({ name: "Fräsen", sequence: 2, production_id, workcenter_id: 14, product_id: 2901, state: "blocked", duration_expected: 60, duration: 0 });
-  await mock("mrp.workorder", "create", { vals_list: [wo(id1), wo(id2), wo(id6)] });
-  ok("Test-Odoo hat sechs neue Fertigungsaufträge: ok, Muster, ohne Stückliste, Stückliste ohne Arbeitsgänge und zwei Entwürfe");
+  await mock("mrp.workorder", "create", { vals_list: [wo(id1), wo(id2), wo(id6), wo(id7)] });
+  ok("Test-Odoo hat sieben neue Fertigungsaufträge: ok, Muster, ohne Stückliste, Stückliste ohne Arbeitsgänge, zwei Entwürfe und einer mit Arbeitsgängen ohne Stückliste-Eintrag");
 
   r = await api("POST", "/api/odoo/sync", { dryRun: false });
   assert.equal(r.status, 200, JSON.stringify(r));
@@ -47,7 +47,8 @@ try {
   assert.equal(bom("FA01402"), "muster");
   assert.equal(bom("FA01403"), "none");
   assert.equal(bom("FA01404"), "leer");
-  ok("Die vier bestätigten Aufträge sind richtig gekennzeichnet: ok, muster, none, leer");
+  assert.equal(bom("FA01407"), "ok"); // hat Arbeitsgänge, nur kein Stückliste-Eintrag (wie ein älterer, laufender Auftrag): kein Hinweis
+  ok("Die bestätigten Aufträge sind richtig gekennzeichnet: ok, muster, none, leer; Arbeitsgänge ohne Stückliste-Eintrag geben keinen Hinweis");
   assert.ok(!orders.some((o) => o.odoo_ref === "FA01405" || o.odoo_ref === "FA01406"), "Entwürfe dürfen nicht in die Planung kommen");
   ok("Entwürfe kommen nicht in die Planung");
 
