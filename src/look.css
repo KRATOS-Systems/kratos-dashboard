@@ -121,6 +121,11 @@ html[data-look="neu"] .tabs .cnt { background: rgba(255, 255, 255, .08); border-
 html[data-look="neu"] input[type=text], html[data-look="neu"] input[type=number], html[data-look="neu"] input[type=date], html[data-look="neu"] input[type=search], html[data-look="neu"] select {
   background: rgba(255, 255, 255, .05); border-color: rgba(255, 255, 255, .13); border-radius: 12px;
 }
+/* Aufklappliste einer Auswahl: Die Auswahl selbst ist durchsichtig, die Liste braucht eine feste Farbe, sonst steht helle Schrift auf weißem Grund */
+html[data-look="neu"][data-theme="dark"] select { color-scheme: dark; }
+html[data-look="neu"][data-theme="dark"] select option { background-color: #1B2028; color: #E9ECF0; }
+html[data-look="neu"]:not([data-theme="dark"]) select { color-scheme: light; }
+html[data-look="neu"]:not([data-theme="dark"]) select option { background-color: #FFFFFF; color: #14181D; }
 
 /* ---------- 4 Karten und Flächen ---------- */
 html[data-look="neu"] .card,
