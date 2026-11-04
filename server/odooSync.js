@@ -29,11 +29,13 @@ const WORKCENTER_MACHINE = { "DMU 40 EVO": "dmu40", "DMU 50": "dmu50", "DMG M1":
 const MAX_TAKE_HOURS = 300;
 // Referenz der Musterstücklisten in Odoo: Maschine und Zeit sind dort noch Platzhalter und müssen geprüft werden
 const BOM_MUSTER_CODE = "MUSTER";
-// Stückliste eines Fertigungsauftrags: none = keine, leer = ohne Arbeitsgänge (fehlt dann in der Planung), muster = nur Musterwerte, ok
+// Stückliste eines Fertigungsauftrags: none = weder Stückliste noch Arbeitsgänge, leer = Stückliste ohne Arbeitsgänge (fehlt dann in der Planung),
+// muster = nur Musterwerte, ok. Hat der Auftrag Arbeitsgänge, aber keinen Stückliste-Eintrag (z. B. ein älterer, schon laufender Auftrag), ist das kein Hinweis wert.
 function bomState(p, musterIds) {
   const bomId = Array.isArray(p.bom_id) ? p.bom_id[0] : p.bom_id;
-  if (!bomId) return "none";
-  if (!Array.isArray(p.workorder_ids) || p.workorder_ids.length === 0) return "leer";
+  const hasOps = Array.isArray(p.workorder_ids) && p.workorder_ids.length > 0;
+  if (!hasOps) return bomId ? "leer" : "none";
+  if (!bomId) return "ok";
   return musterIds.has(bomId) ? "muster" : "ok";
 }
 const EVERY = 10 * 60 * 1000;
