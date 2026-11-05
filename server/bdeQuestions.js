@@ -1,7 +1,7 @@
 // Rückfragen zu Aufgaben: ein kleiner Verlauf je Odoo-Aktivität zwischen Empfänger und dem, der die Aufgabe vergeben hat.
 //
 // - Beteiligt sind der Empfänger (Benutzer der Aktivität) und der Vergebende: bei Aufgaben aus der BDE steht er im Vermerk
-//   "Vergeben von … über Kratos BDE", bei Aufgaben aus Odoo ist es der Ersteller (create_uid). Nur diese beiden lesen und schreiben.
+//   "Vergeben von … über Kratos BDE" bzw. "… über Kratos Kalkulation", bei Aufgaben aus Odoo ist es der Ersteller (create_uid). Nur diese beiden lesen und schreiben.
 // - Der Verlauf liegt in der Datenbank des Dashboards (task_messages), "gelesen bis" je Person in task_reads.
 // - Mit BDE_WRITE=1 wird jede Nachricht zusätzlich als interne Notiz in Odoo am Auftrag bzw. Mitarbeiter abgelegt (message_post,
 //   Untertyp Notiz: keine E-Mail, Kunden sehen nichts).
@@ -12,9 +12,9 @@ const MARK = "über Kratos BDE";
 const escHtml = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 const userErr = (msg) => Object.assign(new Error(msg), { user: true });
 
-// Vergebender aus dem Vermerk in der Notiz ("Vergeben von Frank Häckl über Kratos BDE")
+// Vergebender aus dem Vermerk in der Notiz ("Vergeben von Frank Häckl über Kratos BDE" oder "… über Kratos Kalkulation")
 export function assignerName(note) {
-  const m = /Vergeben von (.+?) über Kratos BDE/.exec(String(note || "").replace(/<[^>]+>/g, " "));
+  const m = /Vergeben von (.+?) über Kratos/.exec(String(note || "").replace(/<[^>]+>/g, " "));
   return m ? m[1].trim() : null;
 }
 
