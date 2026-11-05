@@ -50,7 +50,7 @@ export default function Teile({ viewId, today, canStart, onStart, goTo }) {
   const row = (it, kind, infoFrom) => {
     const p = splitProduct(it.product);
     const due = dueText(it.due, today);
-    const next = kind === "teil" && !infoFrom ? it.steps.find((st) => st.workorderId && st.state !== "blocked") || null : null;
+    const next = kind === "teil" && !infoFrom ? it.steps.find((st) => st.workorderId && st.state !== "done") || null : null;
     return (
       <div className={`card part${infoFrom ? " info" : ""}`} key={`${kind}-${it.orderId}`}>
         <Thumb src={partImg({ odoo_id: it.odooId })} size={52} />
@@ -64,7 +64,7 @@ export default function Teile({ viewId, today, canStart, onStart, goTo }) {
           <div className="part-meta">
             {kind === "teil" &&
               it.steps.map((st) => (
-                <span key={st.id} className={`chip${st.state === "blocked" ? " wait" : st.state === "progress" ? " run" : ""}`} title={st.state === "blocked" ? "wartet auf den Arbeitsgang davor" : ""}>
+                <span key={st.id} className={`chip${st.state === "blocked" ? " wait" : st.state === "progress" ? " run" : ""}`} title={st.state === "blocked" ? "der Arbeitsgang davor ist noch offen" : ""}>
                   {st.label}
                 </span>
               ))}

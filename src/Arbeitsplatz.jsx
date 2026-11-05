@@ -348,7 +348,7 @@ function PickRow({ r, now, odooUrl, onPick, busy }) {
       </span>
       {r.overhead ? <span className="ohtag">Ohne Auftrag</span> : <b className="mono">{r.fa}</b>}
       <span className="t">{p.name}</span>
-      <span className="when">{r.state === "blocked" ? "wartet auf Vorgänger" : r.who ? r.who : r.last ? since(r.last, now).replace("seit", "zuletzt") : ""}</span>
+      <span className="when">{r.state === "blocked" ? "Vorgänger noch offen" : r.who ? r.who : r.last ? since(r.last, now).replace("seit", "zuletzt") : ""}</span>
     </>
   );
   return (
@@ -463,7 +463,7 @@ function Picker({ data, now, busy, initial, onClose, onPick }) {
                 ))}
               </div>
             ) : (
-              list.map((r) => <PickRow key={`${bookingKey(r)}-${r.who || ""}`} r={r} now={now} odooUrl={data.odooUrl} busy={busy} onPick={r.state === "blocked" ? null : () => onPick(r)} />)
+              list.map((r) => <PickRow key={`${bookingKey(r)}-${r.who || ""}`} r={r} now={now} odooUrl={data.odooUrl} busy={busy} onPick={() => onPick(r)} />)
             ))}
         </div>
       </div>
