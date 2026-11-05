@@ -44,6 +44,8 @@ const plain = (html) =>
     .slice(0, 240);
 
 const MARK = "über Kratos BDE";
+// Beim Suchen reicht "über Kratos": so zählen auch Aufgaben mit, die die Kalkulation vergibt ("… über Kratos Kalkulation")
+const MARK_ANY = "über Kratos";
 // Odoo-Aktivitäten haben nur ein Datum und keine Priorität: Dringend und Uhrzeit stehen deshalb sichtbar vorn in der
 // Zusammenfassung ("DRINGEND · bis 14:00 · Spannbacken prüfen"), so sieht man sie auch in Odoo, und hier werden sie wieder gelesen.
 const URGENT = "DRINGEND";
@@ -198,7 +200,7 @@ export default function registerBdeTasks(app, ctx, db) {
       let c = sentCache.get(s.e);
       if (!c || Date.now() - c.at > CACHE_MS) {
         const rows = await odoo.read("mail.activity", "search_read", {
-          domain: [["note", "ilike", `Vergeben von ${me ? me.name : "?"} ${MARK}`], ["date_done", "=", false]],
+          domain: [["note", "ilike", `Vergeben von ${me ? me.name : "?"} ${MARK_ANY}`], ["date_done", "=", false]],
           fields: ["summary", "date_deadline", "user_id", "res_model", "res_id", "res_name"],
           order: "date_deadline asc, id asc",
           limit: 100,

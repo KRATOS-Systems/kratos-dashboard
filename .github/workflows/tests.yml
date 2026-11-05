@@ -37,3 +37,5 @@ jobs:
         run: node scripts/testLogin.mjs
       - name: Stücklisten-Kennzeichnung
         run: node scripts/testStueckliste.mjs
+      - name: Aufgaben (Von mir vergeben)
+        run: node scripts/testAufgaben.mjs
