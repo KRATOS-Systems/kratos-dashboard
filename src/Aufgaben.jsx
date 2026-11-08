@@ -18,7 +18,7 @@ const WD = ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"];
 // Uhrzeit jetzt in deutscher Zeit, "HH:MM"
 const nowHM = () => new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/Berlin", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date());
 
-function due(deadline, today, time) {
+export function due(deadline, today, time) {
   if (!deadline) return { cls: "later", text: "ohne Frist" };
   const d = daysBetween(today, deadline);
   const at = time ? ` bis ${time}` : "";

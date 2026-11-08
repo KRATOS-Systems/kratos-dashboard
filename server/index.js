@@ -10,6 +10,7 @@ import registerFeedback from "./feedback.js";
 import registerOdooSync from "./odooSync.js";
 import registerOdooFiles from "./odooFiles.js";
 import registerBde from "./bde.js";
+import registerMeineNotizen from "./meineNotizen.js";
 import registerStaff from "./staff.js";
 import registerTalosPlan from "./talosPlan.js";
 import registerTalosChat from "./talosChat.js";
@@ -1117,6 +1118,7 @@ registerOdooSync(app, db, { isDate, nextPosition });
 registerOdooFiles(app, db);
 const staff = registerStaff(app, db);
 registerBde(app, db, staff);
+registerMeineNotizen(app, db);
 registerFeedback(app, db);
 registerTalosChat(app);
 

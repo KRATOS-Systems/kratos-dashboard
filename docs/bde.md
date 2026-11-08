@@ -197,3 +197,11 @@ Die Karte in der Planung und der Arbeitsplan im Odoo-Fertigungsauftrag (Arbeitsg
 - **Ampel:** Zu welcher Maschine ein Lauf gehört, bestimmt die Karte (steht der Auftrag dort auf genau einer Maschine), sonst der Arbeitsplatz in Odoo.
 - Schreibrecht in Odoo: nur das Feld `workcenter_id` am Arbeitsgang (`UMSTELL_WRITE_FIELDS` in `server/odooClient.js`), nur mit `BDE_WRITE=1`.
 - Test: `node scripts/testArbeitsplan.mjs` (Test-Odoo mit `MOCK_ARBEITSPLAN=1`); `node scripts/devTest.mjs` legt Beispielkarten dazu an.
+
+## Eigene To-dos und Notizen (Mein Arbeitsplatz)
+
+Jeder angemeldete Mitarbeiter hat auf seiner Seite „Meine To-dos" (mit Frist, abhaken, bearbeiten, löschen; Erledigte 30 Tage sichtbar) und „Meine Notizen" (Titel, Text, oben anheften). Beides ist **privat**: nur der Angemeldete sieht und ändert seine Einträge, auch die Leitung sieht die der anderen nicht (fremde Nummer gibt 404).
+
+- Ablage: Tabellen `my_todos` und `my_notes` in der Dashboard-Datenbank (nicht in Odoo), Server `server/meineNotizen.js`, Oberfläche `src/Notizen.jsx`.
+- Datensicherung: Die tägliche Sicherung der Datenbankdatei enthält sie. Das JSON-Backup unter `/api/backup` enthält sie **bewusst nicht**, weil es jeder mit dem App-Passwort laden kann. Technisch sieht ein Administrator mit Zugriff auf die Datenbank sie trotzdem; das Team sollte das wissen.
+- Test: `node scripts/testNotizen.mjs`.
