@@ -39,3 +39,5 @@ jobs:
         run: node scripts/testStueckliste.mjs
       - name: Aufgaben (Von mir vergeben)
         run: node scripts/testAufgaben.mjs
+      - name: Eigene To-dos und Notizen
+        run: node scripts/testNotizen.mjs

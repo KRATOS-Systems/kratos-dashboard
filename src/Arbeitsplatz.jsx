@@ -5,6 +5,7 @@ import Maschinenzeit from "./Maschinenzeit.jsx";
 import Greeting, { berlinHour } from "./Greeting.jsx";
 import Aufgaben from "./Aufgaben.jsx";
 import Teile from "./Teile.jsx";
+import Notizen from "./Notizen.jsx";
 import { ActButtons, JobRef } from "./BdeControls.jsx";
 import { useMini, notifyChanged, BDE_CHANGED, BDE_OPEN_PICKER } from "./MiniWindow.jsx";
 import { todayStr } from "./lib.js";
@@ -273,6 +274,9 @@ function ArbeitsplatzInner({ onGreet, goTo }) {
       {operate && <LaufzeitOffen />}
 
       <Teile viewId={viewId} today={todayStr()} goTo={goTo} canStart={operate} onStart={(st) => run({ action: "start", workorderId: st.workorderId }, `${st.label} gestartet`)} />
+
+      {/* Eigene To-dos und Notizen: nur auf der eigenen Seite, die Leitung sieht die der anderen nicht */}
+      {own && <Notizen />}
 
       <div className="btiles">
         <div className="card btile">
