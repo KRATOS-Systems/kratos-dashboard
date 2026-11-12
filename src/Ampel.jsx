@@ -39,7 +39,7 @@ function useAmpel() {
     listeners.add(setD);
     if (!current) fetchAmpel();
     else setD(current);
-    if (!stopPoll) stopPoll = pollEvery(() => fetchAmpel(), 60000);
+    if (!stopPoll) stopPoll = pollEvery(() => fetchAmpel(), 20000); // Live-Daten: alle 20 s (Odoo-Teil bleibt serverseitig 20 s gecacht)
     const on = () => fetchAmpel(true);
     window.addEventListener("bde-changed", on);
     return () => {
@@ -54,8 +54,9 @@ function useAmpel() {
   return d;
 }
 
-const TEXT = { lauf: "Fräsen läuft", ruesten: "Wird gerüstet", steht: "Steht", frei: "Nichts zu tun" };
-const LAMP = { steht: "r", ruesten: "y", lauf: "g" };
+const TEXT = { lauf: "Fräsen läuft", ruesten: "Wird gerüstet", pause: "Programm unterbrochen", stoerung: "Störung", steht: "Steht", frei: "Nichts zu tun" };
+const LAMP = { steht: "r", stoerung: "r", ruesten: "y", pause: "y", lauf: "g" };
+const SPINDEL = { rechts: "Spindel läuft", links: "Spindel läuft (links)", aus: "Spindel steht" };
 
 // Die Leuchte: rot oben, gelb in der Mitte, grün unten, nur die aktive Lampe leuchtet
 export function Tower({ state, size = 1 }) {
@@ -74,8 +75,16 @@ export function Tower({ state, size = 1 }) {
 const stateLine = (m) => {
   if (!m) return "";
   const first = m.runs.find((r) => r.step === "Fräsen") || m.runs[0];
-  if (!first || m.state === "steht" || m.state === "frei") return TEXT[m.state];
-  return `${TEXT[m.state]} · ${first.fa || ""}${first.who ? ` · ${first.who}` : ""}`;
+  const parts = [TEXT[m.state]];
+  if (m.quelle === "maschine" && m.live && ["lauf", "pause"].includes(m.state)) {
+    if (m.live.programm) parts.push(m.live.programm);
+    if (m.live.werkzeug !== null && m.live.werkzeug !== undefined) parts.push(`T${m.live.werkzeug}`);
+  }
+  if (first && !["steht", "frei"].includes(m.state)) {
+    if (first.fa) parts.push(first.fa);
+    if (first.who) parts.push(first.who);
+  }
+  return parts.join(" · ");
 };
 
 // Kleine Ampel im Maschinenkopf der Planung
@@ -109,8 +118,12 @@ export function AmpelLeiste() {
           <button type="button" key={mm.id} className={`amp-card card amp-s-${m.state}`} onClick={() => setOpen(mm.id)}>
             <Tower state={m.state} size={0.8} />
             <span className="amp-txt">
-              <b>{mm.short}</b>
+              <b>
+                {mm.short}
+                {m.quelle === "maschine" && <span className="amp-live" title="Live von der Steuerung" />}
+              </b>
               <small>{stateLine(m)}</small>
+              {m.hinweis && <small className="amp-warn">{m.hinweis}</small>}
             </span>
           </button>
         );
@@ -118,6 +131,32 @@ export function AmpelLeiste() {
       {d.unknown && d.unknown.length > 0 && <span className="amp-unk">Läuft ohne bekannte Maschine: {d.unknown.map((r) => r.fa).join(", ")}</span>}
       {open && <AmpelDialog machine={open} onClose={() => setOpen(null)} />}
     </section>
+  );
+}
+
+// Was die Steuerung gerade meldet
+function LiveBlock({ l }) {
+  const rows = [
+    ["Programm", l.programm ? `${l.programm}${l.zeile ? `, Satz ${l.zeile}` : ""}` : "–"],
+    ["Werkzeug", l.werkzeug !== null && l.werkzeug !== undefined ? `T${l.werkzeug}` : "–"],
+    ["Spindel", SPINDEL[l.spindel] || "–"],
+    ["Vorschub", l.vorschub !== null && l.vorschub !== undefined ? `${Math.round(l.vorschub)} %` : "–"],
+  ];
+  return (
+    <div className="amp-live-box">
+      <div className="amp-live-head">
+        <span className="amp-live" /> Live von der Steuerung{l.seit ? ` · Zustand seit ${l.seit.slice(11, 16)} Uhr` : ""}
+      </div>
+      <dl>
+        {rows.map(([k, v]) => (
+          <React.Fragment key={k}>
+            <dt>{k}</dt>
+            <dd className={k === "Programm" ? "mono" : undefined}>{v}</dd>
+          </React.Fragment>
+        ))}
+      </dl>
+      {l.fehler && l.fehler.length > 0 && <p className="amp-warn">Meldung: {l.fehler.join("; ")}</p>}
+    </div>
   );
 }
 
@@ -163,9 +202,16 @@ function AmpelDialog({ machine, onClose }) {
             <p>{m ? TEXT[m.state] : "Lade …"}</p>
           </div>
         </div>
+        {m && m.hinweis && <p className="amp-warn amp-warn-box">{m.hinweis}</p>}
+        {m && m.quelle === "maschine" && m.live && <LiveBlock l={m.live} />}
+        {m && m.quelle !== "maschine" && d.live && <p className="amp-hint">Von dieser Maschine kommen gerade keine Live-Daten. Die Ampel zeigt, was gestempelt ist.</p>}
         {m && m.runs.length === 0 && (
           <p className="amp-hint">
-            {m.state === "steht" ? "Es ist nichts gestempelt, obwohl Arbeitszeit ist und in der Planung noch Arbeit für diese Maschine wartet." : "Es läuft nichts, und es ist auch nichts zu tun oder keine Arbeitszeit."}
+            {m.state === "steht"
+              ? "Es ist nichts gestempelt, obwohl Arbeitszeit ist und in der Planung noch Arbeit für diese Maschine wartet."
+              : m.quelle === "maschine"
+                ? "In Odoo ist auf dieser Maschine nichts gestempelt."
+                : "Es läuft nichts, und es ist auch nichts zu tun oder keine Arbeitszeit."}
           </p>
         )}
         {m &&

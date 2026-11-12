@@ -39,3 +39,5 @@ jobs:
         run: node scripts/testStueckliste.mjs
       - name: Aufgaben (Von mir vergeben)
         run: node scripts/testAufgaben.mjs
+      - name: Live-Ampel (Maschinen-Dienst)
+        run: node scripts/testMaschinenLive.mjs
