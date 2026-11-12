@@ -4,9 +4,11 @@
 //   rot   = nichts läuft, obwohl Arbeitszeit ist und in der Planung noch Arbeit für die Maschine wartet
 //   keine Lampe = nichts läuft und das ist in Ordnung (Nacht, Wochenende oder keine Arbeit offen)
 // Zu welcher Maschine ein Lauf gehört, bestimmt die Karte in der Planung (steht der Auftrag dort auf einer Maschine), sonst der Arbeitsplatz in Odoo.
-// Die Ampel zeigt, was gestempelt ist, nicht, was die Maschine wirklich tut. Nur lesen (Odoo und Planungsdatenbank), ohne Anmeldung wie die Planung selbst.
+// Schickt der Maschinen-Dienst Live-Daten (server/maschinenLive.js), zeigt die Ampel, was die Maschine wirklich tut, und meldet,
+// wenn Stempel und Maschine nicht zusammenpassen. Ohne Live-Daten zeigt sie, was gestempelt ist. Nur lesen (Odoo und Planungsdatenbank), ohne Anmeldung wie die Planung selbst.
 
 import { m2o, parseOdoo, stepOf } from "./bde.js";
+import { ampelZustand, liveStand } from "./maschinenLive.js";
 
 const MACHINES = ["dmu40", "dmu50", "m1", "h800u"];
 const BY_WORKCENTER = { "DMU 40 EVO": "dmu40", "DMU 50": "dmu50", "DMG M1": "m1", "POS H 800 U": "h800u" };
@@ -86,11 +88,23 @@ export default function registerBdeAmpel(app, db, ctx) {
     return { at: Date.now(), working, machines, unknown: runs.filter((r) => !r.machine) };
   }
 
+  // Live-Zustand aus dem Maschinen-Dienst bei jeder Antwort frisch dazumischen (die Stempel aus Odoo bleiben gecacht)
+  function withLive(data) {
+    const live = liveStand();
+    const machines = {};
+    for (const [m, v] of Object.entries(data.machines)) {
+      const l = live[m] || null;
+      const z = ampelZustand(v.state, v.runs, l, { working: data.working, waiting: waiting.get(m).n });
+      machines[m] = { ...v, stempel: v.state, state: z.state, quelle: z.quelle, hinweis: z.hinweis, live: l };
+    }
+    return { ...data, machines, live: Object.keys(live).length > 0 };
+  }
+
   // fresh=1: nach dem Beenden eines Laufs sofort neu rechnen, sonst höchstens alle 20 Sekunden
   app.get("/api/maschinen/ampel", async (req, res) => {
     try {
       if (!cache.data || req.query.fresh === "1" || Date.now() - cache.at > TTL_MS) cache = { at: Date.now(), data: await compute() };
-      res.json(cache.data);
+      res.json(withLive(cache.data));
     } catch (err) {
       ctx.fail(res, err);
     }

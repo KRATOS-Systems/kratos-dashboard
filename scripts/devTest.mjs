@@ -27,6 +27,8 @@ const env = {
   BDE_SECRET: "testgeheimnis",
   ODOO_URL: "",
   ODOO_API_KEY: "",
+  // Eingang für den Maschinen-Dienst (nur lokal; im Dienst config.json → dashboard: url http://localhost:3056, key wie hier)
+  MASCHINEN_KEY: process.env.MASCHINEN_KEY || "devtest-maschinen-schluessel-01",
 };
 const procs = [spawn("node", ["scripts/mockOdoo.mjs"], { env, cwd: root, stdio: "inherit" }), spawn("node", ["server/index.js"], { env, cwd: root, stdio: "inherit" })];
 const stop = () => procs.forEach((p) => p.kill());

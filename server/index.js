@@ -30,6 +30,7 @@ import registerAbwesenheit from "./abwesenheit.js";
 import registerMorgenbericht from "./morgenbericht.js";
 import registerProgramme from "./programme.js";
 import registerSollIst from "./sollIst.js";
+import { registerMaschinenEingang, registerMaschinenLive } from "./maschinenLive.js";
 
 // Lokal dürfen Umgebungsvariablen in einer Datei .env stehen (nicht im Repository). Bei Hostinger gibt es sie nicht.
 try {
@@ -257,6 +258,9 @@ app.get(["/health", "/api/health"], (req, res) => {
   res.status(dbOk ? 200 : 503).json({ ok: dbOk, zeit: new Date().toISOString(), datenDauerhaft: !!process.env.DB_PATH });
 });
 
+// Eingang für den Maschinen-Dienst (Live-Zustand der Steuerungen); vor dem Passwortschutz, eigener Schutz über MASCHINEN_KEY
+registerMaschinenEingang(app);
+
 // Passwortschutz mit eigener Anmeldeseite (server/login.js): Ist APP_PASSWORD gesetzt (z. B. in den Umgebungsvariablen bei Hostinger),
 // fragt die App beim Öffnen nach dem Passwort. Ohne Variable (lokal) ist alles offen.
 registerLogin(app, { user: process.env.APP_USER || "kratos", password: process.env.APP_PASSWORD || "", distPath: DIST_PATH });
@@ -264,6 +268,7 @@ qsBridge.afterLogin();
 
 app.use(cors());
 app.use(express.json({ limit: "10mb" }));
+registerMaschinenLive(app);
 
 app.get("/api/readings", (req, res) => {
   const rows = db

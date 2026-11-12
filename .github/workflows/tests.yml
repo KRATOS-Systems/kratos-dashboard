@@ -69,3 +69,5 @@ jobs:
         run: node scripts/testAufgaben.mjs
       - name: Verbindung zu QS (Prüfplan, EMPB)
         run: node scripts/testQsBridge.mjs
+      - name: Live-Ampel (Maschinen-Dienst)
+        run: node scripts/testMaschinenLive.mjs
