@@ -158,6 +158,7 @@ const orderColumns = columnsOf();
   ["odoo_machine", "TEXT"],
   ["odoo_bom", "TEXT"], // Stückliste laut Odoo: none (keine), leer (ohne Arbeitsgänge), muster (Musterwerte), ok
   ["odoo_hours_applied", "INTEGER NOT NULL DEFAULT 0"],
+  ["odoo_draft", "INTEGER NOT NULL DEFAULT 0"], // 1 = Fertigungsauftrag in Odoo noch im Entwurf (Kundenauftrag bestätigt, AV läuft)
   ["qs_required", "INTEGER NOT NULL DEFAULT 1"],
   ["is_split", "INTEGER NOT NULL DEFAULT 0"],
   ["part_label", "TEXT"],
@@ -360,6 +361,7 @@ const orderOut = (r) => ({
   odoo_hours: r.odoo_hours,
   odoo_machine: r.odoo_machine,
   odoo_bom: r.odoo_bom || null,
+  odoo_draft: r.odoo_draft === 1,
   qs_required: r.qs_required === 1,
   is_split: r.is_split === 1,
   part_label: r.part_label,

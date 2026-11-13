@@ -160,6 +160,7 @@ function AvPanel({ avStdOf = () => null, r, checks, orders, onSet, onBulk, peopl
               Fräsen laut Odoo: {[o.odoo_machine && (MACHINES.find((m) => m.id === o.odoo_machine) || {}).short, o.odoo_hours > 0 && `${String(o.odoo_hours).replace(".", ",")} h`].filter(Boolean).join(", ")}
             </div>
           )}
+          {o.odoo_draft && <div className="avp-odoo">Fertigungsauftrag in Odoo: noch im Entwurf. Stückliste und Material in Odoo noch anpassen, danach den Fertigungsauftrag bestätigen</div>}
           {o.odoo_bom === "muster" && <div className="avp-odoo">Stückliste in Odoo: nur Musterwerte (Referenz MUSTER), Maschine und Zeit noch nicht geprüft</div>}
           {o.odoo_bom === "none" && <div className="avp-odoo">Stückliste in Odoo: fehlt, damit gibt es keine Arbeitsgänge</div>}
           {o.odoo_bom === "leer" && <div className="avp-odoo">Stückliste in Odoo: ohne Arbeitsgänge</div>}

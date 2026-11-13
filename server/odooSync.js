@@ -5,6 +5,9 @@
 //   letzten drei Tagen angelegt wurde und der App noch fehlt, kommt gleich als neu in die Liste.
 // - Danach kommt jeder neu bestätigte Fertigungsauftrag (FA-Nummer) automatisch in die Liste "noch nicht eingeplant", sofern der
 //   Verkaufsauftrag noch nicht vollständig ausgeliefert ist. Der Abgleich läuft alle 10 Minuten und auf Knopfdruck.
+// - Entwürfe: Ein Fertigungsauftrag im Entwurf kommt ebenfalls, sobald sein Kundenauftrag bestätigt ist. So landet jeder bestätigte Auftrag in der
+//   Arbeitsvorbereitung, auch wenn der Artikel noch keine fertige Stückliste hat (Musterstückliste). Bestätigt wird der Fertigungsauftrag erst nach
+//   der AV, wenn Stückliste und Material stimmen. Ältere Entwürfe (vor DRAFT_SINCE) bleiben außen vor, das sind Altlasten.
 // - Bei Aufträgen, die die App schon kennt, werden Menge, Produkt und Materialstatus aktualisiert (der Liefertermin bleibt).
 // - Schließen schlägt die App nur vor: Der Fertigungsauftrag ist in Odoo nicht mehr offen oder der Verkaufsauftrag ist vollständig
 //   ausgeliefert. Geschlossen wird erst nach Bestätigung.
@@ -19,6 +22,8 @@
 // Odoo wird nur gelesen, und nur wenn ODOO_URL und ODOO_API_KEY gesetzt sind.
 
 const OPEN_STATES = ["confirmed", "progress", "to_close"];
+// Entwürfe ab diesem Tag (angelegt) kommen mit, wenn ihr Kundenauftrag bestätigt ist; ältere Entwürfe sind liegengebliebene Altlasten
+const DRAFT_SINCE = "2026-10-01";
 const PLANNING_PROJECT = "01 Fertigungsplanung";
 const TASK_OPEN_STATES = ["01_in_progress", "02_changes_requested", "03_approved", "04_waiting_normal"];
 const FINAL_STAGES = new Set(["Geliefert & Abgerechnet", "Nachkalkulation"]);
@@ -71,13 +76,20 @@ export default function registerOdooSync(app, db, { isDate, nextPosition }) {
     return res.json();
   }
 
-  // Offene Fertigungsaufträge mit FA-Nummer und der Lieferstatus ihrer Verkaufsaufträge
+  // Offene Fertigungsaufträge mit FA-Nummer (dazu Entwürfe bestätigter Kundenaufträge) und der Lieferstatus ihrer Verkaufsaufträge
   async function fetchOpen() {
-    const prods = await odoo("mrp.production", "search_read", {
+    const FIELDS = ["name", "state", "origin", "product_id", "product_qty", "date_deadline", "components_availability", "create_date", "bom_id", "workorder_ids"];
+    const open = await odoo("mrp.production", "search_read", {
       domain: [["state", "in", OPEN_STATES], ["name", "=like", "FA%"]],
-      fields: ["name", "state", "origin", "product_id", "product_qty", "date_deadline", "components_availability", "create_date", "bom_id", "workorder_ids"],
+      fields: FIELDS,
       limit: 2000,
     });
+    const draftCands = await odoo("mrp.production", "search_read", {
+      domain: [["state", "=", "draft"], ["name", "=like", "FA%"], ["create_date", ">=", DRAFT_SINCE + " 00:00:00"]],
+      fields: FIELDS,
+      limit: 500,
+    });
+    let prods = [...open, ...draftCands];
     let musterIds = new Set();
     try {
       const boms = await odoo("mrp.bom", "search_read", { domain: [["code", "=", BOM_MUSTER_CODE]], fields: ["id"], limit: 5000 });
@@ -92,6 +104,12 @@ export default function registerOdooSync(app, db, { isDate, nextPosition }) {
       const sales = await odoo("sale.order", "search_read", { domain: [["name", "in", chunk]], fields: ["name", "delivery_status", "state"], limit: 500 });
       sales.forEach((s) => delivery.set(s.name, s));
     }
+    // Entwurf nur, wenn der Kundenauftrag bestätigt ist (nicht Angebot, nicht storniert)
+    const confirmedSale = (p) => {
+      const s = delivery.get((p.origin || "").trim());
+      return !!s && s.state === "sale";
+    };
+    prods = prods.filter((p) => p.state !== "draft" || confirmedSale(p));
     // Geplante Fräszeit und Maschine je Fertigungsauftrag aus den Fräsen-Arbeitsgängen (Minuten laut Arbeitsplan, 0 = Odoo hat keine Zeit)
     const milling = new Map();
     const prodIds = prods.map((p) => p.id).filter(Number.isInteger);
@@ -130,6 +148,7 @@ export default function registerOdooSync(app, db, { isDate, nextPosition }) {
         odoo_hours: mill && mill.minutes > 0 ? Math.round((mill.minutes / 60) * 100) / 100 : null,
         odoo_machine: mill ? mill.machine : null,
         odoo_bom: bomState(p, musterIds),
+        draft: p.state === "draft",
         created: typeof p.create_date === "string" ? p.create_date.replace(" ", "T") + "Z" : null,
         delivered: !!sale && sale.delivery_status === "full",
         saleCancelled: !!sale && sale.state === "cancel",
@@ -137,8 +156,8 @@ export default function registerOdooSync(app, db, { isDate, nextPosition }) {
     });
   }
 
-  // Fertigungsaufträge im Entwurf: die App holt sie bewusst nicht (erst bestätigte Aufträge kommen in die Planung), sie werden nur gezählt,
-  // damit man sieht, was in Odoo noch aussteht und was dabei ohne Stückliste ist
+  // Fertigungsaufträge im Entwurf, die die App NICHT übernimmt (Kundenauftrag nicht bestätigt oder Altlast vor DRAFT_SINCE): sie werden nur gezählt,
+  // damit man sieht, was in Odoo noch aussteht und was dabei ohne Stückliste ist (run() filtert die übernommenen heraus)
   async function fetchDrafts() {
     const prods = await odoo("mrp.production", "search_read", { domain: [["state", "=", "draft"], ["name", "=like", "FA%"]], fields: ["name", "bom_id"], limit: 500 });
     return prods.map((p) => ({ ref: String(p.name).trim(), noBom: !(Array.isArray(p.bom_id) ? p.bom_id[0] : p.bom_id) }));
@@ -352,6 +371,7 @@ export default function registerOdooSync(app, db, { isDate, nextPosition }) {
     );
     const close = db.prepare("UPDATE orders SET done = 1, done_date = COALESCE(done_date, date('now')) WHERE odoo_ref = ? OR parent_ref = ?");
     const hint = db.prepare("UPDATE orders SET odoo_hours = ?, odoo_machine = ?, odoo_bom = ? WHERE odoo_ref = ? AND done = 0");
+    const setDraft = db.prepare("UPDATE orders SET odoo_draft = ? WHERE (odoo_ref = ? OR parent_ref = ?) AND done = 0");
     const takeHours = db.prepare("UPDATE orders SET hours = ?, odoo_hours_applied = 1 WHERE odoo_ref = ? AND done = 0 AND is_split = 0 AND odoo_hours_applied = 0 AND (hours IS NULL OR hours = 0)");
     const seen = db.prepare("INSERT OR IGNORE INTO odoo_seen (odoo_id, first_seen) VALUES (?, ?)");
     const seenOld = db.prepare("INSERT OR IGNORE INTO odoo_seen (odoo_id, first_seen) VALUES (?, 'baseline')");
@@ -394,6 +414,7 @@ export default function registerOdooSync(app, db, { isDate, nextPosition }) {
       plan.updated.forEach((i) => update.run(i.source, i.product, i.quantity, i.odoo_id, i.component_status, i.odoo_ref));
       // Fräszeit laut Odoo: immer als Hinweis merken, als Stunden nur einmal und nur bei leeren Stunden (geteilte Positionen haben eigene Stunden)
       [...plan.created, ...plan.updated].forEach((i) => {
+        setDraft.run(i.draft ? 1 : 0, i.odoo_ref, i.odoo_ref);
         if (i.odoo_hours === undefined) return;
         hint.run(i.odoo_hours, i.odoo_machine, i.odoo_bom || null, i.odoo_ref);
         if (i.odoo_hours > 0 && i.odoo_hours <= MAX_TAKE_HOURS) takeHours.run(i.odoo_hours, i.odoo_ref);
@@ -416,7 +437,8 @@ export default function registerOdooSync(app, db, { isDate, nextPosition }) {
       const items = await fetchOpen();
       if (!dryRun || auto) {
         try {
-          setState("drafts", JSON.stringify(await fetchDrafts()));
+          const taken = new Set(items.map((i) => i.odoo_ref));
+          setState("drafts", JSON.stringify((await fetchDrafts()).filter((d) => !taken.has(d.ref))));
         } catch (err) {
           console.error("Odoo-Abgleich: Entwürfe nicht lesbar", err.message); // nur ein Hinweis, der Abgleich läuft weiter
         }

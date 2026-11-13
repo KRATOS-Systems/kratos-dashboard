@@ -126,6 +126,8 @@ const T = {
     ...(process.env.MOCK_ARBEITSPLAN
       ? [1310, 1311, 1312, 1313, 1314].map((id) => ({ id, name: `FA0${id}`, product_id: 2902, state: "confirmed", origin: `A0${id + 100}`, product_qty: 5, qty_producing: 0 }))
       : []),
+    // Entwürfe (nur mit MOCK_ENTWURF=1): 1322 Kundenauftrag bestätigt, 1323 Kundenauftrag nur Angebot, 1324 Altlast von 2025
+    ...(process.env.MOCK_ENTWURF ? [{ id: 1322, name: "FA01322", product_id: 2902, state: "draft", origin: "A01422", product_qty: 60, create_date: ago(24) }, { id: 1323, name: "FA01323", product_id: 2902, state: "draft", origin: "A01423", product_qty: 5, create_date: ago(24) }, { id: 1324, name: "FA00364", product_id: 2901, state: "draft", origin: "A00380", product_qty: 1, create_date: "2025-04-14 13:01:16" }] : []),
     ...(process.env.MOCK_A01378 ? [{ id: 1302, name: "FA01302", product_id: 2902, state: "confirmed", origin: "A01378" }, { id: 1304, name: "FA01304", product_id: 2902, state: "confirmed", origin: "A01379" }] : []),
   ],
   "mrp.workorder": [
@@ -174,7 +176,7 @@ const T = {
     { id: 14, employee_id: 2, number_of_days: 30, leaves_taken: 23, state: "validate", date_from: "2026-01-01", date_to: "2027-03-31" },
     { id: 8, employee_id: 3, number_of_days: 30, leaves_taken: 24, state: "validate", date_from: "2026-01-01", date_to: "2026-12-31" },
   ],
-  "sale.order": [{ id: 1365, name: "A01365" }, { id: 958, name: "A00958" }, { id: 1378, name: "A01378" }],
+  "sale.order": [{ id: 1365, name: "A01365" }, { id: 958, name: "A00958" }, { id: 1378, name: "A01378" }, ...(process.env.MOCK_ENTWURF ? [{ id: 1422, name: "A01422", state: "sale", delivery_status: "pending" }, { id: 1423, name: "A01423", state: "draft" }, { id: 380, name: "A00380", state: "sale", delivery_status: "pending" }] : [])],
   "mail.activity.type": [{ id: 1, name: "To-do" }, { id: 2, name: "Anruf" }, { id: 4, name: "E-Mail" }],
   "mail.activity": [
     { id: 501, activity_type_id: 1, user_id: 30, create_uid: 25, summary: "Programm für Grundplatte prüfen", note: "<p>Bohrbild mit <b>Zeichnung</b> abgleichen</p>", date_deadline: day(-2), res_model: "mrp.production", res_id: 1307, res_name: "FA01307", date_done: false },
