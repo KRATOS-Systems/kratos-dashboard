@@ -43,7 +43,7 @@ export default function BomHinweis() {
     lines.push(line("n", "var(--bad)", `${noBom.length} ${plural(noBom.length, "Fertigungsauftrag hat", "Fertigungsaufträge haben")} keine Stückliste:`, `${names(noBom)}. Ohne Stückliste gibt es keine Arbeitsgänge, der Auftrag fehlt in der Planung.`));
   if (leer.length) lines.push(line("l", "var(--bad)", `${leer.length} ${plural(leer.length, "Auftrag hat", "Aufträge haben")} eine Stückliste ohne Arbeitsgänge:`, `${names(leer)}. In Odoo Arbeitsgänge ergänzen.`));
   if (muster.length) lines.push(line("m", "var(--warn)", `${muster.length} ${plural(muster.length, "Auftrag läuft", "Aufträge laufen")} auf Musterwerten:`, `${names(muster)}. Maschine und Zeit sind noch nicht geprüft.`));
-  if (b.drafts > 0) lines.push(line("d", "var(--faint)", `${b.drafts} ${plural(b.drafts, "Fertigungsauftrag ist", "Fertigungsaufträge sind")} in Odoo noch im Entwurf`, "und deshalb nicht in der Planung."));
+  if (b.drafts > 0) lines.push(line("d", "var(--faint)", `${b.drafts} ${plural(b.drafts, "Fertigungsauftrag ist", "Fertigungsaufträge sind")} in Odoo noch im Entwurf`, "ohne bestätigten Kundenauftrag (oder vor Oktober 2026 angelegt) und deshalb nicht in der Planung."));
 
   return (
     <div className={`bom-hinweis note${noBom.length || leer.length ? " warn" : ""} rise`} style={{ "--i": 1 }}>
