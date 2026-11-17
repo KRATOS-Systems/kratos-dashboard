@@ -7,6 +7,7 @@ import AvView, { avUrgentCount } from "./Av.jsx";
 import BomHinweis from "./BomHinweis.jsx";
 import Vollstaendig from "./Vollstaendig.jsx";
 import Fruehwarnung from "./Fruehwarnung.jsx";
+import Planvorschlag from "./Planvorschlag.jsx";
 import { AV_ITEMS, AV_STATUS, AV_TEAM, isNewAv, avKey, avState, avSummary } from "./avLib.js";
 import { STAFF, ACTIVITIES, STAFF_DEFAULTS, responsible, avResponsible, sharedMachine } from "./staffLib.js";
 import Avatar from "./Avatar.jsx";
@@ -2775,6 +2776,20 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
     return null;
   }
 
+  // Planvorschlag übernehmen: der Reihe nach vor der genannten Position einfügen und speichern, wie beim Ziehen einer Karte
+  async function applyProposals(list) {
+    let cur = orders;
+    for (const p of list) {
+      const queue = cur.filter((o) => o.machine === p.machine && !o.done).sort(byPosition);
+      const at = p.beforeId != null ? queue.findIndex((o) => o.id === p.beforeId) : -1;
+      const next = applyMove(cur, [p.id], p.machine, at < 0 ? queue.length : at);
+      cur = next.orders;
+      setOrders(cur);
+      const r = await send("/api/orders/reorder", "POST", { machine: p.machine, ids: next.ids });
+      if (r) odooHint(r, true);
+    }
+  }
+
   // ---------- Noch nicht eingeplant ----------
   const poolCard = (
     <div className="card" id="pool">
@@ -2785,6 +2800,7 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
         </div>
         {poolOrders.length > 0 && <span className="pill mute">{poolOrders.length} Positionen</span>}
       </div>
+      <Planvorschlag reloadKey={fwKey} onApply={applyProposals} poolCount={poolOrders.length} />
       {poolOrders.length === 0 && (
         <div className="empty">
           <div className="ring">
