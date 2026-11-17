@@ -12,6 +12,8 @@ import Heute from "./Heute.jsx";
 import Freigaben from "./Freigaben.jsx";
 const Kennzahlen = lazy(() => import("./Kennzahlen.jsx"));
 const Extern = lazy(() => import("./Extern.jsx"));
+const LieferterminAnfrage = lazy(() => import("./LieferterminAnfrage.jsx"));
+const Abwesend = lazy(() => import("./Abwesend.jsx"));
 import FehlerMelden from "./FehlerMelden.jsx";
 // Zeichnung und 3D erst laden, wenn jemand sie öffnet (three.js ist groß)
 const DocsDialog = lazy(() => import("./PartDocs.jsx").then((m) => ({ default: m.DocsDialog })));
@@ -3695,6 +3697,10 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
       )}
       {tab === "ausl" && (
         <div className="rise" style={{ "--i": 3 }}>
+          <Suspense fallback={null}>
+            <LieferterminAnfrage />
+            <Abwesend reloadKey={fwKey} />
+          </Suspense>
           <Auslastung reloadKey={fwKey} />
         </div>
       )}

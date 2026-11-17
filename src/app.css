@@ -1672,3 +1672,18 @@ a.btn { text-decoration: none; }
 .ex-lang button.on { background: var(--ink); color: var(--bg); border-color: var(--ink); }
 .ex-subj { font-weight: 600; }
 .ex-body { margin: 0; white-space: pre-wrap; font: 12.5px/1.45 var(--f-body, inherit); max-height: 260px; overflow: auto; }
+
+/* Liefertermin für eine Anfrage (src/LieferterminAnfrage.jsx) */
+.lt { padding: 10px 14px; margin-bottom: 12px; font-size: 13px; display: grid; gap: 10px; }
+.lt .fg-title { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; background: none; border: 0; padding: 0; color: var(--ink); font: inherit; text-align: left; cursor: pointer; }
+.lt .fg-title b { font: 600 15px var(--f-display); }
+.lt-form { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; }
+.lt-form label { display: grid; gap: 2px; font-size: 11.5px; color: var(--muted); }
+.lt-form input, .lt-form select { font: inherit; font-size: 13px; padding: 4px 8px; border: 1px solid var(--line-strong); border-radius: 7px; background: var(--surface); color: var(--ink); width: 120px; }
+.lt-form .lt-check { display: flex; align-items: center; gap: 4px; }
+.lt-form .lt-check input { width: auto; }
+.lt-out { display: grid; gap: 8px; }
+.lt-best { font-size: 14px; }
+.lt-best b { font-weight: 700; }
+.abw { padding: 10px 14px; margin-bottom: 12px; font-size: 13px; }
+.abw ul { margin: 6px 0 0; padding: 0; list-style: none; display: flex; flex-wrap: wrap; gap: 4px 16px; }

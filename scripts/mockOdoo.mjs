@@ -298,6 +298,18 @@ if (process.env.MOCK_ENTWURF && process.env.MOCK_EXTERN) {
   T["mrp.workcenter"].push({ id: 3, name: "OBERFLÄCHENBEHANDLUNG (EXTERN)" });
   T["mrp.workorder"].push({ id: 8000, name: "Strahlen extern", sequence: 3, production_id: 1122, workcenter_id: 3, product_id: 2902, state: "blocked", duration_expected: 0, duration: 0 });
 }
+// Feiertage/Betriebsruhe und Abwesenheiten (nur mit MOCK_ABWESEND=1): Betriebsruhe in 8 und 9 Tagen (UTC wie Odoo), Aurel 3 Tage krank, Nino Urlaub beantragt
+if (process.env.MOCK_ABWESEND) {
+  T["resource.calendar.leaves"] = [
+    { id: 1, name: "Betriebsruhe", date_from: day(7) + " 23:00:00", date_to: day(9) + " 22:59:00", resource_id: false, time_type: "leave" },
+    { id: 2, name: "FA01307 - Fräsen", date_from: day(1) + " 08:00:00", date_to: day(1) + " 09:00:00", resource_id: 30, time_type: "other" },
+  ];
+  T["hr.leave"] = [
+    { id: 1, employee_id: 2, date_from: day(3) + " 07:00:00", date_to: day(5) + " 15:30:00", state: "validate", holiday_status_id: [2, "Krankheit"], number_of_days: 3 },
+    { id: 2, employee_id: 11, date_from: day(12) + " 07:00:00", date_to: day(12) + " 15:30:00", state: "confirm", holiday_status_id: [1, "Urlaub"], number_of_days: 1 },
+  ];
+  M2O["hr.leave"] = { employee_id: "hr.employee" };
+}
 const log = [];
 const nextId = (m) => Math.max(0, ...T[m].map((r) => r.id)) + 1;
 const byId = (m, id) => T[m].find((r) => r.id === id);

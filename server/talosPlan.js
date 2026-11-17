@@ -453,6 +453,24 @@ export function kiTools(locals) {
       },
     },
     {
+      name: "liefertermin_schaetzen",
+      description:
+        "Liefertermin für eine Anfrage oder ein Angebot: Wann könnten wir liefern, wenn der Auftrag heute käme? Rechnet mit der echten Planung je Maschine zwei Varianten: hinten anstellen (niemand verschiebt sich) und vorziehen (frühester Platz, ohne andere Aufträge zu verspäten). Liefertermin = Maschine fertig + extern + QS + 2 Werktage Puffer. Stunden angeben oder Zeichnungsnummer + Menge (dann aus der Kalkulation). Speichert nichts.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          stunden: { type: "number", exclusiveMinimum: 0, description: "Maschinenstunden gesamt" },
+          code: { type: "string", description: "Zeichnungsnummer, wenn die Stunden aus der Kalkulation kommen sollen" },
+          menge: { type: "integer", minimum: 1 },
+          extern_tage: { type: "integer", minimum: 0, maximum: 60, description: "Kalendertage extern (z. B. Eloxieren 7)" },
+          material_tage: { type: "integer", minimum: 0, maximum: 60, description: "Werktage, bis das Material da ist" },
+          qs: { type: "boolean", description: "Prüfung in der QS (Standard ja)" },
+        },
+        additionalProperties: false,
+      },
+      run: (args = {}) => need("liefertermin")(args),
+    },
+    {
       name: "extern_offen",
       description:
         "Extern & Wareneingang: offene Einkaufsbestellungen (Fremdfertigung, Lohnarbeit, Material), deren Wareneingang noch nicht validiert ist – mit Lieferant, zugesagtem und neuem Termin, überfällig seit, ob schon angefragt, welche Kundenaufträge daran hängen; dazu externe Arbeitsgänge (Strahlen, Schleifen, Härten …) ohne Bestellung und die Termintreue je Lieferant. Erste Wahl für „Was ist bei Lieferant X offen?“, „Welche Lieferungen sind überfällig?“, „Wo fehlt eine Bestellung?“.",

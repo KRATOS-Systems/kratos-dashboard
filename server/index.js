@@ -25,6 +25,9 @@ import registerQsBridge from "./qsBridge.js";
 import registerFreigaben from "./freigaben.js";
 import registerKennzahlen from "./kennzahlen.js";
 import registerExtern from "./extern.js";
+import registerLiefertermin from "./liefertermin.js";
+import registerAbwesenheit from "./abwesenheit.js";
+import registerMorgenbericht from "./morgenbericht.js";
 
 // Lokal dürfen Umgebungsvariablen in einer Datei .env stehen (nicht im Repository). Bei Hostinger gibt es sie nicht.
 try {
@@ -1218,6 +1221,9 @@ registerBde(app, db, staff);
 registerFreigaben(app, db, { orderOut: (r) => orderOut(r), planSettingsOut: () => planSettingsOut(), odooMachineMoves: (rows, to) => odooMachineMoves(rows, to) });
 registerKennzahlen(app, db);
 registerExtern(app, db, { orderOut: (r) => orderOut(r), planSettingsOut: () => planSettingsOut(), staffName });
+registerLiefertermin(app, db, { orderOut: (r) => orderOut(r), planSettingsOut: () => planSettingsOut() });
+registerAbwesenheit(app, db);
+registerMorgenbericht(app, db);
 registerFeedback(app, db);
 registerTalosChat(app);
 qsBridge.start();
