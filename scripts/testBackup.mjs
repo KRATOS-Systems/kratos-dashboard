@@ -82,8 +82,11 @@ try {
   r = await json("POST", "/api/backup/run");
   assert.equal(r.status, 200);
   const left = readdirSync(backupDir).filter((f) => /^dashboard-/.test(f));
-  const daily = left.filter((f) => f !== monthly);
-  assert.equal(daily.length, 14, left.join(","));
+  // Die 14 neuesten Tagesdateien bleiben; ältere nur, wenn sie ein Monatserster sind (liegt je nach Datum im
+  // 20-Tage-Fenster, z. B. am 16. bis 21. eines Monats). So hängt der Test nicht vom Kalendertag ab.
+  const daily = left.filter((f) => f !== monthly).sort().reverse();
+  assert.ok(daily.length >= 14, left.join(","));
+  assert.ok(daily.slice(14).every((f) => f.endsWith("-01.db")), left.join(","));
   assert.ok(left.includes(monthly));
   assert.ok(!left.includes(monthlyOld));
   assert.ok(!left.includes(midMonth));
