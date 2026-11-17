@@ -2,8 +2,8 @@
 //
 // - Reihenfolge: nach Liefertermin, das Dringendste zuerst. Jeder Vorschlag rechnet die vorherigen Vorschläge schon mit ein.
 // - Maschine: laut Arbeitsplan in Odoo, sonst die Maschine, auf der dasselbe Teil zuletzt lief (Wiederholteil), sonst werden alle
-//   Maschinen durchgerechnet (dann mit dem Vermerk "Maschine prüfen": ob das Teil dort gefertigt werden kann, entscheidet ein Mensch).
-// - Platz: jede Stelle der Maschine wird durchgerechnet, aber nie vor einer Position, die schon läuft. Bewertung wie beim Platz-Finden für Talos:
+//   Maschinen durchgerechnet (fast alle Teile können auf allen vier Maschinen laufen, die mit dem besten Termin gewinnt).
+// - Platz: jede Stelle der Maschine wird durchgerechnet, aber nie vor eine Position, die schon läuft oder vorne fixiert ist. Bewertung wie beim Platz-Finden für Talos:
 //   zuerst keinen anderen Auftrag neu verspäten, dann wenig zusätzliche Verspätungstage, dann der eigene Termin, dann das frühere Ende.
 // - Übernommen wird ein Vorschlag erst per Knopf im Planungsfenster (über die normale Reihenfolge-Speicherung, wie beim Ziehen einer Karte).
 // Gerechnet wird mit derselben Planungslogik wie im Zeitstrahl (server/talosPlan.js, src/planLogic.js).
@@ -54,7 +54,7 @@ export function planProposals(inp) {
       const queue = work.filter((x) => x.machine === mid && !x.done).sort(byPosition);
       // nie vor eine Position, die schon läuft
       let min = 0;
-      while (min < queue.length && started(queue[min])) min++;
+      while (min < queue.length && (started(queue[min]) || queue[min].pinned)) min++;
       for (let idx = min; idx <= queue.length; idx++) {
         const moved = applyMove(work, [o.id], mid, idx).orders;
         const after = ctx.compute(moved);

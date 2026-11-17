@@ -95,8 +95,10 @@ export default function registerFruehwarnung(app, db, helpers) {
       const avOpen = new Set();
       open.filter((o) => !LANE_IDS.includes(o.machine)).forEach((o) => avSummary(inputs.checks, o.id).open.forEach((x) => avOpen.add(x.label)));
       if (avOpen.size) reasons.push("Arbeitsvorbereitung offen: " + [...avOpen].join(", "));
-      const material = open.some((o) => /nicht verf/i.test(o.component_status || ""));
-      if (material) reasons.push("Material laut Odoo nicht verfügbar");
+      const matLate = open.filter((o) => o.material_date && o.material_date >= today && !(o.done_hours > 0)).sort((a, b) => b.material_date.localeCompare(a.material_date))[0];
+      const material = !!matLate || open.some((o) => /nicht verf/i.test(o.component_status || ""));
+      if (matLate) reasons.push(`Material kommt laut Einkauf am ${fmt(matLate.material_date)}${matLate.material_info ? " (" + matLate.material_info.split(",")[0] + ")" : ""}`);
+      else if (material) reasons.push("Material laut Odoo nicht verfügbar");
       const externTags = [...new Set(open.flatMap(tagsOf))];
       const extern = externTags.length > 0 || open.some((o) => o.machine === "extern" || o.machine === "extern_fert");
       if (extern) reasons.push(`Externe Bearbeitung${externTags.length ? ": " + externTags.join(", ") : ""}${g.externDays ? ` (${plural(g.externDays, "Tag", "Tage")})` : ""}`);

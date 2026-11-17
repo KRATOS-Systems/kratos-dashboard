@@ -9,6 +9,8 @@ import Vollstaendig from "./Vollstaendig.jsx";
 import Fruehwarnung from "./Fruehwarnung.jsx";
 import Planvorschlag from "./Planvorschlag.jsx";
 import Terminverlauf from "./Terminverlauf.jsx";
+import Auslastung from "./Auslastung.jsx";
+import Neuordnen from "./Neuordnen.jsx";
 import { AV_ITEMS, AV_STATUS, AV_TEAM, isNewAv, avKey, avState, avSummary } from "./avLib.js";
 import { STAFF, ACTIVITIES, STAFF_DEFAULTS, responsible, avResponsible, sharedMachine } from "./staffLib.js";
 import Avatar from "./Avatar.jsx";
@@ -115,7 +117,7 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
   const toast = useToast();
   const [orders, setOrders] = useState([]);
   // Schlüssel für die Frühwarnung: ändert sich mit jeder Änderung an der Planung, dann wird neu gerechnet
-  const fwKey = useMemo(() => orders.map((o) => [o.id, o.machine, o.position, o.hours, o.done_hours, o.done ? 1 : 0, o.due || "", o.extern_days, o.extern_start || ""].join(":")).join("|"), [orders]);
+  const fwKey = useMemo(() => orders.map((o) => [o.id, o.machine, o.position, o.hours, o.done_hours, o.done ? 1 : 0, o.due || "", o.extern_days, o.extern_start || "", o.pinned ? 1 : 0].join(":")).join("|"), [orders]);
   const [checks, setChecks] = useState(() => new Map()); // Arbeitsvorbereitung: Position|Punkt -> { status, due, note }
   // Zuständigkeiten: Stammbediener je Maschine, Rollen, Abweichungen je Position und Tätigkeit ("id|tätigkeit" -> Name)
   const [staff, setStaff] = useState(() => ({ defaults: { ...STAFF_DEFAULTS }, overrides: new Map(), info: [] }));
@@ -324,11 +326,14 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
     orders.forEach((o) => {
       if (o.done) return;
       const s = avSummary(checks, o.id);
-      if (!s.ready && s.readyDate) m.set(o.id, s.readyDate);
+      const mat = s.states.find((x) => x.id === "material");
+      // Material in der AV als bereit gemeldet: Der Termin aus dem Einkauf hält die Position dann nicht mehr zurück (wie im Server, talosPlan.js)
+      const material_ok = !!mat && (mat.status === "bereit" || mat.status === "entfaellt");
+      if ((!s.ready && s.readyDate) || material_ok) m.set(o.id, { av_ready: !s.ready && s.readyDate ? s.readyDate : undefined, material_ok });
     });
     return m;
   }, [orders, checks]);
-  const withAv = (list) => (avDates.size ? list.map((o) => (avDates.has(o.id) ? { ...o, av_ready: avDates.get(o.id) } : o)) : list);
+  const withAv = (list) => (avDates.size ? list.map((o) => (avDates.has(o.id) ? { ...o, ...avDates.get(o.id) } : o)) : list);
   const plan = useMemo(
     () => buildPlanDeps(withAv(viewOrders), rates, defaults, monday0, todayOff, free),
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1072,12 +1077,14 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
     const pred = it.o.after_id ? orders.find((x) => x.id === it.o.after_id && !x.done) : null;
     if (it.waitReason === "dep" && pred) return `Wartet auf ${posNo(pred)} (Arbeitsgang davor), bis ${fmtShort(dateOf(it.start))}.`;
     if (it.waitReason === "av") return `Wartet auf die Arbeitsvorbereitung, bereit ab ${fmtShort(dateOf(it.start))}.`;
+    if (it.waitReason === "material") return `Wartet auf Material aus dem Einkauf${it.o.material_info ? " (" + it.o.material_info + ")" : ""}, Start ab ${fmtShort(dateOf(it.start))}.`;
     return `Wartet bis ${fmtShort(dateOf(it.start))} (Start frühestens).`;
   };
   const waitShort = (it) => {
     const pred = it.o.after_id ? orders.find((x) => x.id === it.o.after_id && !x.done) : null;
     if (it.waitReason === "dep" && pred) return `wartet auf ${pred.part_label || posNo(pred)}`;
     if (it.waitReason === "av") return "wartet auf AV";
+    if (it.waitReason === "material") return "wartet auf Material";
     return `wartet bis ${fmtShort(dateOf(it.start))}`;
   };
 
@@ -1503,7 +1510,8 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
               <span className="pill mute">noch keine Maschine</span>
             )}
             {pp && <span className={`pill ${pp.cls}`}>{pp.text}</span>}
-            {wt && <span className="pill warn">{it.waitReason === "dep" ? "wartet auf Arbeitsgang" : it.waitReason === "av" ? "wartet auf AV" : "wartet auf Start"}</span>}
+            {o.pinned && <span className="pill mute" title="Plan neu ordnen verschiebt diese Position nicht">fixiert</span>}
+            {wt && <span className="pill warn">{it.waitReason === "dep" ? "wartet auf Arbeitsgang" : it.waitReason === "av" ? "wartet auf AV" : it.waitReason === "material" ? "wartet auf Material" : "wartet auf Start"}</span>}
             <span className={`pill ${sum.ready ? "ok" : "mute"}`}>AV {avDone}/{sum.states.length}</span>
             <MaterialBadge o={o} />
             {o.odoo_draft && <span className="pill warn" title="Der Fertigungsauftrag ist in Odoo noch im Entwurf. Freigegeben wird er in Odoo.">nicht freigegeben</span>}
@@ -1727,6 +1735,17 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
                   <Ico n="down" s={14} />
                 </button>
               </span>
+            )}
+            {onMachine && (
+              <button
+                type="button"
+                className={`btn${o.pinned ? " pinned" : ""}`}
+                aria-pressed={!!o.pinned}
+                onClick={() => patchOrder(o.id, { pinned: !o.pinned })}
+                title={o.pinned ? "Fixierung lösen: Plan neu ordnen darf die Position wieder verschieben" : "Fixieren: Plan neu ordnen und der Planvorschlag verschieben die Position nicht, sie bleibt auf dieser Maschine an diesem Platz"}
+              >
+                {o.pinned ? "Fixiert" : "Fixieren"}
+              </button>
             )}
             <span style={{ flex: 1 }} />
             {deleteButton(o)}
@@ -3549,6 +3568,9 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
         <button type="button" className={tab === "auf" ? "on" : ""} onClick={() => setTab("auf")}>
           Aufträge<span className="cnt">{groups.length}</span>
         </button>
+        <button type="button" className={tab === "ausl" ? "on" : ""} onClick={() => setTab("ausl")} title="Wie voll sind die Maschinen in den nächsten Wochen?">
+          Auslastung
+        </button>
         <button type="button" className={tab === "einst" ? "on" : ""} onClick={() => setTab("einst")}>
           Einstellungen
         </button>
@@ -3556,12 +3578,20 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
 
       {tab === "zeit" && (
         <>
-          <div className="rise" style={{ "--i": 3 }}>{timeline}</div>
+          <div className="rise" style={{ "--i": 3 }}>
+            <Neuordnen reloadKey={fwKey} onApplied={() => fetch("/api/orders").then((r) => r.json()).then((d) => setOrders(d.orders)).catch(() => {})} onOdoo={(r) => odooHint(r, true)} />
+            {timeline}
+          </div>
           <div className="rise" style={{ "--i": 4 }}>{poolCard}</div>
           <div className="rise" style={{ "--i": 5 }}>{boardCard}</div>
         </>
       )}
       {tab === "auf" && <div className="rise" style={{ "--i": 3 }}>{ordersCard}</div>}
+      {tab === "ausl" && (
+        <div className="rise" style={{ "--i": 3 }}>
+          <Auslastung reloadKey={fwKey} />
+        </div>
+      )}
       {tab === "einst" && <div className="rise" style={{ "--i": 3 }}>{settings}</div>}
 
       {draggedBar && (() => {

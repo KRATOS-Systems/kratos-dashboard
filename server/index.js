@@ -11,6 +11,8 @@ import registerOdooSync from "./odooSync.js";
 import registerFruehwarnung from "./fruehwarnung.js";
 import registerPlanvorschlag from "./planvorschlag.js";
 import setupDueHistory from "./dueHistory.js";
+import registerAuslastung from "./auslastung.js";
+import registerNeuordnen from "./neuordnen.js";
 import { staffName } from "../src/staffLib.js";
 import registerOdooFiles from "./odooFiles.js";
 import registerBde from "./bde.js";
@@ -165,6 +167,9 @@ const orderColumns = columnsOf();
   ["odoo_hours_applied", "INTEGER NOT NULL DEFAULT 0"],
   ["odoo_draft", "INTEGER NOT NULL DEFAULT 0"], // 1 = Fertigungsauftrag in Odoo noch im Entwurf (Kundenauftrag bestätigt, AV läuft)
   ["customer", "TEXT"], // Kunde laut Kundenauftrag in Odoo
+  ["material_date", "TEXT"], // Material laut Einkauf: Liefertermin der bestätigten Bestellung, Wareneingang offen (sonst leer)
+  ["material_info", "TEXT"], // Material laut Einkauf kurz, z. B. "P00601 Erwin Telle, Wareneingang offen, geplant 17.11."
+  ["pinned", "INTEGER NOT NULL DEFAULT 0"], // 1 = fixiert: Neu ordnen verschiebt die Position nicht
   ["sale_date", "TEXT"], // Auftragsdatum des Kundenauftrags (für das Alter in Tagen)
   ["qs_required", "INTEGER NOT NULL DEFAULT 1"],
   ["is_split", "INTEGER NOT NULL DEFAULT 0"],
@@ -378,6 +383,9 @@ const orderOut = (r) => ({
   due_original: r.due_shifts > 0 ? r.due_original || null : null,
   due_shifts: r.due_shifts || 0,
   customer: r.customer || null,
+  material_date: r.material_date || null,
+  material_info: r.material_info || null,
+  pinned: r.pinned === 1,
   sale_date: r.sale_date || null,
   qs_required: r.qs_required === 1,
   is_split: r.is_split === 1,
@@ -446,7 +454,7 @@ async function odooMachineMoves(rows, to) {
 
 app.put("/api/orders/:id", wrap(async (req, res) => {
   const id = Number(req.params.id);
-  const { order_no, hours, done_hours, due, done, machine, extern_tags, extern_days, extern_start, earliest_start, hours_plan, progress_date, qs_required, qs_days, from_machine, produced_date, checked_date, done_date, source, product, quantity, due_reason } = req.body || {};
+  const { order_no, hours, done_hours, due, done, machine, extern_tags, extern_days, extern_start, earliest_start, hours_plan, progress_date, qs_required, qs_days, from_machine, produced_date, checked_date, done_date, source, product, quantity, due_reason, pinned } = req.body || {};
   const sets = [];
   const values = [];
 
@@ -521,6 +529,11 @@ app.put("/api/orders/:id", wrap(async (req, res) => {
     }
     sets.push("done_hours = ?");
     values.push(done_hours);
+  }
+  if (pinned !== undefined) {
+    if (typeof pinned !== "boolean") return res.status(400).json({ error: "invalid pinned" });
+    sets.push("pinned = ?");
+    values.push(pinned ? 1 : 0);
   }
   if (due !== undefined) {
     if (due !== null && !isDate(due)) return res.status(400).json({ error: "invalid due" });
@@ -1157,6 +1170,8 @@ registerOdooSync(app, db, { isDate, nextPosition });
 registerFruehwarnung(app, db, { orderOut: (r) => orderOut(r), planSettingsOut: () => planSettingsOut(), dueChange: dueHistory.change });
 registerPlanvorschlag(app, db, { orderOut: (r) => orderOut(r), planSettingsOut: () => planSettingsOut() });
 dueHistory.register(app);
+registerAuslastung(app, db, { orderOut: (r) => orderOut(r), planSettingsOut: () => planSettingsOut() });
+registerNeuordnen(app, db, { orderOut: (r) => orderOut(r), planSettingsOut: () => planSettingsOut(), odooMachineMoves: (rows, to) => odooMachineMoves(rows, to) });
 registerOdooFiles(app, db);
 const staff = registerStaff(app, db);
 registerBde(app, db, staff);

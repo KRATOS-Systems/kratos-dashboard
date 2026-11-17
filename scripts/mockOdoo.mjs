@@ -231,7 +231,13 @@ if (process.env.MOCK_ENTWURF) {
     { id: 2905, name: "Führungsschlitten", default_code: "042-69-017", product_tmpl_id: 70 },
     { id: 2906, name: "TEST Arbeitsplan", default_code: false, product_tmpl_id: 70 }
   );
-  T["purchase.order"] = [{ id: 602, name: "P00602", origin: "A01446", state: "purchase", receipt_status: "pending", partner_id: 138, date_order: "2026-11-03 11:00:00" }];
+  T["purchase.order"] = [
+    { id: 602, name: "P00602", origin: "A01446", state: "purchase", receipt_status: "pending", partner_id: 138, date_order: "2026-11-03 11:00:00" },
+    // Material für Fertigungsaufträge: FA01334 bestellt, Ware kommt in 12 Tagen; FA01122 nur angefragt; FA01309 schon eingegangen
+    { id: 620, name: "P00620", origin: "FA01334", state: "purchase", receipt_status: "pending", partner_id: 138, date_order: ago(48), date_planned: day(12) + " 07:00:00" },
+    { id: 621, name: "P00621", origin: "FA01122, FA09999", state: "draft", receipt_status: false, partner_id: 138, date_order: ago(24), date_planned: day(3) + " 07:00:00" },
+    { id: 622, name: "P00622", origin: "FA01309", state: "purchase", receipt_status: "full", partner_id: 187, date_order: ago(72), date_planned: day(-1) + " 07:00:00" },
+  ];
   T["purchase.order.line"] = [];
   M2O["purchase.order"] = { partner_id: "res.partner" };
   M2O["purchase.order.line"] = { order_id: "purchase.order", product_id: "product.product" };

@@ -134,10 +134,21 @@ export function buildPlan(orders, rates, defaults, monday0, todayOff, free, depE
         const dep = o.after_id && depEnd.has(o.after_id) ? depEnd.get(o.after_id) : null;
         // Arbeitsvorbereitung: Der späteste Termin der offenen Punkte (av_ready) hält die Position zurück, bis alles da ist
         const avOff = o.av_ready ? daysBetween(monday0, o.av_ready) : null;
-        const floors = [earliest, dep, avOff].filter((v) => v != null);
+        // Material laut Einkauf (bestätigte Bestellung, Wareneingang offen): frühestens am Tag nach dem Liefertermin des Lieferanten.
+        // Gilt nicht, wenn die Position schon läuft oder das Material in der AV schon als bereit gemeldet ist (dann ist av_ready leer und material_ok gesetzt)
+        const matOff = o.material_date && !o.material_ok && !(baseDone > 0) && !o.progress_date ? daysBetween(monday0, o.material_date) + 1 : null;
+        const floors = [earliest, dep, avOff, matOff].filter((v) => v != null);
         const notBefore = floors.length ? Math.max(...floors) : null;
         const waits = notBefore != null && notBefore > t;
-        const waitReason = waits ? (avOff != null && avOff === notBefore ? "av" : dep != null && dep === notBefore ? "dep" : "earliest") : null;
+        const waitReason = waits
+          ? avOff != null && avOff === notBefore
+            ? "av"
+            : matOff != null && matOff === notBefore
+            ? "material"
+            : dep != null && dep === notBefore
+            ? "dep"
+            : "earliest"
+          : null;
         const start = skipFree(waits ? notBefore : t, free);
         const waitFrom = waits ? skipFree(t, free) : null;
         // Schon begonnen: liegt der Start in der Vergangenheit, beginnt der Balken dort (nur die erste Position der Maschine)

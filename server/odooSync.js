@@ -25,6 +25,8 @@
 //   die Maschine gelegt, auf der die Aufgabe in Odoo steht (sonst "Noch nicht eingeplant"). Was die App schon kennt, bleibt unberührt.
 // - Fräszeit: Die geplante Zeit der Fräsen-Arbeitsgänge in Odoo (aus dem Arbeitsplan der Stückliste) wird als Stunden übernommen, wenn bei der
 //   Position noch keine stehen, einmalig und ohne etwas zu überschreiben. Maschine und Zeit laut Odoo stehen als Hinweis an der Position.
+// - Material: Eine bestätigte Einkaufsbestellung, deren Herkunft die FA-Nummer nennt und deren Ware noch nicht eingegangen ist, hält die Position
+//   in der Planung bis zum Liefertermin des Lieferanten zurück (nur Termin, die App bestellt nichts). Ist das Material in der AV als bereit gemeldet, gilt es nicht.
 // Odoo wird nur gelesen, und nur wenn ODOO_URL und ODOO_API_KEY gesetzt sind.
 
 import { staffName } from "../src/staffLib.js";
@@ -136,6 +138,13 @@ export default function registerOdooSync(app, db, { isDate, nextPosition }) {
     };
     // Entwurf nur zu einem laufenden Kundenauftrag
     prods = prods.filter((p) => p.state !== "draft" || currentSale(p));
+    // Material laut Einkauf je Fertigungsauftrag (Bestellungen, deren Herkunft die FA-Nummer nennt). Nicht lesbar = ohne Materialtermin weiter
+    let material = new Map();
+    try {
+      material = await fetchMaterial(new Set(prods.map((p) => String(p.name).trim())));
+    } catch (err) {
+      console.error("Odoo-Abgleich: Einkauf (Material) nicht lesbar", err.message);
+    }
     // Geplante Fräszeit und Maschine je Fertigungsauftrag aus den Fräsen-Arbeitsgängen (Minuten laut Arbeitsplan, 0 = Odoo hat keine Zeit)
     const milling = new Map();
     const prodIds = prods.map((p) => p.id).filter(Number.isInteger);
@@ -174,6 +183,8 @@ export default function registerOdooSync(app, db, { isDate, nextPosition }) {
         sale_date: sale ? dayPart(sale.date_order) : null,
         current: currentSale(p),
         test: isTestText(p.origin) || isTestText(m2oName(p.product_id)),
+        material_date: (material.get(String(p.name).trim()) || {}).date || null,
+        material_info: (material.get(String(p.name).trim()) || {}).info || null,
         component_status: p.components_availability ? String(p.components_availability).slice(0, 60) : null,
         odoo_hours: mill && mill.minutes > 0 ? Math.round((mill.minutes / 60) * 100) / 100 : null,
         odoo_machine: mill ? mill.machine : null,
@@ -184,6 +195,42 @@ export default function registerOdooSync(app, db, { isDate, nextPosition }) {
         saleCancelled: !!sale && sale.state === "cancel",
       };
     });
+  }
+
+  // Material laut Einkauf: Bestellungen, deren Herkunft eine FA-Nummer nennt (z. B. "FA01356" oder "FA01344, FA01345").
+  //   bestätigt, Wareneingang offen -> date = Liefertermin des Lieferanten (spätester, wenn es mehrere gibt); die Planung startet frühestens danach
+  //   bestätigt, alles eingegangen  -> nur Info "Material eingegangen"
+  //   nur Anfrage (Entwurf)         -> nur Info "Material noch nicht bestellt", kein Termin (der Liefertermin einer Anfrage ist nicht verlässlich)
+  const fmtDay = (d) => `${d.slice(8, 10)}.${d.slice(5, 7)}.`;
+  async function fetchMaterial(refs) {
+    const out = new Map();
+    if (!refs.size) return out;
+    const since = new Date(Date.now() - 200 * 24 * 3600 * 1000).toISOString().slice(0, 10);
+    const pos = await odoo("purchase.order", "search_read", {
+      domain: [["origin", "ilike", "FA0"], ["state", "in", ["draft", "sent", "to approve", "purchase", "done"]], ["date_order", ">=", since + " 00:00:00"]],
+      fields: ["name", "origin", "state", "receipt_status", "date_planned", "partner_id"],
+      limit: 2000,
+    });
+    const by = new Map();
+    pos.forEach((p) => {
+      (String(p.origin || "").match(/\bFA\d{4,}\b/g) || []).forEach((fa) => {
+        if (!refs.has(fa)) return;
+        if (!by.has(fa)) by.set(fa, []);
+        by.get(fa).push(p);
+      });
+    });
+    by.forEach((list, fa) => {
+      const who = (p) => `${p.name}${Array.isArray(p.partner_id) ? " " + String(p.partner_id[1]).split(",")[0].trim() : ""}`;
+      const ordered = list.filter((p) => p.state === "purchase" || p.state === "done");
+      const pending = ordered.filter((p) => p.receipt_status !== "full" && dayPart(p.date_planned));
+      if (pending.length) {
+        const last = pending.reduce((a, b) => (dayPart(b.date_planned) > dayPart(a.date_planned) ? b : a));
+        const d = dayPart(last.date_planned);
+        out.set(fa, { date: d, info: `${who(last)}, Wareneingang offen, geplant ${fmtDay(d)}` });
+      } else if (ordered.length) out.set(fa, { date: null, info: `${who(ordered[0])}, Material eingegangen` });
+      else out.set(fa, { date: null, info: `${who(list[0])}, Material noch nicht bestellt (Anfrage)` });
+    });
+    return out;
   }
 
   // Fertigungsaufträge im Entwurf, die die App NICHT übernimmt (Kundenauftrag nicht bestätigt oder Altlast vor DRAFT_SINCE): sie werden nur gezählt,
@@ -406,6 +453,7 @@ export default function registerOdooSync(app, db, { isDate, nextPosition }) {
     const close = db.prepare("UPDATE orders SET done = 1, done_date = COALESCE(done_date, date('now')) WHERE odoo_ref = ? OR parent_ref = ?");
     const hint = db.prepare("UPDATE orders SET odoo_hours = ?, odoo_machine = ?, odoo_bom = ? WHERE odoo_ref = ? AND done = 0");
     const setDraft = db.prepare("UPDATE orders SET odoo_draft = ?, customer = COALESCE(?, customer), sale_date = COALESCE(?, sale_date) WHERE (odoo_ref = ? OR parent_ref = ?) AND done = 0");
+    const setMaterial = db.prepare("UPDATE orders SET material_date = ?, material_info = ? WHERE (odoo_ref = ? OR parent_ref = ?) AND done = 0");
     const takeHours = db.prepare("UPDATE orders SET hours = ?, odoo_hours_applied = 1 WHERE odoo_ref = ? AND done = 0 AND is_split = 0 AND odoo_hours_applied = 0 AND (hours IS NULL OR hours = 0)");
     const seen = db.prepare("INSERT OR IGNORE INTO odoo_seen (odoo_id, first_seen) VALUES (?, ?)");
     const seenOld = db.prepare("INSERT OR IGNORE INTO odoo_seen (odoo_id, first_seen) VALUES (?, 'baseline')");
@@ -449,6 +497,7 @@ export default function registerOdooSync(app, db, { isDate, nextPosition }) {
       // Fräszeit laut Odoo: immer als Hinweis merken, als Stunden nur einmal und nur bei leeren Stunden (geteilte Positionen haben eigene Stunden)
       [...plan.created, ...plan.updated].forEach((i) => {
         setDraft.run(i.draft ? 1 : 0, i.customer || null, i.sale_date || null, i.odoo_ref, i.odoo_ref);
+        if (i.material_date !== undefined) setMaterial.run(i.material_date, i.material_info, i.odoo_ref, i.odoo_ref);
         if (i.odoo_hours === undefined) return;
         hint.run(i.odoo_hours, i.odoo_machine, i.odoo_bom || null, i.odoo_ref);
         if (i.odoo_hours > 0 && i.odoo_hours <= MAX_TAKE_HOURS) takeHours.run(i.odoo_hours, i.odoo_ref);
