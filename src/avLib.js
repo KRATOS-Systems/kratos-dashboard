@@ -34,6 +34,7 @@ export const avState = (checks, id, item) => checks.get(avKey(id, item)) || { st
 export const avStarted = (checks, id) =>
   AV_ITEMS.some((it) => {
     const s = avState(checks, id, it.id);
+    if (s.auto) return false; // automatisch aus QS/Odoo gesetzt (Prüfplan, EMPB): zählt nicht als bearbeitet
     return s.status !== AV_DEFAULT[it.id] || !!s.due || !!(s.note && s.note.trim());
   });
 // Aus Odoo neu übernommen: "NEU" in der Arbeitsvorbereitung, bis dort etwas bearbeitet wurde
