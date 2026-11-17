@@ -8,6 +8,7 @@ import registerPartImages from "./partImages.js";
 import registerAutoBackup from "./backupAuto.js";
 import registerFeedback from "./feedback.js";
 import registerOdooSync from "./odooSync.js";
+import registerFruehwarnung from "./fruehwarnung.js";
 import registerOdooFiles from "./odooFiles.js";
 import registerBde from "./bde.js";
 import registerStaff from "./staff.js";
@@ -1126,6 +1127,7 @@ app.post("/api/restore", (req, res) => {
 registerAutoBackup(app, db, { dbPath: DB_PATH });
 registerPartImages(app, db);
 registerOdooSync(app, db, { isDate, nextPosition });
+registerFruehwarnung(app, db, { orderOut: (r) => orderOut(r), planSettingsOut: () => planSettingsOut() });
 registerOdooFiles(app, db);
 const staff = registerStaff(app, db);
 registerBde(app, db, staff);
