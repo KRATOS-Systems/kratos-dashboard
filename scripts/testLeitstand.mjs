@@ -123,6 +123,31 @@ try {
   assert.notEqual(moved.machine, "m1");
   ok("Mit „auch Maschine wechseln“ wandern Positionen verspäteter Aufträge auf freie Maschinen, ohne den Haken nicht");
 
+  // 5b. M1 ist eingeschränkt: von selbst legt die App ein Teil nur dorthin, wenn es dort gehen kann
+  for (const mid of ["dmu40", "dmu50", "h800u"]) await mk("V-" + mid, mid, 300, day(80));
+  const q1 = await mk("Q1", "dmu50", 10, day(4));
+  const q1Late = await api("GET", "/api/neuordnen?wechseln=1");
+  assert.ok(!q1Late.wechsel.some((w) => w.nach === "M1"), "ohne Freigabe nicht auf die M1: " + JSON.stringify(q1Late.wechsel));
+  let pv1 = await api("GET", "/api/planvorschlag");
+  await mk("Q2", null, 8, day(5));
+  pv1 = await api("GET", "/api/planvorschlag");
+  assert.notEqual(pv1.vorschlaege.find((x) => x.source === "Q2").machine, "m1", JSON.stringify(pv1.vorschlaege));
+  await api("PUT", `/api/orders/${q1}`, { restricted_ok: true });
+  const q1Ok = await api("GET", "/api/neuordnen?wechseln=1");
+  assert.ok(q1Ok.wechsel.some((w) => w.source === "Q1" && w.nach === "M1"), JSON.stringify(q1Ok.wechsel));
+  // Die anderen drei Maschinen vorne zu (alles fixiert, hinten 300 h): Q2 wäre dort zu spät, auf der M1 pünktlich
+  const pinnedIds = (await api("GET", "/api/orders")).orders.filter((x) => !x.done && ["dmu40", "dmu50", "h800u"].includes(x.machine) && !x.pinned).map((x) => x.id);
+  for (const id of pinnedIds) await api("PUT", `/api/orders/${id}`, { pinned: true });
+  pv1 = await api("GET", "/api/planvorschlag");
+  assert.notEqual(pv1.vorschlaege.find((x) => x.source === "Q2").machine, "m1", "ohne Haken auch dann nicht auf die M1");
+  const q2 = (await api("GET", "/api/orders")).orders.find((o) => o.source === "Q2");
+  await api("PUT", `/api/orders/${q2.id}`, { restricted_ok: true });
+  pv1 = await api("GET", "/api/planvorschlag");
+  assert.equal(pv1.vorschlaege.find((x) => x.source === "Q2").machine, "m1", JSON.stringify(pv1.vorschlaege));
+  ok("Die M1 ist eingeschränkt: Neu ordnen und Planvorschlag legen ein Teil nur mit „passt auf M1“ (oder Odoo, Wiederholteil) dorthin");
+  for (const id of pinnedIds) await api("PUT", `/api/orders/${id}`, { pinned: false });
+  for (const o of (await api("GET", "/api/orders")).orders.filter((x) => /^(V-|Q[12]$)/.test(x.source || ""))) await api("DELETE", `/api/orders/${o.id}`);
+
   // 6. Material aus dem Einkauf: bestätigte Bestellung mit offenem Wareneingang hält die Position bis zum Liefertermin des Lieferanten zurück
   r = await api("POST", "/api/odoo/sync", { dryRun: false });
   assert.equal(r.status, 200, JSON.stringify(r));

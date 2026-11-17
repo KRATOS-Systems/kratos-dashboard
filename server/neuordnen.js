@@ -8,7 +8,8 @@
 //   1. Reihenfolge je Maschine: die übrigen Positionen nach Liefertermin, danach wird jede einzeln an jede freie Stelle probiert
 //      und dort gelassen, wo es besser ist (lokale Suche)
 //   2. Maschine wechseln (abschaltbar): Positionen von Aufträgen, die zu spät fertig werden, werden auf die anderen Maschinen probiert.
-//      Fast alle Teile können auf allen vier Maschinen laufen. Arbeitsgänge einer Kette (AG …) bleiben auf ihrer Maschine.
+//      Auf eine eingeschränkte Maschine (M1) nur, wenn klar ist, dass das Teil dort geht (server/maschinenRegel.js).
+//      Arbeitsgänge einer Kette (AG …) bleiben auf ihrer Maschine.
 // Bewertung (kleiner ist besser): verspätete Aufträge x 1000 + Verspätungstage x 10 + Summe der Fertigstellungen x 0,01.
 // Übernommen wird wie beim Ziehen der Karten: Reihenfolge und Maschine speichern, in Odoo stellt sich der noch nicht begonnene Arbeitsplan mit um.
 
@@ -16,6 +17,7 @@ import { createHash } from "node:crypto";
 import { loadPlanInputs, makeContext } from "./talosPlan.js";
 import { MACHINES, daysBetween } from "../src/lib.js";
 import { applyMove, byPosition, groupLabelOf } from "../src/planLogic.js";
+import { makeAllowed } from "./maschinenRegel.js";
 
 const IDS = MACHINES.map((m) => m.id);
 const short = (id) => (MACHINES.find((m) => m.id === id) || {}).short || id;
@@ -43,7 +45,7 @@ function score(res) {
 export function stampOf(orders) {
   const rows = orders
     .filter((o) => !o.done)
-    .map((o) => [o.id, o.machine, o.position, o.hours, o.done_hours, o.due, o.pinned ? 1 : 0, o.earliest_start, o.progress_date].join(":"))
+    .map((o) => [o.id, o.machine, o.position, o.hours, o.done_hours, o.due, o.pinned ? 1 : 0, o.restricted_ok ? 1 : 0, o.earliest_start, o.progress_date].join(":"))
     .sort();
   return createHash("sha1").update(rows.join("|")).digest("hex").slice(0, 16);
 }
@@ -59,6 +61,7 @@ export function reorderPlan(inp, { wechseln = true } = {}) {
     return orders.map((o) => (pos.has(o.id) ? { ...o, machine: mid, position: pos.get(o.id) } : o));
   };
 
+  const fits = makeAllowed(inp.orders);
   const before = ctx.compute(inp.orders);
   const s0 = score(before);
   let work = inp.orders;
@@ -121,7 +124,7 @@ export function reorderPlan(inp, { wechseln = true } = {}) {
           const o = it.o;
           if (!lateKeys.has(o.source || o.order_no || `#${o.id}`) || fixed(o) || chained(o)) continue;
           for (const mid of IDS) {
-            if (mid === o.machine) continue;
+            if (mid === o.machine || !fits(o, mid)) continue;
             const q = queueOf(work, mid).filter((x) => x.id !== o.id);
             // Einfügen nach den festen Positionen vorne, vor der ersten freien mit späterem Liefertermin
             let idx = 0;

@@ -117,7 +117,7 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
   const toast = useToast();
   const [orders, setOrders] = useState([]);
   // Schlüssel für die Frühwarnung: ändert sich mit jeder Änderung an der Planung, dann wird neu gerechnet
-  const fwKey = useMemo(() => orders.map((o) => [o.id, o.machine, o.position, o.hours, o.done_hours, o.done ? 1 : 0, o.due || "", o.extern_days, o.extern_start || "", o.pinned ? 1 : 0].join(":")).join("|"), [orders]);
+  const fwKey = useMemo(() => orders.map((o) => [o.id, o.machine, o.position, o.hours, o.done_hours, o.done ? 1 : 0, o.due || "", o.extern_days, o.extern_start || "", o.pinned ? 1 : 0, o.restricted_ok ? 1 : 0].join(":")).join("|"), [orders]);
   const [checks, setChecks] = useState(() => new Map()); // Arbeitsvorbereitung: Position|Punkt -> { status, due, note }
   // Zuständigkeiten: Stammbediener je Maschine, Rollen, Abweichungen je Position und Tätigkeit ("id|tätigkeit" -> Name)
   const [staff, setStaff] = useState(() => ({ defaults: { ...STAFF_DEFAULTS }, overrides: new Map(), info: [] }));
@@ -1746,6 +1746,12 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
               >
                 {o.pinned ? "Fixiert" : "Fixieren"}
               </button>
+            )}
+            {o.machine !== "m1" && (
+              <label className="chkline" title="Die M1 kann nicht alle Teile. Planvorschlag und Plan neu ordnen legen ein Teil nur auf die M1, wenn es dort schon lief, Odoo die M1 nennt oder hier angehakt ist.">
+                <input type="checkbox" checked={!!o.restricted_ok} onChange={(ev) => patchOrder(o.id, { restricted_ok: ev.target.checked })} />
+                passt auf M1
+              </label>
             )}
             <span style={{ flex: 1 }} />
             {deleteButton(o)}
