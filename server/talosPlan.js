@@ -10,6 +10,7 @@ import { MACHINES, addDays, mondayOf, daysBetween, todayStr, DEFAULT_WEEK_CAPACI
 import { buildPlanDeps, buildGroups, applyMove, byPosition, groupKeyOf, groupLabelOf } from "../src/planLogic.js";
 import { avKey, avSummary, AV_STATUS } from "../src/avLib.js";
 import { chatTools } from "./chatPlan.js";
+import { liveStand } from "./maschinenLive.js";
 
 const MAX_TEXT = 60000;
 const round1 = (x) => (x == null ? null : Math.round(x * 10) / 10);
@@ -450,6 +451,17 @@ export function kiTools(locals) {
       run: ({ art } = {}) => {
         const list = need("freigaben").offen().filter((f) => !art || f.art === art);
         return { anzahl: list.length, freigaben: list.slice(0, 40).map(kurz), ...(list.length > 40 ? { hinweis: (list.length - 40) + " weitere" } : {}) };
+      },
+    },
+    {
+      name: "maschinen_live",
+      description:
+        "Was die Maschinen gerade wirklich tun (Live-Daten der Steuerungen über den Maschinen-Dienst): läuft, unterbrochen, Störung (mit Fehlertext), bereit, seit wann, Programm, Werkzeug, Vorschub. Leer, wenn der Dienst nicht sendet.",
+      inputSchema: { type: "object", properties: {}, additionalProperties: false },
+      run: () => {
+        const m = liveStand();
+        const list = Object.values(m).map((x) => ({ maschine: (MACHINES.find((y) => y.id === x.id) || {}).short || x.id, zustand: x.zustand, seit: x.seit, programm: x.programm || undefined, werkzeug: x.werkzeug ?? undefined, vorschub_prozent: x.vorschub ?? undefined, fehler: x.fehler && x.fehler.length ? x.fehler : undefined }));
+        return list.length ? { stand: new Date().toISOString(), maschinen: list } : { hinweis: "Keine Live-Daten: Der Maschinen-Dienst sendet gerade nicht (oder ist nicht eingerichtet)." };
       },
     },
     {

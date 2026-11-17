@@ -35,6 +35,8 @@ const env = {
   EXTERN_AUTO: "0",
   SOLLIST_AUTO: "0",
   ABWESENHEIT_AUTO: "0",
+  MASCHINEN_KEY: "m".repeat(20),
+  TALOS_PLAN_SECRET: "t".repeat(30),
 };
 // Kalkulation: 89058665 kalkuliert (4 h für 60 Stk auf der M1)
 const kalk = createServer((req, res) => {
@@ -140,6 +142,17 @@ try {
   // Pakete mit Warnung oder anderer Art bleiben offen
   assert.ok(all.filter((x) => x.status === "offen" && x.art === "av").every((x) => x.daten.kategorie !== "av_historie" || (x.daten.warnungen || []).length));
   ok("Autopilot: einschalten erst nach 10 Entscheidungen mit ≥ 90 %, nur die Leitung; dann gibt die App diese Art selbst frei (Verlauf „Autopilot“)");
+
+  // 4. Live: Störung an der DMU 50 kommt in „Heute zu tun“, Talos sieht den Live-Zustand
+  r = await api("x", "POST", "/api/maschinen/eingang", { maschinen: [{ id: "dmu50", zustand: "stoerung", seit: new Date().toISOString(), fehler: ["Not-Aus betätigt"] }, { id: "dmu40", zustand: "laeuft", programm: "4711.H" }] }, { "X-Maschinen-Key": "m".repeat(20) });
+  assert.equal(r.status, 200, JSON.stringify(r));
+  const h = await api("x", "GET", "/api/heute");
+  const st = h.items.find((i) => i.id === "stoerung");
+  assert.ok(st && st.tone === "bad" && /DMU 50 meldet eine Störung/.test(st.text) && /Not-Aus/.test(st.hint), JSON.stringify(h.items));
+  const tc = await fetch(`http://localhost:3084/mcp/${"t".repeat(30)}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "maschinen_live", arguments: {} } }) }).then((x) => x.json());
+  const ml = JSON.parse(tc.result.content[0].text);
+  assert.deepEqual(ml.maschinen.map((x) => x.maschine + ":" + x.zustand).sort(), ["DMU 40 EVO:laeuft", "DMU 50:stoerung"]);
+  ok("Live: Störung einer Maschine steht oben in „Heute zu tun“; Talos sieht, was die Maschinen gerade tun");
 
   console.log(`Alle ${n} Prüfungen bestanden.`);
 } catch (err) {
