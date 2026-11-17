@@ -14,6 +14,7 @@ import registerStaff from "./staff.js";
 import registerTalosPlan from "./talosPlan.js";
 import registerTalosChat from "./talosChat.js";
 import registerLogin from "./login.js";
+import registerQsBridge from "./qsBridge.js";
 
 // Lokal dürfen Umgebungsvariablen in einer Datei .env stehen (nicht im Repository). Bei Hostinger gibt es sie nicht.
 try {
@@ -210,9 +211,13 @@ const app = express();
 // Planung für Talos als MCP-Server (nur lesen); vor dem Passwortschutz, eigener Schutz über TALOS_PLAN_SECRET
 registerTalosPlan(app, db, { orderOut: (r) => orderOut(r), planSettingsOut: () => planSettingsOut() });
 
+// Verbindung zu QS (Prüfplan/EMPB der Arbeitsvorbereitung); vor dem Passwortschutz, eigener Schutz über den Schlüssel (server/qsBridge.js)
+const qsBridge = registerQsBridge(app, db, { orderOut: (r) => orderOut(r), planSettingsOut: () => planSettingsOut() });
+
 // Passwortschutz mit eigener Anmeldeseite (server/login.js): Ist APP_PASSWORD gesetzt (z. B. in den Umgebungsvariablen bei Hostinger),
 // fragt die App beim Öffnen nach dem Passwort. Ohne Variable (lokal) ist alles offen.
 registerLogin(app, { user: process.env.APP_USER || "kratos", password: process.env.APP_PASSWORD || "", distPath: DIST_PATH });
+qsBridge.afterLogin();
 
 app.use(cors());
 app.use(express.json({ limit: "10mb" }));
@@ -975,7 +980,7 @@ app.post("/api/orders/split-many", (req, res) => {
 
 // Arbeitsvorbereitung lesen und ändern
 app.get("/api/av", (req, res) => {
-  res.json({ checks: db.prepare("SELECT order_id, item, status, due, note, assignee FROM av_checks").all() });
+  res.json({ checks: db.prepare("SELECT order_id, item, status, due, note, assignee, auto FROM av_checks").all() });
 });
 
 function saveAv(orderId, item, patch) {
@@ -992,8 +997,9 @@ function saveAv(orderId, item, patch) {
     assignee: patch.assignee !== undefined ? (patch.assignee === null || patch.assignee === "" ? null : patch.assignee) : cur.assignee,
   };
   db.prepare(
-    `INSERT INTO av_checks (order_id, item, status, due, note, assignee, updated_at) VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
-     ON CONFLICT (order_id, item) DO UPDATE SET status = excluded.status, due = excluded.due, note = excluded.note, assignee = excluded.assignee, updated_at = excluded.updated_at`
+    // Von Hand geändert: nicht mehr automatisch (QS-Verbindung überschreibt den Punkt dann nie)
+    `INSERT INTO av_checks (order_id, item, status, due, note, assignee, updated_at, auto) VALUES (?, ?, ?, ?, ?, ?, datetime('now'), 0)
+     ON CONFLICT (order_id, item) DO UPDATE SET status = excluded.status, due = excluded.due, note = excluded.note, assignee = excluded.assignee, updated_at = excluded.updated_at, auto = 0`
   ).run(orderId, item, next.status, next.due, next.note, next.assignee);
   return { order_id: orderId, item, ...next };
 }
@@ -1119,6 +1125,7 @@ const staff = registerStaff(app, db);
 registerBde(app, db, staff);
 registerFeedback(app, db);
 registerTalosChat(app);
+qsBridge.start();
 
 if (existsSync(DIST_PATH)) {
   app.use(express.static(DIST_PATH));
