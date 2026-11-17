@@ -96,10 +96,11 @@ const T = {
     { id: 14, name: "Thomas", user_id: false, barcode: false, pin: false, resource_calendar_id: 1, total_overtime: 0 },
   ],
   "mrp.workcenter": [
-    { id: 1, name: "FRÄSEN" },
+    // mit MOCK_POOL_NEU=1 heißen die Sammelplätze wie seit dem 17.11.2026 in Odoo
+    { id: 1, name: process.env.MOCK_POOL_NEU ? "Fräsen (Maschine offen)" : "FRÄSEN" },
     { id: 5, name: "QUALITÄTSSICHERUNG (QS)" },
     { id: 6, name: "CAM-PROGRAMMIERUNG" },
-    { id: 10, name: "RÜSTEN" },
+    { id: 10, name: process.env.MOCK_POOL_NEU ? "Rüsten (Maschine offen)" : "RÜSTEN" },
     { id: 14, name: "DMU 40 EVO" },
     { id: 16, name: "DMU 40 EVO Rüsten" },
     { id: 15, name: "DMG M1" },

@@ -9,6 +9,9 @@ import assert from "node:assert/strict";
 
 const ODOO_PORT = 8071;
 const APP_PORT = 3055;
+// Namen der Sammelplätze im Test-Odoo: wie früher (FRÄSEN, RÜSTEN) oder mit MOCK_POOL_NEU=1 wie seit dem 17.11.2026 in Odoo
+const POOL_F = process.env.MOCK_POOL_NEU ? "Fräsen (Maschine offen)" : "FRÄSEN";
+const POOL_R = process.env.MOCK_POOL_NEU ? "Rüsten (Maschine offen)" : "RÜSTEN";
 const dir = mkdtempSync(path.join(tmpdir(), "laufzeit-"));
 const env = {
   ...process.env,
@@ -159,9 +162,12 @@ try {
   // Die Zeiten stehen als interne Notizen im Fertigungsauftrag, nichts anderes in Odoo wurde beschrieben
   const state = await odoo("/__state");
   const notes = state["mail.message"].filter((m) => m.model === "mrp.production" && m.res_id === 1307).map((m) => m.body.replace(/<[^>]+>/g, ""));
-  assert.ok(notes.includes("Aufspannungen (FRÄSEN): 2 (Aurel Rama, " + new Date().toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric", timeZone: "Europe/Berlin" }) + ")"), notes.join(" | "));
-  assert.equal(notes.filter((t) => t.startsWith("Laufzeit Aufspannung 1 (FRÄSEN):")).length, 2);
-  assert.ok(notes.some((t) => /^Laufzeit Aufspannung 2 \(FRÄSEN\): 12:00 Min:Sek für 2 Teile = 6:00 je Stück \(Aurel Rama, \d\d\.\d\d\.\d{4}\)$/.test(t)), notes.join(" | "));
+  assert.ok(notes.includes("Aufspannungen (" + POOL_F + "): 2 (Aurel Rama, " + new Date().toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric", timeZone: "Europe/Berlin" }) + ")"), notes.join(" | "));
+  assert.equal(notes.filter((t) => t.startsWith("Laufzeit Aufspannung 1 (" + POOL_F + "):")).length, 2);
+  assert.ok(
+    notes.some((t) => t.startsWith("Laufzeit Aufspannung 2 (" + POOL_F + "): 12:00 Min:Sek für 2 Teile = 6:00 je Stück (Aurel Rama, ") && /\(Aurel Rama, \d\d\.\d\d\.\d{4}\)$/.test(t)),
+    notes.join(" | ")
+  );
   const wlog = (await odoo("/__log")).map((l) => l.call).filter((c) => /\.(write|create)\(/.test(c));
   assert.deepEqual(wlog, ['mrp.workorder.write(6533, {"duration":20})'], "nur der Testaufbau (gestempelte Dauer) schreibt direkt");
   ok("Anzahl und 3 Zeilen für Aufspannung 1 und 2 stehen als Notizen im Fertigungsauftrag; die App schreibt sonst nichts in Odoo");
@@ -239,7 +245,7 @@ try {
   // Weiterer Arbeitsschritt auf einer anderen Maschine (hier: nach der ersten Spannung wird entschieden)
   r = await api("GET", "/api/bde/schritt?productionId=1307");
   assert.equal(r.status, 200);
-  assert.deepEqual(r.machines.map((m) => m.name).sort(), ["DMG M1", "DMU 40 EVO", "DMU 50", "FRÄSEN"]);
+  assert.deepEqual(r.machines.map((m) => m.name).sort(), ["DMG M1", "DMU 40 EVO", "DMU 50", POOL_F].sort());
   ok("Für den weiteren Arbeitsschritt stehen alle Maschinen mit Rüst-Arbeitsplatz zur Wahl");
   r = await api("POST", "/api/bde/schritt", { productionId: 1307, machineId: 999 });
   assert.equal(r.status, 400);
@@ -247,8 +253,8 @@ try {
   assert.equal(r.status, 200, JSON.stringify(r));
   assert.deepEqual(r.production.steps.map((x) => [x.step, x.machine, x.state]), [
     ["Programmierung", "CAM-PROGRAMMIERUNG", "done"],
-    ["Rüsten", "RÜSTEN", "done"],
-    ["Fräsen", "FRÄSEN", "done"],
+    ["Rüsten", POOL_R, "done"],
+    ["Fräsen", POOL_F, "done"],
     ["Rüsten", "DMU 40 EVO Rüsten", "blocked"],
     ["Fräsen", "DMU 40 EVO", "blocked"],
     ["QS", "QUALITÄTSSICHERUNG (QS)", "blocked"],
@@ -280,7 +286,7 @@ try {
   assert.ok(alle.some((t) => t.startsWith("Laufzeit Aufspannung 1 (DMU 40 EVO): 5:10 Min:Sek")), alle.join(" | "));
   // das erste Fräsen (FRÄSEN) behält seine eigenen Zeiten
   st = await api("GET", "/api/bde/laufzeit?workorderId=6533");
-  assert.equal(st.machine, "FRÄSEN");
+  assert.equal(st.machine, POOL_F);
   assert.equal(st.rows.length, 2);
   ok("Laufzeiten werden je Maschine geführt: Aufspannung 1 auf DMU 40 EVO neben den zwei Aufspannungen auf FRÄSEN");
 
@@ -433,11 +439,11 @@ try {
 
   // Maschinen, die nur nach ihrem Typ heißen, laufen nebenher wie der Sammelplatz FRÄSEN; "… Rüsten" bleibt Personenarbeit
   const { kindOf, labelOf, stepOf } = await import("../server/bde.js");
-  for (const m of ["FRÄSEN", "DMU 40 EVO", "DMG M1", "POS H 800 U", "DMU 50"]) {
+  for (const m of ["FRÄSEN", "Fräsen (Maschine offen)", "DMU 40 EVO", "DMG M1", "POS H 800 U", "DMU 50"]) {
     assert.equal(kindOf(m), "maschine", m);
     assert.equal(labelOf(m), "Fräsen", m);
   }
-  for (const m of ["DMU 40 EVO Rüsten", "DMG M1 Rüsten", "RÜSTEN", "CAM-PROGRAMMIERUNG", "QUALITÄTSSICHERUNG (QS)"]) assert.equal(kindOf(m), "person", m);
+  for (const m of ["DMU 40 EVO Rüsten", "DMG M1 Rüsten", "RÜSTEN", "Rüsten (Maschine offen)", "CAM-PROGRAMMIERUNG", "QUALITÄTSSICHERUNG (QS)"]) assert.equal(kindOf(m), "person", m);
   assert.equal(labelOf("DMU 40 EVO Rüsten"), "Rüsten");
   assert.equal(stepOf("Programmlaufzeit"), null);
   ok("Maschinen-Arbeitsplätze (DMU 40 EVO, DMG M1, POS H 800 U, DMU 50) laufen nebenher wie FRÄSEN, die „… Rüsten“-Arbeitsplätze zählen als Personenzeit");
