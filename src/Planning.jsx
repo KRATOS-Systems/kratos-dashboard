@@ -8,6 +8,7 @@ import BomHinweis from "./BomHinweis.jsx";
 import Vollstaendig from "./Vollstaendig.jsx";
 import Fruehwarnung from "./Fruehwarnung.jsx";
 import Planvorschlag from "./Planvorschlag.jsx";
+import Terminverlauf from "./Terminverlauf.jsx";
 import { AV_ITEMS, AV_STATUS, AV_TEAM, isNewAv, avKey, avState, avSummary } from "./avLib.js";
 import { STAFF, ACTIVITIES, STAFF_DEFAULTS, responsible, avResponsible, sharedMachine } from "./staffLib.js";
 import Avatar from "./Avatar.jsx";
@@ -1506,6 +1507,7 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
             <span className={`pill ${sum.ready ? "ok" : "mute"}`}>AV {avDone}/{sum.states.length}</span>
             <MaterialBadge o={o} />
             {o.odoo_draft && <span className="pill warn" title="Der Fertigungsauftrag ist in Odoo noch im Entwurf. Freigegeben wird er in Odoo.">nicht freigegeben</span>}
+            {o.due_shifts > 0 && o.due_original && <span className="pill warn" title={`Ursprünglicher Liefertermin: ${fmtShort(o.due_original)}${o.due_original.slice(0, 4)}`}>Termin {o.due_shifts}× verschoben</span>}
             {o.odoo_bom === "muster" && <span className="pill warn" title="Die Stückliste in Odoo hat nur Musterwerte (Referenz MUSTER). Maschine und Zeit sind nicht geprüft.">Zeit ungeprüft (Muster)</span>}
             {o.odoo_bom === "none" && <span className="pill warn" title="In Odoo hat der Fertigungsauftrag keine Stückliste, damit auch keine Arbeitsgänge.">keine Stückliste</span>}
             {o.odoo_bom === "leer" && <span className="pill warn" title="Die Stückliste in Odoo hat keine Arbeitsgänge.">keine Arbeitsgänge</span>}
@@ -1606,6 +1608,7 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
             </div>
             {externEditor(o)}
             {metaLine(o) && <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 10 }}>{metaLine(o)}</div>}
+            <Terminverlauf o={o} />
           </div>
 
           <div className="dsec">
@@ -3496,7 +3499,7 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
       </div>
 
       <BomHinweis />
-      <Fruehwarnung reloadKey={fwKey} />
+      <Fruehwarnung reloadKey={fwKey} onChanged={() => fetch("/api/orders").then((r) => r.json()).then((d) => setOrders(d.orders)).catch(() => {})} />
       <Vollstaendig compact onChanged={() => fetch("/api/orders").then((r) => r.json()).then((d) => setOrders(d.orders)).catch(() => {})} />
 
       {preview && (

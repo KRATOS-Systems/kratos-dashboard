@@ -223,7 +223,7 @@ const T = {
 };
 // Zur Vollständigkeitsprüfung: Kunden, weitere Artikel und der Einkauf (nur mit MOCK_ENTWURF=1)
 if (process.env.MOCK_ENTWURF) {
-  T["res.partner"].push({ id: 136, name: "Ernst Meck GmbH" }, { id: 187, name: "ACS Armoured Car Systems GmbH, Markus Fuss", email: "einkauf@acs.example" }, { id: 138, name: "Schneider Gmbh & Co. KG" }, { id: 108, name: "Konecranes GmbH" });
+  T["res.partner"].push({ id: 136, name: "Ernst Meck GmbH" }, { id: 187, name: "ACS Armoured Car Systems GmbH, Markus Fuss", email: "einkauf@acs.example", phone: "+49 9131 555 0142" }, { id: 138, name: "Schneider Gmbh & Co. KG" }, { id: 108, name: "Konecranes GmbH" });
   T["product.product"].push(
     { id: 2903, name: "Flach 40x20, 70lg.", default_code: "89058665", product_tmpl_id: 70 },
     { id: 2904, name: "Bundbuchse", default_code: "SK966-114100.005.0", product_tmpl_id: 70 },
