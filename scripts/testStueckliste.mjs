@@ -49,8 +49,8 @@ try {
   assert.equal(bom("FA01404"), "leer");
   assert.equal(bom("FA01407"), "ok"); // hat Arbeitsgänge, nur kein Stückliste-Eintrag (wie ein älterer, laufender Auftrag): kein Hinweis
   ok("Die bestätigten Aufträge sind richtig gekennzeichnet: ok, muster, none, leer; Arbeitsgänge ohne Stückliste-Eintrag geben keinen Hinweis");
-  assert.ok(!orders.some((o) => o.odoo_ref === "FA01405" || o.odoo_ref === "FA01406"), "Entwürfe dürfen nicht in die Planung kommen");
-  ok("Entwürfe kommen nicht in die Planung");
+  assert.ok(!orders.some((o) => o.odoo_ref === "FA01405" || o.odoo_ref === "FA01406"), "Entwürfe ohne laufenden Kundenauftrag dürfen nicht in die Planung kommen");
+  ok("Entwürfe ohne laufenden Kundenauftrag kommen nicht in die Planung (mit bestätigtem Kundenauftrag: siehe testEntwuerfe.mjs)");
 
   const s = await api("GET", "/api/odoo/status");
   assert.equal(s.status, 200);

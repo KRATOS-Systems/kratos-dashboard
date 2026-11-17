@@ -5,6 +5,15 @@
 //   letzten drei Tagen angelegt wurde und der App noch fehlt, kommt gleich als neu in die Liste.
 // - Danach kommt jeder neu bestätigte Fertigungsauftrag (FA-Nummer) automatisch in die Liste "noch nicht eingeplant", sofern der
 //   Verkaufsauftrag noch nicht vollständig ausgeliefert ist. Der Abgleich läuft alle 10 Minuten und auf Knopfdruck.
+// - Grundsatz: Jeder bestätigte Kundenauftrag muss in der Arbeitsvorbereitung oder Planung sichtbar sein. Als laufend gilt ein Kundenauftrag,
+//   der bestätigt ist und ab dem Stichtag ORDERS_SINCE bestellt wurde. Ältere offene Aufträge sind Altlasten und bleiben draußen.
+// - Entwürfe: Ein Fertigungsauftrag im Entwurf kommt ebenfalls, sobald sein Kundenauftrag laufend ist, gekennzeichnet als "nicht freigegeben".
+//   Bestätigt wird der Fertigungsauftrag in Odoo, die App ändert dort nichts. Entwürfe zu gelieferten oder stornierten Aufträgen bleiben draußen.
+// - Nachholen: Ein offener Fertigungsauftrag eines laufenden Kundenauftrags, den die App nur als "bekannt" führt (z. B. vom ersten Abgleich), wird
+//   einmalig ergänzt. Testaufträge (Herkunft oder Artikel beginnt mit TEST) kommen nie herein.
+// - Vollständigkeit: Nach jedem Abgleich und auf Knopfdruck vergleicht die App alle laufenden, nicht vollständig gelieferten Kundenaufträge mit ihren
+//   Positionen. Fehlt ein offener Fertigungsauftrag, ist das eine Differenz (muss null sein). Kundenaufträge ohne Fertigungs- oder Einkaufsbeleg
+//   stehen in einer Warnliste, gefertigte oder beschaffte, aber noch nicht gelieferte in der Liste "Lieferung offen".
 // - Bei Aufträgen, die die App schon kennt, werden Menge, Produkt und Materialstatus aktualisiert (der Liefertermin bleibt).
 // - Schließen schlägt die App nur vor: Der Fertigungsauftrag ist in Odoo nicht mehr offen oder der Verkaufsauftrag ist vollständig
 //   ausgeliefert. Geschlossen wird erst nach Bestätigung.
@@ -18,7 +27,19 @@
 //   Position noch keine stehen, einmalig und ohne etwas zu überschreiben. Maschine und Zeit laut Odoo stehen als Hinweis an der Position.
 // Odoo wird nur gelesen, und nur wenn ODOO_URL und ODOO_API_KEY gesetzt sind.
 
+import { staffName } from "../src/staffLib.js";
+
 const OPEN_STATES = ["confirmed", "progress", "to_close"];
+// Stichtag für das laufende Geschäft: Kundenaufträge mit Auftragsdatum ab diesem Tag. Ältere offene Aufträge sind Altlasten und bleiben draußen.
+const ORDERS_SINCE = /^\d{4}-\d{2}-\d{2}$/.test(process.env.ORDERS_SINCE || "") ? process.env.ORDERS_SINCE : "2026-01-01";
+const isTestText = (v) => typeof v === "string" && /^\s*test\b/i.test(v);
+const dayPart = (v) => (typeof v === "string" && /^\d{4}-\d{2}-\d{2}/.test(v) ? v.slice(0, 10) : null);
+const m2oName = (v) => (Array.isArray(v) && v[1] ? String(v[1]) : null);
+// "Hof Sonderanlagenbau GmbH, Henrik Weber" -> Firma ohne Ansprechpartner
+const customerOf = (v) => {
+  const n = m2oName(v);
+  return n ? n.split(",")[0].trim().slice(0, 120) : null;
+};
 const PLANNING_PROJECT = "01 Fertigungsplanung";
 const TASK_OPEN_STATES = ["01_in_progress", "02_changes_requested", "03_approved", "04_waiting_normal"];
 const FINAL_STAGES = new Set(["Geliefert & Abgerechnet", "Nachkalkulation"]);
@@ -52,6 +73,13 @@ export default function registerOdooSync(app, db, { isDate, nextPosition }) {
       key TEXT PRIMARY KEY,
       value TEXT
     );
+    -- Kundenaufträge ohne Fertigungs- oder Einkaufsbeleg, die jemand geprüft hat (nichts zu fertigen, z. B. Lagerware)
+    CREATE TABLE IF NOT EXISTS odoo_sale_ack (
+      source TEXT PRIMARY KEY,
+      note TEXT NOT NULL DEFAULT '',
+      by_name TEXT,
+      at TEXT NOT NULL
+    );
   `);
   const getState = (k) => db.prepare("SELECT value FROM odoo_sync WHERE key = ?").get(k)?.value ?? null;
   const setState = (k, v) =>
@@ -61,6 +89,8 @@ export default function registerOdooSync(app, db, { isDate, nextPosition }) {
   const key = process.env.ODOO_API_KEY || "";
   const database = process.env.ODOO_DB || "";
   const enabled = !!(url && key);
+  // Lesender Odoo-Zugang für andere Teile der App (z. B. Frühwarnung: Ansprechpartner des Kundenauftrags)
+  app.locals.odooRead = enabled ? (model, params) => odoo(model, "search_read", params) : null;
 
   async function odoo(model, method, params) {
     const headers = { "Content-Type": "application/json; charset=utf-8", Authorization: `bearer ${key}`, "User-Agent": "kratos-dashboard/1.0" };
@@ -71,13 +101,20 @@ export default function registerOdooSync(app, db, { isDate, nextPosition }) {
     return res.json();
   }
 
-  // Offene Fertigungsaufträge mit FA-Nummer und der Lieferstatus ihrer Verkaufsaufträge
+  // Offene Fertigungsaufträge mit FA-Nummer (dazu Entwürfe bestätigter Kundenaufträge) und der Lieferstatus ihrer Verkaufsaufträge
   async function fetchOpen() {
-    const prods = await odoo("mrp.production", "search_read", {
+    const FIELDS = ["name", "state", "origin", "product_id", "product_qty", "date_deadline", "components_availability", "create_date", "bom_id", "workorder_ids"];
+    const open = await odoo("mrp.production", "search_read", {
       domain: [["state", "in", OPEN_STATES], ["name", "=like", "FA%"]],
-      fields: ["name", "state", "origin", "product_id", "product_qty", "date_deadline", "components_availability", "create_date", "bom_id", "workorder_ids"],
+      fields: FIELDS,
       limit: 2000,
     });
+    const draftCands = await odoo("mrp.production", "search_read", {
+      domain: [["state", "=", "draft"], ["name", "=like", "FA%"]],
+      fields: FIELDS,
+      limit: 500,
+    });
+    let prods = [...open, ...draftCands];
     let musterIds = new Set();
     try {
       const boms = await odoo("mrp.bom", "search_read", { domain: [["code", "=", BOM_MUSTER_CODE]], fields: ["id"], limit: 5000 });
@@ -89,9 +126,16 @@ export default function registerOdooSync(app, db, { isDate, nextPosition }) {
     const delivery = new Map();
     for (let i = 0; i < origins.length; i += 150) {
       const chunk = origins.slice(i, i + 150);
-      const sales = await odoo("sale.order", "search_read", { domain: [["name", "in", chunk]], fields: ["name", "delivery_status", "state"], limit: 500 });
+      const sales = await odoo("sale.order", "search_read", { domain: [["name", "in", chunk]], fields: ["name", "delivery_status", "state", "partner_id", "date_order", "commitment_date"], limit: 500 });
       sales.forEach((s) => delivery.set(s.name, s));
     }
+    // Laufender Kundenauftrag: bestätigt (nicht Angebot, nicht storniert) und ab dem Stichtag bestellt
+    const currentSale = (p) => {
+      const s = delivery.get((p.origin || "").trim());
+      return !!s && s.state === "sale" && (dayPart(s.date_order) || "") >= ORDERS_SINCE;
+    };
+    // Entwurf nur zu einem laufenden Kundenauftrag
+    prods = prods.filter((p) => p.state !== "draft" || currentSale(p));
     // Geplante Fräszeit und Maschine je Fertigungsauftrag aus den Fräsen-Arbeitsgängen (Minuten laut Arbeitsplan, 0 = Odoo hat keine Zeit)
     const milling = new Map();
     const prodIds = prods.map((p) => p.id).filter(Number.isInteger);
@@ -125,11 +169,16 @@ export default function registerOdooSync(app, db, { isDate, nextPosition }) {
         source: origin && origin.length <= 40 ? origin : null,
         product: Array.isArray(p.product_id) ? String(p.product_id[1]).slice(0, 200) : null,
         quantity: typeof p.product_qty === "number" ? p.product_qty : null,
-        due: due && isDate(due) ? due : null,
+        due: due && isDate(due) ? due : sale && dayPart(sale.commitment_date) ? dayPart(sale.commitment_date) : null,
+        customer: sale ? customerOf(sale.partner_id) : null,
+        sale_date: sale ? dayPart(sale.date_order) : null,
+        current: currentSale(p),
+        test: isTestText(p.origin) || isTestText(m2oName(p.product_id)),
         component_status: p.components_availability ? String(p.components_availability).slice(0, 60) : null,
         odoo_hours: mill && mill.minutes > 0 ? Math.round((mill.minutes / 60) * 100) / 100 : null,
         odoo_machine: mill ? mill.machine : null,
         odoo_bom: bomState(p, musterIds),
+        draft: p.state === "draft",
         created: typeof p.create_date === "string" ? p.create_date.replace(" ", "T") + "Z" : null,
         delivered: !!sale && sale.delivery_status === "full",
         saleCancelled: !!sale && sale.state === "cancel",
@@ -137,11 +186,11 @@ export default function registerOdooSync(app, db, { isDate, nextPosition }) {
     });
   }
 
-  // Fertigungsaufträge im Entwurf: die App holt sie bewusst nicht (erst bestätigte Aufträge kommen in die Planung), sie werden nur gezählt,
-  // damit man sieht, was in Odoo noch aussteht und was dabei ohne Stückliste ist
+  // Fertigungsaufträge im Entwurf, die die App NICHT übernimmt (Kundenauftrag nicht bestätigt oder Altlast vor DRAFT_SINCE): sie werden nur gezählt,
+  // damit man sieht, was in Odoo noch aussteht und was dabei ohne Stückliste ist (run() filtert die übernommenen heraus)
   async function fetchDrafts() {
-    const prods = await odoo("mrp.production", "search_read", { domain: [["state", "=", "draft"], ["name", "=like", "FA%"]], fields: ["name", "bom_id"], limit: 500 });
-    return prods.map((p) => ({ ref: String(p.name).trim(), noBom: !(Array.isArray(p.bom_id) ? p.bom_id[0] : p.bom_id) }));
+    const prods = await odoo("mrp.production", "search_read", { domain: [["state", "=", "draft"], ["name", "=like", "FA%"]], fields: ["name", "bom_id", "origin", "product_id"], limit: 500 });
+    return prods.filter((p) => !isTestText(p.origin) && !isTestText(m2oName(p.product_id))).map((p) => ({ ref: String(p.name).trim(), noBom: !(Array.isArray(p.bom_id) ? p.bom_id[0] : p.bom_id) }));
   }
 
   // Aufträge (A-Nummern), die in der Odoo-Fertigungsplanung offen auf einer Station stehen: A-Nummer -> Maschine der App ("" = keine bekannte Maschine).
@@ -313,7 +362,7 @@ export default function registerOdooSync(app, db, { isDate, nextPosition }) {
   // Was würde passieren? (ohne etwas zu schreiben)
   // wanted: A-Nummer -> Maschine aus der Odoo-Fertigungsplanung. Ein offener Fertigungsauftrag, den die App nicht kennt und der beim ersten
   // Abgleich nur als "bekannt" gemerkt wurde, wird einmalig ergänzt, wenn sein Auftrag dort offen steht.
-  function computePlan(items, wanted = new Map()) {
+  function computePlan(items, wanted = new Map(), force = null) {
     const seen = new Set(db.prepare("SELECT odoo_id FROM odoo_seen").all().map((r) => r.odoo_id));
     const inApp = new Map(db.prepare("SELECT id, odoo_ref, odoo_id, done, source, product FROM orders WHERE odoo_ref LIKE 'FA%'").all().map((r) => [r.odoo_ref, r]));
     const openIds = new Set(items.map((i) => i.odoo_ref));
@@ -324,11 +373,14 @@ export default function registerOdooSync(app, db, { isDate, nextPosition }) {
     } catch {
       gapDone = new Set();
     }
-    const isGap = (i) => seen.has(i.odoo_id) && !gapDone.has(i.odoo_id) && !!i.source && wanted.has(i.source);
-    const created = items.filter((i) => !inApp.has(i.odoo_ref) && (!seen.has(i.odoo_id) || isGap(i)) && !i.delivered && !i.saleCancelled);
+    // Nachholen (einmalig): der Auftrag steht offen in der Odoo-Fertigungsplanung, wurde gezielt angefordert oder gehört zu einem laufenden Kundenauftrag
+    const isGap = (i) => seen.has(i.odoo_id) && !gapDone.has(i.odoo_id) && ((!!i.source && wanted.has(i.source)) || !!i.current);
+    // Ausdrücklich angefordert (Knopf "Übernehmen" der Vollständigkeitsprüfung): auch wenn der Auftrag schon einmal nachgeholt und wieder entfernt wurde
+    const forced = (i) => !!force && i.source === force;
+    const created = items.filter((i) => !inApp.has(i.odoo_ref) && (!seen.has(i.odoo_id) || isGap(i) || forced(i)) && !i.delivered && !i.saleCancelled && !i.test);
     created.forEach((i) => {
-      i.gap = isGap(i);
-      i.machine = i.gap ? wanted.get(i.source) || "" : "";
+      i.gap = isGap(i) || (forced(i) && seen.has(i.odoo_id));
+      i.machine = i.gap ? (i.source && wanted.get(i.source)) || "" : "";
     });
     const updated = items.filter((i) => inApp.has(i.odoo_ref) && inApp.get(i.odoo_ref).done === 0);
     const closing = [];
@@ -336,6 +388,7 @@ export default function registerOdooSync(app, db, { isDate, nextPosition }) {
       if (r.done !== 0) return;
       const i = byRef.get(ref);
       if (!openIds.has(ref)) closing.push({ ref, source: r.source, product: r.product, reason: "In Odoo nicht mehr offen (erledigt, storniert oder zurück im Entwurf)" });
+      else if (i.test) closing.push({ ref, source: r.source, product: r.product, reason: "Testauftrag (Herkunft oder Artikel beginnt mit TEST)" });
       else if (i.delivered) closing.push({ ref, source: r.source, product: r.product, reason: "Ware laut Odoo vollständig ausgeliefert" });
       else if (i.saleCancelled) closing.push({ ref, source: r.source, product: r.product, reason: "Verkaufsauftrag in Odoo storniert" });
     });
@@ -345,13 +398,14 @@ export default function registerOdooSync(app, db, { isDate, nextPosition }) {
 
   function applyPlan(plan, { closeRefs = [], markAllSeen = false } = {}) {
     const insert = db.prepare(
-      "INSERT INTO orders (machine, order_no, due_date, position, odoo_ref, source, product, quantity, odoo_id, component_status, extern_days) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 7)"
+      "INSERT INTO orders (machine, order_no, due_date, position, odoo_ref, source, product, quantity, odoo_id, component_status, customer, sale_date, extern_days) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 7)"
     );
     const update = db.prepare(
       "UPDATE orders SET source = COALESCE(?, source), product = COALESCE(?, product), quantity = CASE WHEN is_split = 1 THEN quantity ELSE COALESCE(?, quantity) END, odoo_id = COALESCE(?, odoo_id), component_status = ? WHERE odoo_ref = ? AND done = 0"
     );
     const close = db.prepare("UPDATE orders SET done = 1, done_date = COALESCE(done_date, date('now')) WHERE odoo_ref = ? OR parent_ref = ?");
     const hint = db.prepare("UPDATE orders SET odoo_hours = ?, odoo_machine = ?, odoo_bom = ? WHERE odoo_ref = ? AND done = 0");
+    const setDraft = db.prepare("UPDATE orders SET odoo_draft = ?, customer = COALESCE(?, customer), sale_date = COALESCE(?, sale_date) WHERE (odoo_ref = ? OR parent_ref = ?) AND done = 0");
     const takeHours = db.prepare("UPDATE orders SET hours = ?, odoo_hours_applied = 1 WHERE odoo_ref = ? AND done = 0 AND is_split = 0 AND odoo_hours_applied = 0 AND (hours IS NULL OR hours = 0)");
     const seen = db.prepare("INSERT OR IGNORE INTO odoo_seen (odoo_id, first_seen) VALUES (?, ?)");
     const seenOld = db.prepare("INSERT OR IGNORE INTO odoo_seen (odoo_id, first_seen) VALUES (?, 'baseline')");
@@ -375,7 +429,7 @@ export default function registerOdooSync(app, db, { isDate, nextPosition }) {
       const gapIds = [];
       plan.created.forEach((i) => {
         const machine = i.gap ? i.machine || "" : "";
-        insert.run(machine, i.odoo_ref, (i.source && dueBySource.get(i.source)) || i.due, takePosition(machine), i.odoo_ref, i.source, i.product, i.quantity, i.odoo_id, i.component_status);
+        insert.run(machine, i.odoo_ref, (i.source && dueBySource.get(i.source)) || i.due, takePosition(machine), i.odoo_ref, i.source, i.product, i.quantity, i.odoo_id, i.component_status, i.customer || null, i.sale_date || null);
         seen.run(i.odoo_id, now);
         if (i.gap) gapIds.push(i.odoo_id);
       });
@@ -394,6 +448,7 @@ export default function registerOdooSync(app, db, { isDate, nextPosition }) {
       plan.updated.forEach((i) => update.run(i.source, i.product, i.quantity, i.odoo_id, i.component_status, i.odoo_ref));
       // Fräszeit laut Odoo: immer als Hinweis merken, als Stunden nur einmal und nur bei leeren Stunden (geteilte Positionen haben eigene Stunden)
       [...plan.created, ...plan.updated].forEach((i) => {
+        setDraft.run(i.draft ? 1 : 0, i.customer || null, i.sale_date || null, i.odoo_ref, i.odoo_ref);
         if (i.odoo_hours === undefined) return;
         hint.run(i.odoo_hours, i.odoo_machine, i.odoo_bom || null, i.odoo_ref);
         if (i.odoo_hours > 0 && i.odoo_hours <= MAX_TAKE_HOURS) takeHours.run(i.odoo_hours, i.odoo_ref);
@@ -407,8 +462,116 @@ export default function registerOdooSync(app, db, { isDate, nextPosition }) {
     }
   }
 
+  // Vollständigkeit: Jeder laufende, nicht vollständig gelieferte Kundenauftrag wird einer von vier Gruppen zugeordnet (nur lesen):
+  //   sichtbar       mindestens eine offene Position in der App
+  //   fehlt          ein offener Fertigungsauftrag (auch Entwurf) hat keine Position in der App: die Differenz, sie muss null sein
+  //   ohneBeleg      weder Fertigungsauftrag noch Einkaufsbestellung: Warnliste (abhakbar, wenn nichts zu fertigen ist)
+  //   lieferungOffen gefertigt oder beschafft, aber noch nicht (vollständig) geliefert
+  async function checkCompleteness() {
+    const sales = await odoo("sale.order", "search_read", {
+      domain: [["state", "=", "sale"], ["date_order", ">=", ORDERS_SINCE + " 00:00:00"], ["delivery_status", "!=", "full"]],
+      fields: ["name", "partner_id", "date_order", "commitment_date", "delivery_status"],
+      limit: 2000,
+    });
+    const names = sales.map((s) => String(s.name).trim());
+    const mos = new Map(); // A-Nummer -> Fertigungsaufträge
+    for (let i = 0; i < names.length; i += 150) {
+      const recs = await odoo("mrp.production", "search_read", {
+        domain: [["origin", "in", names.slice(i, i + 150)], ["state", "!=", "cancel"]],
+        fields: ["name", "state", "origin", "product_id"],
+        limit: 2000,
+      });
+      recs.forEach((p) => {
+        if (isTestText(m2oName(p.product_id))) return;
+        const o = String(p.origin || "").trim();
+        if (!mos.has(o)) mos.set(o, []);
+        mos.get(o).push({ ref: String(p.name).trim(), state: p.state });
+      });
+    }
+    // Einkaufsbestellungen zu Kundenaufträgen (Herkunft enthält die A-Nummer); nicht lesbar = ohne Einkauf weiter, mit Vermerk
+    const pos = new Map();
+    let poError = null;
+    try {
+      const recs = await odoo("purchase.order", "search_read", {
+        domain: [["origin", "ilike", "A0"], ["state", "!=", "cancel"], ["date_order", ">=", ORDERS_SINCE + " 00:00:00"]],
+        fields: ["name", "origin", "state", "receipt_status"],
+        limit: 3000,
+      });
+      recs.forEach((p) => {
+        (String(p.origin || "").match(/\bA\d{4,}\b/g) || []).forEach((a) => {
+          if (!pos.has(a)) pos.set(a, []);
+          pos.get(a).push({ name: String(p.name), ordered: p.state === "purchase" || p.state === "done", received: p.receipt_status === "full" });
+        });
+      });
+    } catch (err) {
+      poError = err.message;
+    }
+    const rows = db.prepare("SELECT odoo_ref, parent_ref, source, done FROM orders").all();
+    const openBySource = new Map();
+    const refs = new Set();
+    rows.forEach((r) => {
+      if (r.odoo_ref) refs.add(r.odoo_ref);
+      if (r.parent_ref) refs.add(r.parent_ref);
+      if (r.done === 0 && r.source) openBySource.set(r.source, (openBySource.get(r.source) || 0) + 1);
+    });
+    const OPEN = new Set([...OPEN_STATES, "draft"]);
+    const out = { at: new Date().toISOString(), since: ORDERS_SINCE, total: sales.length, sichtbar: 0, fehlt: [], ohneBeleg: [], lieferungOffen: [], poError };
+    sales.forEach((s) => {
+      const name = String(s.name).trim();
+      const e = { source: name, customer: customerOf(s.partner_id), due: dayPart(s.commitment_date), date: dayPart(s.date_order), partial: s.delivery_status === "partial" };
+      const mine = mos.get(name) || [];
+      const missing = mine.filter((m) => OPEN.has(m.state) && !refs.has(m.ref));
+      const po = pos.get(name) || [];
+      if (missing.length) out.fehlt.push({ ...e, refs: missing.map((m) => m.ref), drafts: missing.filter((m) => m.state === "draft").map((m) => m.ref) });
+      else if (openBySource.get(name)) out.sichtbar++;
+      else if (!mine.length && !po.length) out.ohneBeleg.push(e);
+      else {
+        const parts = [];
+        if (mine.length) parts.push(mine.some((m) => OPEN.has(m.state)) ? "in der App erledigt, in Odoo noch offen: " + mine.filter((m) => OPEN.has(m.state)).map((m) => m.ref).join(", ") : "Fertigung erledigt");
+        po.forEach((p) => parts.push(`Einkauf ${p.name} (${!p.ordered ? "Anfrage" : p.received ? "Ware eingegangen" : "Wareneingang offen"})`));
+        out.lieferungOffen.push({ ...e, detail: parts.join(" · ") });
+      }
+    });
+    const byDue = (a, b) => (a.due || "9999").localeCompare(b.due || "9999") || a.source.localeCompare(b.source);
+    out.fehlt.sort(byDue);
+    out.ohneBeleg.sort(byDue);
+    out.lieferungOffen.sort(byDue);
+    return out;
+  }
+  async function storeCompleteness() {
+    try {
+      const r = await checkCompleteness();
+      setState("vollst", JSON.stringify(r));
+      setState("vollst_error", null);
+      return r;
+    } catch (err) {
+      setState("vollst_error", err.message);
+      throw err;
+    }
+  }
+  // Gespeichertes Ergebnis, mit den abgehakten Aufträgen ("nichts zu fertigen") aus der Warnliste in die Liste "Lieferung offen" verschoben
+  function completeness() {
+    let r = null;
+    try {
+      r = JSON.parse(getState("vollst") || "null");
+    } catch {
+      r = null;
+    }
+    if (!r) return null;
+    const acks = new Map(db.prepare("SELECT source, note, by_name, at FROM odoo_sale_ack").all().map((a) => [a.source, a]));
+    const acked = (r.ohneBeleg || []).filter((e) => acks.has(e.source)).map((e) => {
+      const a = acks.get(e.source);
+      return { ...e, ack: true, detail: `geprüft${a.by_name ? " von " + a.by_name : ""}: ${a.note || "nichts zu fertigen"}` };
+    });
+    return {
+      ...r,
+      ohneBeleg: (r.ohneBeleg || []).filter((e) => !acks.has(e.source)),
+      lieferungOffen: [...(r.lieferungOffen || []), ...acked].sort((a, b) => (a.due || "9999").localeCompare(b.due || "9999") || a.source.localeCompare(b.source)),
+    };
+  }
+
   let running = false;
-  async function run({ dryRun, closeRefs = [], auto = false }) {
+  async function run({ dryRun, closeRefs = [], auto = false, force = null }) {
     if (!enabled) throw new Error("Odoo ist nicht verbunden (ODOO_URL und ODOO_API_KEY fehlen auf dem Server).");
     if (running) throw new Error("Ein Abgleich läuft gerade.");
     running = true;
@@ -416,7 +579,8 @@ export default function registerOdooSync(app, db, { isDate, nextPosition }) {
       const items = await fetchOpen();
       if (!dryRun || auto) {
         try {
-          setState("drafts", JSON.stringify(await fetchDrafts()));
+          const taken = new Set(items.filter((i) => i.draft && !i.delivered && !i.saleCancelled).map((i) => i.odoo_ref));
+          setState("drafts", JSON.stringify((await fetchDrafts()).filter((d) => !taken.has(d.ref))));
         } catch (err) {
           console.error("Odoo-Abgleich: Entwürfe nicht lesbar", err.message); // nur ein Hinweis, der Abgleich läuft weiter
         }
@@ -444,13 +608,13 @@ export default function registerOdooSync(app, db, { isDate, nextPosition }) {
         // Gezielt nachgeholte Aufträge (POST /api/odoo/nachholen): ohne Maschine, sie kommen in "Noch nicht eingeplant"
         getExtraSources().forEach((s) => !wanted.has(s) && wanted.set(s, ""));
       }
-      const plan = computePlan(items, wanted);
+      const plan = computePlan(items, wanted, force);
       plan.all = items;
       if (baseline) {
         // Erster Abgleich: alle alten offenen Aufträge sind "bekannt". Was in den letzten Tagen neu angelegt wurde, kommt als neu in die Liste.
         const cutoff = Date.now() - FRESH_DAYS * 24 * 3600 * 1000;
         const inApp = new Set(db.prepare("SELECT odoo_ref FROM orders WHERE odoo_ref LIKE 'FA%'").all().map((r) => r.odoo_ref));
-        const isFresh = (i) => !inApp.has(i.odoo_ref) && !i.delivered && !i.saleCancelled && i.created && Date.parse(i.created) >= cutoff;
+        const isFresh = (i) => !inApp.has(i.odoo_ref) && !i.delivered && !i.saleCancelled && !i.test && (i.current || (i.created && Date.parse(i.created) >= cutoff));
         const fresh = items.filter(isFresh);
         const old = items.filter((i) => !isFresh(i));
         if (!dryRun) {
@@ -461,6 +625,7 @@ export default function registerOdooSync(app, db, { isDate, nextPosition }) {
           setState("last_error", null);
           setState("pending_closing", "[]");
           if (fresh.length || (extX && extX.created.length)) setState("last_change", new Date().toISOString());
+          await storeCompleteness().catch((err) => console.error("Odoo-Abgleich: Vollständigkeit nicht prüfbar", err.message));
         }
         return {
           baseline: true,
@@ -483,6 +648,8 @@ export default function registerOdooSync(app, db, { isDate, nextPosition }) {
         if (plan.created.length || closeRefs.length || (extX && extX.created.length)) setState("last_change", new Date().toISOString());
         const remaining = [...computePlan(items).closing, ...(extX ? computeExternal(ext).closing : [])];
         setState("pending_closing", JSON.stringify(remaining));
+        // Nach dem Übernehmen prüfen, ob jeder laufende Kundenauftrag sichtbar ist (ein Fehler hier hält den Abgleich nicht auf)
+        await storeCompleteness().catch((err) => console.error("Odoo-Abgleich: Vollständigkeit nicht prüfbar", err.message));
       } else if (auto) {
         setState("pending_closing", JSON.stringify([...plan.closing, ...(extX ? extX.closing : [])]));
       }
@@ -519,7 +686,47 @@ export default function registerOdooSync(app, db, { isDate, nextPosition }) {
         (getState("gap_error") ? "Odoo-Planungsliste: " + getState("gap_error") : null),
       pendingClosing: pending,
       bomCheck: bomCheck(),
+      vollst: vollstSummary(),
     });
+  });
+
+  // Kurzfassung der Vollständigkeitsprüfung für Hinweise (Zahlen statt Listen)
+  function vollstSummary() {
+    const r = completeness();
+    return r ? { at: r.at, total: r.total, sichtbar: r.sichtbar, fehlt: r.fehlt.length, ohneBeleg: r.ohneBeleg.length, lieferungOffen: r.lieferungOffen.length } : null;
+  }
+
+  // Vollständigkeit: gespeichertes Ergebnis des letzten Abgleichs (GET) oder sofort neu gegen Odoo prüfen (POST)
+  app.get("/api/odoo/vollstaendigkeit", (req, res) => {
+    res.json({ enabled, result: completeness(), error: getState("vollst_error") });
+  });
+  app.post("/api/odoo/vollstaendigkeit", async (req, res) => {
+    if (!enabled) return res.status(409).json({ error: "Odoo ist nicht verbunden" });
+    try {
+      // Erst abgleichen (übernimmt, was fehlt), dann prüfen. Läuft gerade ein Abgleich, nur prüfen.
+      if (getState("baseline_done") === "1" && !running) await run({ dryRun: false, closeRefs: [], auto: true });
+      else await storeCompleteness();
+      res.json({ enabled, result: completeness(), error: null });
+    } catch (err) {
+      res.status(502).json({ error: err.message });
+    }
+  });
+  // Kundenauftrag ohne Beleg abhaken (nichts zu fertigen) oder den Haken wieder lösen
+  app.post("/api/odoo/vollstaendigkeit/geprueft", (req, res) => {
+    const source = String((req.body && req.body.source) || "").trim().toUpperCase();
+    const note = String((req.body && req.body.note) || "").trim().slice(0, 200);
+    if (!/^[A-Z]\d{3,}$/.test(source)) return res.status(400).json({ error: "Bitte eine Auftragsnummer wie A01109 angeben" });
+    if (req.body && req.body.undo) db.prepare("DELETE FROM odoo_sale_ack WHERE source = ?").run(source);
+    else {
+      const session = app.locals.bdeSession ? app.locals.bdeSession(req) : null;
+      db.prepare("INSERT INTO odoo_sale_ack (source, note, by_name, at) VALUES (?, ?, ?, ?) ON CONFLICT (source) DO UPDATE SET note = excluded.note, by_name = excluded.by_name, at = excluded.at").run(
+        source,
+        note,
+        session ? staffName(session.e) || null : null,
+        new Date().toISOString()
+      );
+    }
+    res.json({ enabled, result: completeness(), error: getState("vollst_error") });
   });
 
   // Was bei den Stücklisten auffällt: Entwürfe (fehlen in der Planung), Aufträge ohne Stückliste oder Arbeitsgänge, Aufträge mit Musterwerten
@@ -561,7 +768,7 @@ export default function registerOdooSync(app, db, { isDate, nextPosition }) {
     try {
       const extra = getExtraSources();
       if (!extra.includes(source)) setState("gap_extra", JSON.stringify([...extra, source]));
-      const r = await run({ dryRun: false, closeRefs: [] });
+      const r = await run({ dryRun: false, closeRefs: [], force: req.body && req.body.force === true ? source : null });
       res.json({ source, created: r.created.filter((c) => c.source === source) });
     } catch (err) {
       res.status(502).json({ error: err.message });

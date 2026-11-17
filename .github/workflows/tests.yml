@@ -37,6 +37,8 @@ jobs:
         run: node scripts/testLogin.mjs
       - name: Stücklisten-Kennzeichnung
         run: node scripts/testStueckliste.mjs
+      - name: Vollständigkeit der Kundenaufträge (Entwürfe, Warnliste, Differenz)
+        run: node scripts/testEntwuerfe.mjs
       - name: Aufgaben (Von mir vergeben)
         run: node scripts/testAufgaben.mjs
       - name: Verbindung zu QS (Prüfplan, EMPB)
