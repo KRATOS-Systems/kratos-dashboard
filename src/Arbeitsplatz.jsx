@@ -15,6 +15,27 @@ import RechnungBereit from "./Rechnung.jsx";
 import { AmpelLeiste } from "./Ampel.jsx";
 import { pollEvery } from "./poll.js";
 
+// Werkerprüfung in QS (DYNAMIS) zum gestempelten Fertigungsauftrag: eigenes, wiederverwendetes Fenster,
+// damit das Dashboard offen bleibt. Am Maschinen-PC ist dort ein QS-Terminal-Konto angemeldet; der Werker
+// meldet sich in QS mit Namen und PIN an.
+export const QS_WERKER_URL = "https://app.dynamis-systems.de/qs/werker?fa=";
+function MessenKnopf({ fa }) {
+  if (!fa) return null;
+  return (
+    <button
+      type="button"
+      className="btn primary messen"
+      title={`Werkerprüfung für ${fa} in QS öffnen (Messwerte eintragen, Zeichnung mit Prüfmerkmalen)`}
+      onClick={() => {
+        const w = window.open(QS_WERKER_URL + encodeURIComponent(fa), "qs-messen");
+        if (w) w.focus();
+      }}
+    >
+      Messen <Ico n="ext" s={15} />
+    </button>
+  );
+}
+
 // Mein Arbeitsplatz: persönliche Seite nach Anmeldung mit PIN.
 // Oben groß die laufende Tätigkeit mit den drei Knöpfen Wechseln, Unterbrechen/Weiter, Stopp; darunter Zeiten der Woche, Resturlaub,
 // die letzten Tätigkeiten. Am Büro-PC gibt es ein kleines schwebendes Fenster (Chrome/Edge), und der Tabtitel zeigt die laufende Tätigkeit.
@@ -245,6 +266,7 @@ function ArbeitsplatzInner({ onGreet, goTo }) {
             <div className="bhero-top">
               <span className="bact">{b.label}</span>
               <OdooLink base={data.odooUrl} id={b.productionId} s={20} />
+              <MessenKnopf fa={b.fa} />
             </div>
             <Clock start={b.start} now={now} big />
             <div className="bjob">
