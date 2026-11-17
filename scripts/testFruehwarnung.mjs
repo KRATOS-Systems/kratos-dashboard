@@ -103,31 +103,103 @@ try {
   assert.equal(r.status, 404);
   ok("Mail-Entwurf: Empfänger, Bestellnummer und Ansprechpartner aus Odoo, alter und neuer Termin im Text, eigener Termin möglich");
 
-  // 6. Kunde informiert: raus aus der roten Liste; verschiebt sich der Plan danach weiter, meldet die App es erneut
+  // 6. Empfehlung für den Weg und Kontaktdaten: überfällig oder kurzfristig = anrufen, mit Vorlauf reicht eine Mail
+  await mk("A09004", day(25), "h800u", 900);
+  w = await api("GET", "/api/fruehwarnung");
+  assert.equal(item(w, "A01385").advice, "anrufen");
+  assert.equal(item(w, "A09003").advice, "anrufen");
+  assert.equal(item(w, "A09004").kind, "verzug");
+  assert.equal(item(w, "A09004").advice, "mail", JSON.stringify(item(w, "A09004")));
+  const k = await api("GET", "/api/fruehwarnung/kontakt?source=A01385");
+  assert.equal(k.phone, "+49 9131 555 0142");
+  assert.equal(k.name, "Markus Fuss");
+  assert.equal(k.company, "ACS Armoured Car Systems GmbH");
+  ok("Empfehlung: überfällig oder kurzfristig anrufen, mit Vorlauf reicht eine Mail; Telefonnummer und Ansprechpartner kommen aus Odoo");
+
+  // 7. Telefonisch informiert: abgehakt ohne Mail, der genannte Termin wird Liefertermin, der ursprüngliche bleibt sichtbar
   const before = w.counts.nichtInformiert;
-  w = await api("POST", "/api/fruehwarnung/informiert", { source: "A01385", date: a.proposal });
+  const proposal = item(w, "A01385").proposal;
+  w = await api("POST", "/api/fruehwarnung/informiert", { source: "A01385", date: proposal, channel: "telefon", contact: "Markus Fuss", note: "Teillieferung nicht nötig" });
   a = item(w, "A01385");
+  assert.ok(a, "Informierte Aufträge bleiben in der Liste");
   assert.equal(a.state, "informiert");
-  assert.equal(a.informedDate, a.proposal);
+  assert.equal(a.channel, "telefon");
+  assert.equal(a.contact, "Markus Fuss");
+  assert.equal(a.informedDate, proposal);
+  assert.equal(a.due, proposal);
+  assert.equal(a.dueOriginal, "2026-11-05");
+  assert.equal(a.dueShifts, 1);
   assert.equal(w.counts.nichtInformiert, before - 1);
-  await api("PUT", `/api/orders/${row("FA01309").id}`, { hours: 600 });
+  orders = (await api("GET", "/api/orders")).orders;
+  assert.equal(row("FA01309").due, proposal);
+  assert.equal(row("FA01309").due_original, "2026-11-05");
+  assert.equal(row("FA01309").due_shifts, 1);
+  let h = (await api("GET", "/api/orders/" + row("FA01309").id + "/due-history")).history;
+  assert.equal(h.length, 1, JSON.stringify(h));
+  assert.equal(h[0].from, "2026-11-05");
+  assert.equal(h[0].to, proposal);
+  assert.match(h[0].reason, /Kunde informiert \(Telefon, Markus Fuss\)/);
+  r = await api("POST", "/api/fruehwarnung/informiert", { source: "A01385", channel: "fax" });
+  assert.equal(r.status, 400);
+  ok("Telefonisch abgehakt: ohne Mail erledigt, neuer Termin ist Liefertermin, ursprünglicher Termin und Verlauf bleiben erhalten");
+
+  // 8. Mail danach ist freiwillig: Entwurf als Bestätigung des Telefonats, nennt den ursprünglichen Termin
+  m = await api("GET", "/api/fruehwarnung/mail?source=A01385&nachTelefon=1");
+  assert.equal(m.status, 200, JSON.stringify(m));
+  assert.match(m.body, /wie eben telefonisch besprochen/);
+  assert.ok(m.body.includes("Bisher zugesagter Liefertermin: 05.11.2026"), m.body);
+  assert.ok(m.body.includes("Neuer voraussichtlicher Liefertermin: " + de(proposal)), m.body);
+  w = await api("POST", "/api/fruehwarnung/informiert", { source: "A01385", date: proposal, channel: "beides", contact: "Markus Fuss" });
+  assert.equal(item(w, "A01385").channel, "beides");
+  assert.equal(item(w, "A01385").dueShifts, 1, "Derselbe Termin noch einmal ist keine weitere Verschiebung");
+  ok("Die Bestätigung per Mail nach dem Telefonat ist möglich, aber nicht nötig; sie zählt nicht als weitere Verschiebung");
+
+  // 9. Verschiebt sich der Plan danach weiter, meldet die App den Auftrag erneut (zweite Verschiebung: immer anrufen)
+  await api("PUT", "/api/orders/" + row("FA01309").id, { hours: 600 });
   w = await api("GET", "/api/fruehwarnung");
   a = item(w, "A01385");
   assert.equal(a.state, "erneut", JSON.stringify(a));
   assert.ok(a.proposal > a.informedDate);
+  assert.equal(a.advice, "anrufen");
   w = await api("POST", "/api/fruehwarnung/informiert", { source: "A01385", undo: true });
   assert.equal(item(w, "A01385").state, "offen");
   r = await api("POST", "/api/fruehwarnung/informiert", { source: "A09001" });
   assert.equal(r.status, 404);
-  ok("Nach „Kunde ist informiert“ gilt der Auftrag als erledigt; verschiebt sich der Termin weiter, meldet die App ihn erneut");
+  ok("Verschiebt sich der Termin nach der Information weiter, meldet die App den Auftrag erneut und empfiehlt den Anruf");
 
-  // 7. Erledigter Auftrag verschwindet aus der Liste
-  await api("PUT", `/api/orders/${row("FA01309").id}`, { done: true });
+  // 10. Terminverlauf in der Planung: Tippfehler kurz nacheinander zählen als eine Änderung, zurück auf den alten Termin löscht sie
+  const pid = await mk("A09005", day(30), "dmu50", 4);
+  await api("PUT", "/api/orders/" + pid, { due: day(31) });
+  await api("PUT", "/api/orders/" + pid, { due: day(37), due_reason: "Kunde wünscht später" });
+  orders = (await api("GET", "/api/orders")).orders;
+  let p = orders.find((o) => o.id === pid);
+  assert.equal(p.due, day(37));
+  assert.equal(p.due_original, day(30));
+  assert.equal(p.due_shifts, 1);
+  h = (await api("GET", "/api/orders/" + pid + "/due-history")).history;
+  assert.equal(h.length, 1, JSON.stringify(h));
+  assert.equal(h[0].reason, "Kunde wünscht später");
+  await api("PUT", "/api/orders/" + pid, { due: day(30) });
+  orders = (await api("GET", "/api/orders")).orders;
+  p = orders.find((o) => o.id === pid);
+  assert.equal(p.due_shifts, 0);
+  assert.equal(p.due_original, null);
+  assert.equal((await api("GET", "/api/orders/" + pid + "/due-history")).history.length, 0);
+  r = await api("POST", "/api/orders/due", { ids: [pid], due: day(44), reason: "Material verspätet" });
+  assert.equal(r.status, 200, JSON.stringify(r));
+  h = (await api("GET", "/api/orders/" + pid + "/due-history")).history;
+  assert.equal(h.length, 1);
+  assert.equal(h[0].from, day(30));
+  assert.equal(h[0].to, day(44));
+  ok("Terminverlauf: Korrekturen kurz nacheinander sind eine Änderung, zurück auf den alten Termin löscht sie, der Grund steht dabei");
+
+  // 11. Erledigter Auftrag verschwindet aus der Liste
+  await api("PUT", "/api/orders/" + row("FA01309").id, { done: true });
   w = await api("GET", "/api/fruehwarnung");
   assert.ok(!item(w, "A01385"));
   ok("Ist der Auftrag erledigt, verschwindet er aus der Frühwarnung");
 
-  // 8. Odoo wurde nur gelesen
+  // 12. Odoo wurde nur gelesen
   const log = await fetch("http://localhost:8081/__log").then((x) => x.json());
   assert.deepEqual(log, [], JSON.stringify(log));
   ok("Die App hat in Odoo nichts geändert und nichts gesendet");

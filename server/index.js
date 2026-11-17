@@ -10,6 +10,8 @@ import registerFeedback from "./feedback.js";
 import registerOdooSync from "./odooSync.js";
 import registerFruehwarnung from "./fruehwarnung.js";
 import registerPlanvorschlag from "./planvorschlag.js";
+import setupDueHistory from "./dueHistory.js";
+import { staffName } from "../src/staffLib.js";
 import registerOdooFiles from "./odooFiles.js";
 import registerBde from "./bde.js";
 import registerStaff from "./staff.js";
@@ -183,6 +185,8 @@ const orderColumns = columnsOf();
   if (!orderColumns.includes(name)) db.exec(`ALTER TABLE orders ADD COLUMN ${name} ${type}`);
 });
 db.exec("CREATE UNIQUE INDEX IF NOT EXISTS orders_odoo_ref ON orders (odoo_ref)");
+// Terminverlauf: ursprünglicher Liefertermin und jede Verschiebung (server/dueHistory.js)
+const dueHistory = setupDueHistory(db);
 
 // Einmalig beim ersten Start mit der Arbeitsvorbereitung: Positionen, die schon laufen (Fortschritt eingetragen) oder in QS / Extern liegen,
 // stehen auf "bereit" (Material, Programm, Werkzeuge, Spannmittel). Es werden nur fehlende Zeilen ergänzt, bestehende bleiben unverändert.
@@ -371,6 +375,8 @@ const orderOut = (r) => ({
   odoo_machine: r.odoo_machine,
   odoo_bom: r.odoo_bom || null,
   odoo_draft: r.odoo_draft === 1,
+  due_original: r.due_shifts > 0 ? r.due_original || null : null,
+  due_shifts: r.due_shifts || 0,
   customer: r.customer || null,
   sale_date: r.sale_date || null,
   qs_required: r.qs_required === 1,
@@ -404,6 +410,12 @@ app.get("/api/orders", (req, res) => {
   res.json({ orders: rows.map(orderOut) });
 });
 
+// Angemeldeter Mitarbeiter (BDE-Anmeldung) für den Terminverlauf
+const actor = (req) => {
+  const s = app.locals.bdeSession ? app.locals.bdeSession(req) : null;
+  return s ? staffName(s.e) || null : null;
+};
+
 app.post("/api/orders", (req, res) => {
   const { machine } = req.body || {};
   if (!MACHINES.includes(machine) && !LANES.includes(machine)) return res.status(400).json({ error: "invalid machine" });
@@ -434,7 +446,7 @@ async function odooMachineMoves(rows, to) {
 
 app.put("/api/orders/:id", wrap(async (req, res) => {
   const id = Number(req.params.id);
-  const { order_no, hours, done_hours, due, done, machine, extern_tags, extern_days, extern_start, earliest_start, hours_plan, progress_date, qs_required, qs_days, from_machine, produced_date, checked_date, done_date, source, product, quantity } = req.body || {};
+  const { order_no, hours, done_hours, due, done, machine, extern_tags, extern_days, extern_start, earliest_start, hours_plan, progress_date, qs_required, qs_days, from_machine, produced_date, checked_date, done_date, source, product, quantity, due_reason } = req.body || {};
   const sets = [];
   const values = [];
 
@@ -568,6 +580,7 @@ app.put("/api/orders/:id", wrap(async (req, res) => {
   if (!Number.isInteger(id) || sets.length === 0) return res.status(400).json({ error: "invalid payload" });
 
   const before = machine !== undefined ? db.prepare("SELECT id, machine, odoo_id, odoo_ref, done FROM orders WHERE id = ?").get(id) : null;
+  if (due !== undefined && due !== null) dueHistory.change(id, due, { by: actor(req), reason: typeof due_reason === "string" ? due_reason.trim() : null, via: "planung" });
   const info = db.prepare(`UPDATE orders SET ${sets.join(", ")} WHERE id = ?`).run(...values, id);
   if (info.changes === 0) return res.status(404).json({ error: "not found" });
   const out = orderOut(db.prepare("SELECT * FROM orders WHERE id = ?").get(id));
@@ -701,7 +714,7 @@ app.post("/api/orders/earliest", (req, res) => {
 });
 
 app.post("/api/orders/due", (req, res) => {
-  const { ids, due } = req.body || {};
+  const { ids, due, reason } = req.body || {};
   if (
     !Array.isArray(ids) ||
     ids.length === 0 ||
@@ -714,7 +727,11 @@ app.post("/api/orders/due", (req, res) => {
   const update = db.prepare("UPDATE orders SET due_date = ? WHERE id = ?");
   db.exec("BEGIN");
   try {
-    ids.forEach((id) => update.run(due, id));
+    const who = actor(req);
+    ids.forEach((id) => {
+      if (due) dueHistory.change(id, due, { by: who, reason: typeof reason === "string" ? reason.trim() : null, via: "planung" });
+      update.run(due, id);
+    });
     db.exec("COMMIT");
   } catch (err) {
     db.exec("ROLLBACK");
@@ -818,6 +835,10 @@ app.put("/api/plan-rates", (req, res) => {
 // Teillieferung: `n` Stück werden als neue Position (Teil N) mit anteiligen Stunden abgespalten und stehen in der
 // Maschinenreihe direkt vor der ursprünglichen Position ("Rest"). Gleiche Nummer, gleicher Odoo-Link, eigener Liefertermin.
 const round1 = (x) => Math.round(x * 10) / 10;
+// Geteilte Positionen behalten den ursprünglichen Liefertermin und die Zahl der Verschiebungen ihrer Herkunft
+const inheritDue = (fromId, toId) =>
+  db.prepare("UPDATE orders SET due_original = (SELECT due_original FROM orders WHERE id = ?), due_shifts = (SELECT due_shifts FROM orders WHERE id = ?) WHERE id = ?").run(fromId, fromId, toId);
+
 function splitOrder(row, n, due) {
   const ratio = n / row.quantity;
   const part = (v) => (v == null ? null : round1(v * ratio));
@@ -861,6 +882,7 @@ function splitOrder(row, n, due) {
       group,
       row.odoo_ref || row.parent_ref
     );
+  inheritDue(row.id, Number(info.lastInsertRowid));
   db.prepare(
     `UPDATE orders SET quantity = ?, hours = ?, done_hours = ?, hours_plan = ?, is_split = 1, part_group = ?,
        part_label = COALESCE(part_label, 'Rest') WHERE id = ?`
@@ -938,6 +960,7 @@ app.post("/api/orders/ops", (req, res) => {
       );
       prev = Number(info.lastInsertRowid);
       copyAv(row.id, prev);
+      inheritDue(row.id, prev);
     });
     const last = clean[clean.length - 1];
     const position = last.machine === row.machine ? row.position : nextPosition(last.machine);
@@ -974,7 +997,10 @@ app.post("/api/orders/split-many", (req, res) => {
         split++;
       } else {
         // liefert vollständig mit der ersten Lieferung: nur der frühere Termin
-        if (due) db.prepare("UPDATE orders SET due_date = ? WHERE id = ?").run(due, row.id);
+        if (due) {
+          dueHistory.change(row.id, due, { by: actor(req), reason: "Teillieferung", via: "planung" });
+          db.prepare("UPDATE orders SET due_date = ? WHERE id = ?").run(due, row.id);
+        }
         whole++;
       }
     });
@@ -1128,8 +1154,9 @@ app.post("/api/restore", (req, res) => {
 registerAutoBackup(app, db, { dbPath: DB_PATH });
 registerPartImages(app, db);
 registerOdooSync(app, db, { isDate, nextPosition });
-registerFruehwarnung(app, db, { orderOut: (r) => orderOut(r), planSettingsOut: () => planSettingsOut() });
+registerFruehwarnung(app, db, { orderOut: (r) => orderOut(r), planSettingsOut: () => planSettingsOut(), dueChange: dueHistory.change });
 registerPlanvorschlag(app, db, { orderOut: (r) => orderOut(r), planSettingsOut: () => planSettingsOut() });
+dueHistory.register(app);
 registerOdooFiles(app, db);
 const staff = registerStaff(app, db);
 registerBde(app, db, staff);

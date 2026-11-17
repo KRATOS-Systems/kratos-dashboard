@@ -5,6 +5,7 @@ import { AppTile, Ico, Thumb, partImg, useToast } from "./ui.jsx";
 import { ODOO_URL } from "./planLogic.js";
 import BomHinweis from "./BomHinweis.jsx";
 import Vollstaendig from "./Vollstaendig.jsx";
+import Terminverlauf from "./Terminverlauf.jsx";
 import { ArbeitsplanKette, ArbeitsplanPanel } from "./Arbeitsplan.jsx";
 import { deviation, fixInOdoo, useArbeitsplaene } from "./arbeitsplan.js";
 
@@ -26,7 +27,6 @@ const SOON = [
   ["Werkzeugliste", "Werkzeuge aus dem NC-Programm auslesen und mit dem Lager abgleichen"],
   ["NC-Programm ablegen", "Programm zur Position speichern und Stand nachverfolgen"],
   ["Laufkarte drucken", "Laufkarte mit Zeichnung, Arbeitsgängen und QR-Code"],
-  ["Terminverlauf", "Wann sich Liefer- und Muss-bis-Termin geändert haben"],
 ];
 const CLS = { bereit: "bereit", in_arbeit: "arbeit", offen: "offen", entfaellt: "nein" };
 const store = (k, v) => {
@@ -166,6 +166,7 @@ function AvPanel({ avStdOf = () => null, r, checks, orders, onSet, onBulk, peopl
               Fräsen laut Odoo: {[o.odoo_machine && (MACHINES.find((m) => m.id === o.odoo_machine) || {}).short, o.odoo_hours > 0 && `${String(o.odoo_hours).replace(".", ",")} h`].filter(Boolean).join(", ")}
             </div>
           )}
+          <Terminverlauf o={o} />
           {o.odoo_draft && <div className="avp-odoo">Fertigungsauftrag in Odoo: noch im Entwurf (nicht freigegeben). Stückliste und Material in Odoo prüfen, danach den Fertigungsauftrag dort bestätigen</div>}
           {o.odoo_bom === "muster" && <div className="avp-odoo">Stückliste in Odoo: nur Musterwerte (Referenz MUSTER), Maschine und Zeit noch nicht geprüft</div>}
           {o.odoo_bom === "none" && <div className="avp-odoo">Stückliste in Odoo: fehlt, damit gibt es keine Arbeitsgänge</div>}
@@ -438,6 +439,11 @@ export default function AvView({ avStdOf = () => null, orders, checks, planStart
         <td>{posCell(r, showOrder)}</td>
         <td className="num" style={dueLate ? { color: "var(--bad)", fontWeight: 600 } : undefined}>
           {o.due ? fmtShort(o.due) : "–"}
+          {o.due_original && (
+            <small className="dueorig" title={`Liefertermin ${o.due_shifts}× verschoben, ursprünglich ${fmtShort(o.due_original)}${o.due_original.slice(0, 4)}`}>
+              urspr. {fmtShort(o.due_original)} · {o.due_shifts}×
+            </small>
+          )}
           {dueLate && (
             <small className="duelate">
               {daysBetween(o.due, today)} {daysBetween(o.due, today) === 1 ? "Tag" : "Tage"} überfällig
