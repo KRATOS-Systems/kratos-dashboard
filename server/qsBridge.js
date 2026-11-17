@@ -9,7 +9,7 @@
 //
 // Automatischer Status (statt „nicht nötig“) für Positionen, die nach dem Einschalten neu aus Odoo kommen:
 //   - Prüfplan: „bereit“, wenn es in QS einen freigegebenen Prüfplan zum Artikel gibt, sonst „offen“
-//   - EMPB: „offen“, wenn am Kunden (Kontakt) oder am Verkaufsauftrag in Odoo das Schlagwort „EMPB“ steht, sonst „nicht nötig“
+//   - EMPB: „offen“, wenn im Verkaufsauftrag unter dem Teil die Position „[EMPB] Erstmusterprüfbericht“ steht, sonst „nicht nötig“
 // Automatisch gesetzte Punkte sind markiert (av_checks.auto = 1) und werden bei jedem Lauf neu bewertet, solange sie „offen“ oder
 // „nicht nötig“ sind. Sobald jemand den Punkt von Hand ändert, ist er nicht mehr automatisch und wird nie überschrieben.
 import express from "express";
@@ -38,6 +38,26 @@ export function gleicherArtikel(a, b) {
   return lang.startsWith(kurz) && /^[a-z]{1,2}$/.test(lang.slice(kurz.length));
 }
 export const hatEmpb = (namen) => namen.some((n) => /\bempb\b/i.test(String(n)));
+const istEmpbZeile = (l) => Array.isArray(l.product_id) && /^\[EMPB\]/i.test(String(l.product_id[1]));
+// Auftragszeilen (sortiert nach Auftrag und Reihenfolge) → Menge „Auftrag|Artikel“ der Teile mit EMPB
+export function empbTeile(lines) {
+  const out = new Set();
+  let teil = null; // letzte Teileposition (mit Artikelnummer) im selben Auftrag
+  for (const l of lines) {
+    const auftrag = Array.isArray(l.order_id) ? l.order_id[1] : String(l.order_id || "");
+    if (teil && teil.auftrag !== auftrag) teil = null;
+    if (l.display_type) continue; // Abschnitt oder Notiz
+    if (istEmpbZeile(l)) {
+      if (teil) out.add(teil.auftrag + "|" + norm(teil.artikel));
+      continue;
+    }
+    const artikel = Array.isArray(l.product_id) ? artikelAus(l.product_id[1]) : "";
+    if (!artikel) continue; // z. B. AV, Rüstkosten, Versand ohne Artikelnummer
+    teil = { auftrag, artikel };
+    if (hatEmpb([l.name])) out.add(auftrag + "|" + norm(artikel));
+  }
+  return out;
+}
 
 export default function registerQsBridge(app, db, helpers, { fetchImpl = fetch, odooImpl = null } = {}) {
   db.exec("CREATE TABLE IF NOT EXISTS kv (key TEXT PRIMARY KEY, value TEXT NOT NULL)");
@@ -148,29 +168,17 @@ export default function registerQsBridge(app, db, helpers, { fetchImpl = fetch, 
         }
       : null);
 
-  // Welche Verkaufsaufträge verlangen einen EMPB? Schlagwort „EMPB“ am Auftrag oder am Kunden (auch an der Firma des Kontakts). Nur lesen.
-  async function empbAuftraege(sources) {
-    const out = new Set();
-    if (!odoo || !sources.length) return out;
-    const sos = await odoo("sale.order", "search_read", { domain: [["name", "in", sources]], fields: ["name", "tag_ids", "partner_id"], limit: 500 });
-    const tagIds = [...new Set(sos.flatMap((s) => s.tag_ids || []))];
-    const tags = tagIds.length ? await odoo("crm.tag", "read", { ids: tagIds, fields: ["name"] }) : [];
-    const tagName = new Map(tags.map((t) => [t.id, t.name]));
-    const partnerIds = [...new Set(sos.map((s) => (Array.isArray(s.partner_id) ? s.partner_id[0] : null)).filter(Boolean))];
-    const partners = partnerIds.length ? await odoo("res.partner", "read", { ids: partnerIds, fields: ["category_id", "commercial_partner_id"] }) : [];
-    const firmIds = [...new Set(partners.map((p) => (Array.isArray(p.commercial_partner_id) ? p.commercial_partner_id[0] : null)).filter((id) => id && !partnerIds.includes(id)))];
-    const firms = firmIds.length ? await odoo("res.partner", "read", { ids: firmIds, fields: ["category_id"] }) : [];
-    const pById = new Map([...partners, ...firms].map((p) => [p.id, p]));
-    const catIds = [...new Set([...partners, ...firms].flatMap((p) => p.category_id || []))];
-    const cats = catIds.length ? await odoo("res.partner.category", "read", { ids: catIds, fields: ["name"] }) : [];
-    const catName = new Map(cats.map((c) => [c.id, c.name]));
-    for (const s of sos) {
-      const p = Array.isArray(s.partner_id) ? pById.get(s.partner_id[0]) : null;
-      const f = p && Array.isArray(p.commercial_partner_id) ? pById.get(p.commercial_partner_id[0]) : null;
-      const namen = [...(s.tag_ids || []).map((id) => tagName.get(id)), ...((p && p.category_id) || []).map((id) => catName.get(id)), ...((f && f.category_id) || []).map((id) => catName.get(id))].filter(Boolean);
-      if (hatEmpb(namen)) out.add(s.name);
-    }
-    return out;
+  // Welche Teile verlangen einen EMPB? Im Verkaufsauftrag steht die Position „[EMPB] Erstmusterprüfbericht“ direkt unter dem Teil,
+  // für das sie gilt; ausnahmsweise steht „EMPB“ im Text der Teileposition selbst. Nur lesen.
+  async function empbTeileAusOdoo(sources) {
+    if (!odoo || !sources.length) return new Set();
+    const lines = await odoo("sale.order.line", "search_read", {
+      domain: [["order_id.name", "in", sources]],
+      fields: ["order_id", "sequence", "product_id", "name", "display_type"],
+      order: "order_id, sequence, id",
+      limit: 2000,
+    });
+    return empbTeile(lines);
   }
 
   // Prüfplanstand in QS (nur Artikel, nur lesen)
@@ -218,10 +226,10 @@ export default function registerQsBridge(app, db, helpers, { fetchImpl = fetch, 
     const em = kandidaten.filter((o) => frei(o.id, "empb") && o.source);
     if (em.length && odoo) {
       try {
-        const mit = await empbAuftraege([...new Set(em.map((o) => o.source))]);
-        for (const o of em) gesetzt += Number(set.run(o.id, "empb", mit.has(o.source) ? "offen" : "entfaellt").changes);
+        const mit = await empbTeileAusOdoo([...new Set(em.map((o) => o.source))]);
+        for (const o of em) gesetzt += Number(set.run(o.id, "empb", mit.has(o.source + "|" + norm(artikelAus(o.product))) ? "offen" : "entfaellt").changes);
       } catch (err) {
-        console.error("QS-Verbindung: EMPB-Schlagwort in Odoo nicht lesbar", err.message);
+        console.error("QS-Verbindung: EMPB im Verkaufsauftrag nicht lesbar", err.message);
       }
     }
     if (gesetzt) console.log(`QS-Verbindung: ${gesetzt} AV-Punkte automatisch gesetzt`);
