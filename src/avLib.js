@@ -51,3 +51,19 @@ export function avSummary(checks, id) {
   const dates = open.map((s) => s.due).filter(Boolean).sort();
   return { states, open, ready: open.length === 0, level, readyDate: dates.length ? dates[dates.length - 1] : null };
 }
+
+// Prüfplan und EMPB entstehen in QS (app.dynamis-systems.de/qs). Der Link öffnet dort die Zeichnung zum Artikel
+// (Artikel aus dem Odoo-Produktnamen „[Nummer] Name“, Fertigungsauftrag und Kundenauftrag zum Nachschlagen);
+// gibt es noch keine, öffnet QS „Neue Zeichnung hinzufügen“ mit den Angaben vorbefüllt.
+export const QS_ARTIKEL_URL = "https://app.dynamis-systems.de/qs/artikel";
+export const QS_ITEMS = ["pruefplan", "empb"];
+export function qsArtikelUrl(o, ziel = "pruefplan") {
+  const p = new URLSearchParams();
+  const m = String(o.product || "").match(/^\[([^\]]+)\]/);
+  if (m) p.set("artikel", m[1].trim());
+  const fa = o.odoo_ref || "";
+  if (/^[A-Z]{1,4}[\d/]/i.test(fa) && !/^P\d/.test(fa)) p.set("fa", fa); // Fertigungsauftrag, keine Einkaufsbestellung
+  if (o.source) p.set("auftrag", o.source);
+  p.set("ziel", ziel);
+  return QS_ARTIKEL_URL + "?" + p.toString();
+}

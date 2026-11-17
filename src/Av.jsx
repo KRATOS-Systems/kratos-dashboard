@@ -1,6 +1,6 @@
 import React, { Suspense, lazy, useEffect, useMemo, useState } from "react";
 import { addDays, daysBetween, fmtShort, MACHINES } from "./lib.js";
-import { AV_ITEMS, isNewAv, AV_STATUS, avCycle, avDone, avState, avSummary } from "./avLib.js";
+import { AV_ITEMS, isNewAv, AV_STATUS, avCycle, avDone, avState, avSummary, QS_ITEMS, qsArtikelUrl } from "./avLib.js";
 import { AppTile, Ico, Thumb, partImg, useToast } from "./ui.jsx";
 import { ODOO_URL } from "./planLogic.js";
 import BomHinweis from "./BomHinweis.jsx";
@@ -24,7 +24,6 @@ const SOON = [
   ["Material aus Einkauf", "Bestellt, Ankunft und geliefert aus den Odoo-Einkäufen übernehmen"],
   ["Werkzeugliste", "Werkzeuge aus dem NC-Programm auslesen und mit dem Lager abgleichen"],
   ["NC-Programm ablegen", "Programm zur Position speichern und Stand nachverfolgen"],
-  ["Prüfplan aus QS CHECK", "Prüfplan zur Zeichnung anlegen oder übernehmen"],
   ["Laufkarte drucken", "Laufkarte mit Zeichnung, Arbeitsgängen und QR-Code"],
   ["Terminverlauf", "Wann sich Liefer- und Muss-bis-Termin geändert haben"],
 ];
@@ -67,6 +66,12 @@ function AvPanel({ avStdOf = () => null, r, checks, orders, onSet, onBulk, peopl
                 In Odoo öffnen <Ico n="ext" s={15} />
               </a>
             )}
+            <a className="btn" href={qsArtikelUrl(o, "pruefplan")} target="qs" rel="noopener" title="Prüfplan zur Zeichnung in QS anlegen oder öffnen">
+              Prüfplan in QS <Ico n="ext" s={15} />
+            </a>
+            <a className="btn" href={qsArtikelUrl(o, "empb")} target="qs" rel="noopener" title="Erstmusterprüfbericht (EMPB) in QS erstellen oder öffnen">
+              EMPB in QS <Ico n="ext" s={15} />
+            </a>
             <button type="button" className="btn" onClick={() => openPlanning(o.id)} title="Stunden, Liefertermin und Start frühestens bearbeitest du in der Planung">
               In der Planung öffnen
             </button>
@@ -311,6 +316,11 @@ export default function AvView({ avStdOf = () => null, orders, checks, planStart
           >
             {label}
           </button>
+          {QS_ITEMS.includes(item.id) && st.status !== "entfaellt" && (
+            <a className="qslink" href={qsArtikelUrl(r.o, item.id)} target="qs" rel="noopener" onClick={(ev) => ev.stopPropagation()} title={item.label + " in QS öffnen (neues Teil: Zeichnung wird vorbefüllt angelegt)"}>
+              in QS ↗
+            </a>
+          )}
           {(st.assignee || avStdOf(r.o, item.id)) && !avDone(st.status) && (
             <small className={`who${st.assignee ? "" : " std"}`} title={st.assignee ? "Zuständig" : "Zuständig (Standard)"}>
               {st.assignee || avStdOf(r.o, item.id)}
