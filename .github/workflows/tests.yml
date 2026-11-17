@@ -63,6 +63,8 @@ jobs:
         run: node scripts/testChatPlan.mjs
       - name: Planungshilfen (Liefertermin für Anfragen, Abwesenheit, Morgenbericht)
         run: node scripts/testPlanHilfen.mjs
+      - name: Lernen (Programme im AV-Paket, Soll/Ist, Autopilot)
+        run: node scripts/testLernen.mjs
       - name: Aufgaben (Von mir vergeben)
         run: node scripts/testAufgaben.mjs
       - name: Verbindung zu QS (Prüfplan, EMPB)

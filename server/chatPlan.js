@@ -97,7 +97,7 @@ export function chatTools(app, db, helpers) {
         if (list.length > 1) throw new Error(`"${position}" passt auf ${list.length} Positionen. Bitte FA-Nummer oder id angeben.`);
         const o = list[0];
         if (!bestaetigt) return preview({ position: o.order_no || o.odoo_ref, auftrag: groupLabelOf(o), stunden_alt: o.hours ?? null, stunden_neu: stunden, maschine: MACHINES.find((m) => m.id === o.machine)?.short || "noch nicht eingeplant" });
-        db.prepare("UPDATE orders SET hours = ?, hours_plan = ? WHERE id = ? AND done = 0").run(stunden, stunden, o.id);
+        db.prepare("UPDATE orders SET hours = ?, hours_plan = ?, hours_basis = 'hand' WHERE id = ? AND done = 0").run(stunden, stunden, o.id);
         return { geaendert: true, von: who(), position: o.order_no || o.odoo_ref, stunden_alt: o.hours ?? null, stunden_neu: stunden };
       },
     },

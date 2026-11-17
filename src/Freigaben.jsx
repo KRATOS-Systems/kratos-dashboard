@@ -72,6 +72,11 @@ function PaketInhalt({ p }) {
           ))}
         </ul>
       )}
+      {Object.entries(p.status || {}).map(([k, v]) => (
+        <div key={k}>
+          <b>{ITEM[k] || k}</b> → {v}
+        </div>
+      ))}
       {p.programmingMin > 0 && <div className="fg-faint">Programmieren laut Kalkulation: {Math.round(p.programmingMin)} min</div>}
       {(p.warnungen || []).map((w) => (
         <div key={w} className="fg-warn">

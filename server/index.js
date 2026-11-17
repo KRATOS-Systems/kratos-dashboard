@@ -28,6 +28,8 @@ import registerExtern from "./extern.js";
 import registerLiefertermin from "./liefertermin.js";
 import registerAbwesenheit from "./abwesenheit.js";
 import registerMorgenbericht from "./morgenbericht.js";
+import registerProgramme from "./programme.js";
+import registerSollIst from "./sollIst.js";
 
 // Lokal dürfen Umgebungsvariablen in einer Datei .env stehen (nicht im Repository). Bei Hostinger gibt es sie nicht.
 try {
@@ -179,6 +181,7 @@ const orderColumns = columnsOf();
   ["material_info", "TEXT"], // Material laut Einkauf kurz, z. B. "P00601 Erwin Telle, Wareneingang offen, geplant 17.11."
   ["pinned", "INTEGER NOT NULL DEFAULT 0"], // 1 = fixiert: Neu ordnen verschiebt die Position nicht
   ["hours_suggest", "REAL"], // Stunden-Vorschlag aus den echten Zeiten des letzten erledigten Fertigungsauftrags desselben Teils (Odoo)
+  ["hours_basis", "TEXT"], // woher die Stunden kamen: kalkulation, historie, odoo, hand (für Soll/Ist, server/sollIst.js)
   ["hours_suggest_src", "TEXT"], // woher der Vorschlag kommt, z. B. "aus FA01335: Fräsen 4,1 h für 3 Stk, Rüsten 2,9 h"
   ["restricted_ok", "INTEGER NOT NULL DEFAULT 0"], // 1 = passt auch auf die eingeschränkte Maschine (M1), die App darf sie dorthin legen
   ["sale_date", "TEXT"], // Auftragsdatum des Kundenauftrags (für das Alter in Tagen)
@@ -238,6 +241,9 @@ registerTalosPlan(app, db, { orderOut: (r) => orderOut(r), planSettingsOut: () =
 
 // Verbindung zu QS (Prüfplan/EMPB der Arbeitsvorbereitung); vor dem Passwortschutz, eigener Schutz über den Schlüssel (server/qsBridge.js)
 const qsBridge = registerQsBridge(app, db, { orderOut: (r) => orderOut(r), planSettingsOut: () => planSettingsOut() });
+
+// Programme aus dem Auftragsordner (auftragsordner/programme_melden.py); vor dem Passwortschutz, eigener Schutz über PROGRAMME_KEY
+registerProgramme(app, db);
 
 // Lebenszeichen für Überwachung und Hoster: ohne Anmeldung, ohne Daten. 503, wenn die Datenbank nicht antwortet.
 app.get(["/health", "/api/health"], (req, res) => {
@@ -549,6 +555,12 @@ app.put("/api/orders/:id", wrap(async (req, res) => {
     if (typeof hours !== "number" || !Number.isFinite(hours) || hours < 0) return res.status(400).json({ error: "invalid hours" });
     sets.push("hours = ?");
     values.push(hours);
+    // Quelle der Stunden merken: Übernahme des Vorschlags aus früheren Aufträgen oder von Hand
+    const cur = db.prepare("SELECT hours, hours_suggest FROM orders WHERE id = ?").get(id);
+    if (cur && cur.hours !== hours) {
+      sets.push("hours_basis = ?");
+      values.push(cur.hours_suggest != null && Math.abs(cur.hours_suggest - hours) < 0.01 ? "historie" : "hand");
+    }
   }
   if (done_hours !== undefined) {
     if (typeof done_hours !== "number" || !Number.isFinite(done_hours) || done_hours < 0) {
@@ -1224,6 +1236,7 @@ registerExtern(app, db, { orderOut: (r) => orderOut(r), planSettingsOut: () => p
 registerLiefertermin(app, db, { orderOut: (r) => orderOut(r), planSettingsOut: () => planSettingsOut() });
 registerAbwesenheit(app, db);
 registerMorgenbericht(app, db);
+registerSollIst(app, db);
 registerFeedback(app, db);
 registerTalosChat(app);
 qsBridge.start();
