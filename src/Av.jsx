@@ -4,6 +4,7 @@ import { AV_ITEMS, isNewAv, AV_STATUS, avCycle, avDone, avState, avSummary, QS_I
 import { AppTile, Ico, Thumb, partImg, useToast } from "./ui.jsx";
 import { ODOO_URL } from "./planLogic.js";
 import BomHinweis from "./BomHinweis.jsx";
+import Vollstaendig from "./Vollstaendig.jsx";
 import { ArbeitsplanKette, ArbeitsplanPanel } from "./Arbeitsplan.jsx";
 import { deviation, fixInOdoo, useArbeitsplaene } from "./arbeitsplan.js";
 
@@ -165,7 +166,7 @@ function AvPanel({ avStdOf = () => null, r, checks, orders, onSet, onBulk, peopl
               Fräsen laut Odoo: {[o.odoo_machine && (MACHINES.find((m) => m.id === o.odoo_machine) || {}).short, o.odoo_hours > 0 && `${String(o.odoo_hours).replace(".", ",")} h`].filter(Boolean).join(", ")}
             </div>
           )}
-          {o.odoo_draft && <div className="avp-odoo">Fertigungsauftrag in Odoo: noch im Entwurf. Stückliste und Material in Odoo noch anpassen, danach den Fertigungsauftrag bestätigen</div>}
+          {o.odoo_draft && <div className="avp-odoo">Fertigungsauftrag in Odoo: noch im Entwurf (nicht freigegeben). Stückliste und Material in Odoo prüfen, danach den Fertigungsauftrag dort bestätigen</div>}
           {o.odoo_bom === "muster" && <div className="avp-odoo">Stückliste in Odoo: nur Musterwerte (Referenz MUSTER), Maschine und Zeit noch nicht geprüft</div>}
           {o.odoo_bom === "none" && <div className="avp-odoo">Stückliste in Odoo: fehlt, damit gibt es keine Arbeitsgänge</div>}
           {o.odoo_bom === "leer" && <div className="avp-odoo">Stückliste in Odoo: ohne Arbeitsgänge</div>}
@@ -180,7 +181,7 @@ function AvPanel({ avStdOf = () => null, r, checks, orders, onSet, onBulk, peopl
 // orders = alle Positionen, checks = Map (Position|Punkt -> { status, due, note, assignee }),
 // planStart = Map (Position -> { machine, start }) für eingeplante Positionen,
 // leadDays = Vorlauf: So viele Tage vor dem Start auf der Maschine muss alles bereit sein ("Muss bis").
-export default function AvView({ avStdOf = () => null, orders, checks, planStart, today, onSet, onBulk, selectedId, onOpen, filter, setFilter, leadDays, repeatOf, people, onApplyRepeat, openPlanning, focusId, onFocusDone }) {
+export default function AvView({ avStdOf = () => null, orders, checks, planStart, today, onSet, onBulk, selectedId, onOpen, filter, setFilter, leadDays, repeatOf, people, onApplyRepeat, openPlanning, focusId, onFocusDone, onReload }) {
   const toast = useToast();
   // Arbeitspläne aller offenen Positionen aus Odoo (Reihenfolge, Maschine, Status); Abweichung zur Karte wird markiert
   const openIds = useMemo(() => orders.filter((x) => !x.done && x.odoo_id && !LANE_IDS.includes(x.machine)).map((x) => x.odoo_id), [orders]);
@@ -254,7 +255,7 @@ export default function AvView({ avStdOf = () => null, orders, checks, planStart
         const muss = plan ? addDays(plan.start, -leadDays) : null;
         return { o, sum, plan, muss, late: !sum.ready && muss && muss < today ? daysBetween(muss, today) : 0 };
       })
-      .filter(({ o }) => !q || `${o.order_no} ${o.source || ""} ${o.product || ""}`.toLowerCase().includes(q));
+      .filter(({ o }) => !q || `${o.order_no} ${o.source || ""} ${o.product || ""} ${o.customer || ""}`.toLowerCase().includes(q));
   }, [orders, checks, planStart, query, leadDays, today]);
   const perOrder = useMemo(() => {
     const m = new Map();
@@ -276,10 +277,11 @@ export default function AvView({ avStdOf = () => null, orders, checks, planStart
   const rows = base.filter((r) => (filter === "alle" ? true : filter === "bald" ? isUrgent(r) : !r.sum.ready));
 
   const sorted = useMemo(() => {
-    const key = (r) => (r.muss ? `0${r.muss}` : `1${r.o.due || "9999"}`);
+    // Überfällige Liefertermine stehen ganz oben (ältester zuerst), danach nach Muss-bis-Termin, dann nach Liefertermin
+    const key = (r) => (r.o.due && r.o.due < today ? `0${r.o.due}` : r.muss ? `1${r.muss}` : `2${r.o.due || "9999"}`);
     return [...rows].sort((a, b) => key(a).localeCompare(key(b)) || String(a.o.source).localeCompare(String(b.o.source)) || a.o.id - b.o.id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rows.map((r) => r.o.id + "|" + r.muss + "|" + r.sum.ready).join(",")]);
+  }, [rows.map((r) => r.o.id + "|" + r.muss + "|" + r.sum.ready + "|" + r.o.due).join(","), today]);
 
   const groups = (() => {
     const map = new Map();
@@ -291,7 +293,8 @@ export default function AvView({ avStdOf = () => null, orders, checks, planStart
     const sortKey = (g) => {
       const starts = g.rows.map((r) => r.plan?.start).filter(Boolean).sort();
       const dues = g.rows.map((r) => r.o.due).filter(Boolean).sort();
-      return starts[0] || dues[0] || "9999";
+      // Aufträge mit überfälligem Liefertermin zuerst
+      return dues[0] && dues[0] < today ? `0${dues[0]}` : `1${starts[0] || dues[0] || "9999"}`;
     };
     return [...map.values()].sort((a, b) => sortKey(a).localeCompare(sortKey(b)) || a.label.localeCompare(b.label));
   })();
@@ -374,10 +377,20 @@ export default function AvView({ avStdOf = () => null, orders, checks, planStart
           <div className={showOrder ? "fano" : "fano plain"}>
             {posNo(o)}
             {isNewAv(o, checks) && <span className="newpill" title="Neu aus Odoo übernommen">NEU</span>}
+            {o.odoo_draft && (
+              <span className="draftpill" title="Der Fertigungsauftrag ist in Odoo noch im Entwurf. Der Kundenauftrag ist bestätigt, freigegeben wird der Fertigungsauftrag in Odoo.">
+                nicht freigegeben
+              </span>
+            )}
           </div>
           <div style={{ color: "var(--muted)", fontSize: 12, maxWidth: 240, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={o.product || ""}>
             {[o.quantity != null ? `${o.quantity} Stück` : null, o.product].filter(Boolean).join(" · ")}
           </div>
+          {(o.customer || o.sale_date) && (
+            <div className="avkunde" title={[o.customer, o.sale_date ? `Kundenauftrag vom ${fmtShort(o.sale_date)}${o.sale_date.slice(0, 4)}` : null].filter(Boolean).join(" · ")}>
+              {[o.customer, o.sale_date ? `${daysBetween(o.sale_date, today)} ${daysBetween(o.sale_date, today) === 1 ? "Tag" : "Tage"} alt` : null].filter(Boolean).join(" · ")}
+            </div>
+          )}
           {rep && (
             <div className="repeat" title={`Gleiches Teil wie ${posNo(rep)}: AV-Stand kann übernommen werden`}>
               ↻ Wiederholteil von {posNo(rep)}
@@ -425,6 +438,11 @@ export default function AvView({ avStdOf = () => null, orders, checks, planStart
         <td>{posCell(r, showOrder)}</td>
         <td className="num" style={dueLate ? { color: "var(--bad)", fontWeight: 600 } : undefined}>
           {o.due ? fmtShort(o.due) : "–"}
+          {dueLate && (
+            <small className="duelate">
+              {daysBetween(o.due, today)} {daysBetween(o.due, today) === 1 ? "Tag" : "Tage"} überfällig
+            </small>
+          )}
         </td>
         <td>
           {plan ? (
@@ -475,6 +493,7 @@ export default function AvView({ avStdOf = () => null, orders, checks, planStart
           <h1>Arbeitsvorbereitung</h1>
           <p>Was ist bereit, was fehlt noch? Die Maschine weist die Planung zu.</p>
           <BomHinweis />
+          <Vollstaendig onChanged={onReload} />
           {deviations.length > 0 && (
             <div className="apl-warn apl-top" role="status">
               <span>
@@ -608,6 +627,7 @@ export default function AvView({ avStdOf = () => null, orders, checks, planStart
                               <span className="gdue none">ohne Liefertermin</span>
                             )}
                             <span className="gmeta">
+                              {g.rows[0].o.customer ? g.rows[0].o.customer + " · " : ""}
                               {g.rows.length} {g.rows.length === 1 ? "Position" : "Positionen"} · {readyN} bereit
                             </span>
                           </div>

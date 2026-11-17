@@ -5,6 +5,7 @@ import { parseOdooExport } from "./odooImport.js";
 import { holidaysBavaria } from "./holidays.js";
 import AvView, { avUrgentCount } from "./Av.jsx";
 import BomHinweis from "./BomHinweis.jsx";
+import Vollstaendig from "./Vollstaendig.jsx";
 import { AV_ITEMS, AV_STATUS, AV_TEAM, isNewAv, avKey, avState, avSummary } from "./avLib.js";
 import { STAFF, ACTIVITIES, STAFF_DEFAULTS, responsible, avResponsible, sharedMachine } from "./staffLib.js";
 import Avatar from "./Avatar.jsx";
@@ -1500,6 +1501,7 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
             {wt && <span className="pill warn">{it.waitReason === "dep" ? "wartet auf Arbeitsgang" : it.waitReason === "av" ? "wartet auf AV" : "wartet auf Start"}</span>}
             <span className={`pill ${sum.ready ? "ok" : "mute"}`}>AV {avDone}/{sum.states.length}</span>
             <MaterialBadge o={o} />
+            {o.odoo_draft && <span className="pill warn" title="Der Fertigungsauftrag ist in Odoo noch im Entwurf. Freigegeben wird er in Odoo.">nicht freigegeben</span>}
             {o.odoo_bom === "muster" && <span className="pill warn" title="Die Stückliste in Odoo hat nur Musterwerte (Referenz MUSTER). Maschine und Zeit sind nicht geprüft.">Zeit ungeprüft (Muster)</span>}
             {o.odoo_bom === "none" && <span className="pill warn" title="In Odoo hat der Fertigungsauftrag keine Stückliste, damit auch keine Arbeitsgänge.">keine Stückliste</span>}
             {o.odoo_bom === "leer" && <span className="pill warn" title="Die Stückliste in Odoo hat keine Arbeitsgänge.">keine Arbeitsgänge</span>}
@@ -2134,6 +2136,7 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
             goTo("planung");
           }}
           orderGroup={groupKeyOf}
+          onReload={() => fetch("/api/orders").then((r) => r.json()).then((d) => setOrders(d.orders)).catch(() => {})}
         />
         {layer}
       </>
@@ -2853,7 +2856,7 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
                       </label>
                       <Thumb src={partImg(o)} size={38} />
                       <div>
-                        <b onClick={() => openDetail(o.id)}>{o.order_no || "ohne Nummer"}</b> <OdooLink o={o} />{isNewPlan(o) && <span className="newpill" title="Neu aus Odoo übernommen">NEU</span>}
+                        <b onClick={() => openDetail(o.id)}>{o.order_no || "ohne Nummer"}</b> <OdooLink o={o} />{isNewPlan(o) && <span className="newpill" title="Neu aus Odoo übernommen">NEU</span>}{o.odoo_draft && <span className="draftpill" title="Fertigungsauftrag in Odoo noch im Entwurf">nicht freigegeben</span>}
                         <div title={metaLine(o, false)}>{metaLine(o, false)}</div>
                       </div>
                     </div>
@@ -2962,6 +2965,7 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
           <div className="bd-title">
             <b>{o.source || posNo(o)}</b>
             {isNewPlan(o) && <span className="newpill" title="Neu aus Odoo übernommen">NEU</span>}
+            {o.odoo_draft && <span className="draftpill" title="Fertigungsauftrag in Odoo noch im Entwurf">Entwurf</span>}
             <span className="bd-no">{o.source ? posNo(o) : ""}</span>
           </div>
         </div>
@@ -3473,6 +3477,7 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
       </div>
 
       <BomHinweis />
+      <Vollstaendig compact onChanged={() => fetch("/api/orders").then((r) => r.json()).then((d) => setOrders(d.orders)).catch(() => {})} />
 
       {preview && (
         <div className="note warn rise" style={{ "--i": 1 }}>

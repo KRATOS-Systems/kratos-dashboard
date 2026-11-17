@@ -126,8 +126,24 @@ const T = {
     ...(process.env.MOCK_ARBEITSPLAN
       ? [1310, 1311, 1312, 1313, 1314].map((id) => ({ id, name: `FA0${id}`, product_id: 2902, state: "confirmed", origin: `A0${id + 100}`, product_qty: 5, qty_producing: 0 }))
       : []),
-    // Entwürfe (nur mit MOCK_ENTWURF=1): 1322 Kundenauftrag bestätigt, 1323 Kundenauftrag nur Angebot, 1324 Altlast von 2025
-    ...(process.env.MOCK_ENTWURF ? [{ id: 1322, name: "FA01322", product_id: 2902, state: "draft", origin: "A01422", product_qty: 60, create_date: ago(24) }, { id: 1323, name: "FA01323", product_id: 2902, state: "draft", origin: "A01423", product_qty: 5, create_date: ago(24) }, { id: 1324, name: "FA00364", product_id: 2901, state: "draft", origin: "A00380", product_qty: 1, create_date: "2025-04-14 13:01:16" }] : []),
+    // Vollständigkeit der Kundenaufträge (nur mit MOCK_ENTWURF=1), nach den echten Fällen vom 12.11.2026:
+    //   Entwürfe zu bestätigten Kundenaufträgen (müssen in die AV, überfällig): FA01322 (A01422), FA01309 (A01385), FA01334 (A01444)
+    //   draußen bleiben: FA01323 (nur Angebot), FA00364 (Altlast 2025), FA01300 (geliefert), FA00978 (storniert), FA01391 (Testauftrag)
+    //   FA01122 (A01162): bestätigt und alt, für das einmalige Nachholen; FA01023 (A01043): erledigt, Lieferung offen
+    ...(process.env.MOCK_ENTWURF
+      ? [
+          { id: 1322, name: "FA01322", product_id: 2903, state: "draft", origin: "A01422", product_qty: 60, date_deadline: "2026-11-05 08:00:00", create_date: "2026-10-27 09:00:00" },
+          { id: 1309, name: "FA01309", product_id: 2904, state: "draft", origin: "A01385", product_qty: 2, date_deadline: "2026-11-05 07:00:00", create_date: "2026-10-21 09:00:00" },
+          { id: 1334, name: "FA01334", product_id: 2905, state: "draft", origin: "A01444", product_qty: 8, date_deadline: "2026-11-06 14:00:00", create_date: "2026-10-27 14:00:00" },
+          { id: 1323, name: "FA01323", product_id: 2902, state: "draft", origin: "A01423", product_qty: 5, create_date: ago(24) },
+          { id: 1324, name: "FA00364", product_id: 2901, state: "draft", origin: "A00380", product_qty: 1, create_date: "2025-04-14 13:01:16" },
+          { id: 1300, name: "FA01300", product_id: 2901, state: "draft", origin: "A01406", product_qty: 1, create_date: "2026-10-14 09:00:00" },
+          { id: 978, name: "FA00978", product_id: 2901, state: "draft", origin: "A00978", product_qty: 3, create_date: "2026-01-08 09:00:00" },
+          { id: 1391, name: "FA01391", product_id: 2906, state: "confirmed", origin: "TEST Arbeitsplan, nicht fertigen", product_qty: 10, create_date: ago(24) },
+          { id: 1122, name: "FA01122", product_id: 2902, state: "confirmed", origin: "A01162", product_qty: 12, date_deadline: "2026-05-14 14:00:00", create_date: "2026-04-21 08:00:00" },
+          { id: 1023, name: "FA01023", product_id: 2901, state: "done", origin: "A01043", product_qty: 4, create_date: "2026-02-11 14:00:00" },
+        ]
+      : []),
     ...(process.env.MOCK_A01378 ? [{ id: 1302, name: "FA01302", product_id: 2902, state: "confirmed", origin: "A01378" }, { id: 1304, name: "FA01304", product_id: 2902, state: "confirmed", origin: "A01379" }] : []),
   ],
   "mrp.workorder": [
@@ -176,7 +192,26 @@ const T = {
     { id: 14, employee_id: 2, number_of_days: 30, leaves_taken: 23, state: "validate", date_from: "2026-01-01", date_to: "2027-03-31" },
     { id: 8, employee_id: 3, number_of_days: 30, leaves_taken: 24, state: "validate", date_from: "2026-01-01", date_to: "2026-12-31" },
   ],
-  "sale.order": [{ id: 1365, name: "A01365" }, { id: 958, name: "A00958" }, { id: 1378, name: "A01378" }, ...(process.env.MOCK_ENTWURF ? [{ id: 1422, name: "A01422", state: "sale", delivery_status: "pending" }, { id: 1423, name: "A01423", state: "draft" }, { id: 380, name: "A00380", state: "sale", delivery_status: "pending" }] : [])],
+  "sale.order": [{ id: 1365, name: "A01365" }, { id: 958, name: "A00958" }, { id: 1378, name: "A01378" },
+    ...(process.env.MOCK_ENTWURF
+      ? [
+          { id: 1422, name: "A01422", state: "sale", delivery_status: "pending", partner_id: 136, date_order: "2026-10-27 08:30:00", commitment_date: "2026-11-05 08:00:00" },
+          { id: 1385, name: "A01385", state: "sale", delivery_status: "pending", partner_id: 187, date_order: "2026-10-21 09:42:04", commitment_date: "2026-11-05 07:00:00" },
+          { id: 1444, name: "A01444", state: "sale", delivery_status: "pending", partner_id: 138, date_order: "2026-10-27 14:10:53", commitment_date: "2026-11-06 14:00:00" },
+          { id: 1423, name: "A01423", state: "draft", partner_id: 138, date_order: "2026-10-26 14:11:33" },
+          { id: 380, name: "A00380", state: "sale", delivery_status: "pending", partner_id: 138, date_order: "2025-04-14 10:00:00" },
+          { id: 1406, name: "A01406", state: "sale", delivery_status: "full", partner_id: 138, date_order: "2026-10-14 08:00:00" },
+          { id: 978, name: "A00978", state: "cancel", delivery_status: false, partner_id: 138, date_order: "2026-01-08 08:00:00" },
+          { id: 1162, name: "A01162", state: "sale", delivery_status: "pending", partner_id: 136, date_order: "2026-04-21 06:25:04", commitment_date: "2026-05-14 14:00:00" },
+          // gefertigt, aber noch nicht geliefert
+          { id: 1043, name: "A01043", state: "sale", delivery_status: "pending", partner_id: 138, date_order: "2026-02-11 13:36:21", commitment_date: "2026-03-06 13:00:00" },
+          // weder Fertigungsauftrag noch Einkauf
+          { id: 1109, name: "A01109", state: "sale", delivery_status: "pending", partner_id: 108, date_order: "2026-03-16 10:27:03", commitment_date: "2026-04-13 11:00:00" },
+          // nur Einkauf (Fremdfertigung)
+          { id: 1446, name: "A01446", state: "sale", delivery_status: "pending", partner_id: 138, date_order: "2026-11-02 12:00:11", commitment_date: "2026-11-18 11:00:00" },
+        ]
+      : []),
+  ],
   "mail.activity.type": [{ id: 1, name: "To-do" }, { id: 2, name: "Anruf" }, { id: 4, name: "E-Mail" }],
   "mail.activity": [
     { id: 501, activity_type_id: 1, user_id: 30, create_uid: 25, summary: "Programm für Grundplatte prüfen", note: "<p>Bohrbild mit <b>Zeichnung</b> abgleichen</p>", date_deadline: day(-2), res_model: "mrp.production", res_id: 1307, res_name: "FA01307", date_done: false },
@@ -186,6 +221,20 @@ const T = {
   ],
   "quality.alert": [{ id: 1, name: "QA001", title: "Bohrung Ø8 außer Toleranz", product_id: false, product_tmpl_id: 70, production_id: false, date_close: false }],
 };
+// Zur Vollständigkeitsprüfung: Kunden, weitere Artikel und der Einkauf (nur mit MOCK_ENTWURF=1)
+if (process.env.MOCK_ENTWURF) {
+  T["res.partner"].push({ id: 136, name: "Ernst Meck GmbH" }, { id: 187, name: "ACS Armoured Car Systems GmbH, Markus Fuss" }, { id: 138, name: "Schneider Gmbh & Co. KG" }, { id: 108, name: "Konecranes GmbH" });
+  T["product.product"].push(
+    { id: 2903, name: "Flach 40x20, 70lg.", default_code: "89058665", product_tmpl_id: 70 },
+    { id: 2904, name: "Bundbuchse", default_code: "SK966-114100.005.0", product_tmpl_id: 70 },
+    { id: 2905, name: "Führungsschlitten", default_code: "042-69-017", product_tmpl_id: 70 },
+    { id: 2906, name: "TEST Arbeitsplan", default_code: false, product_tmpl_id: 70 }
+  );
+  T["purchase.order"] = [{ id: 602, name: "P00602", origin: "A01446", state: "purchase", receipt_status: "pending", partner_id: 138, date_order: "2026-11-03 11:00:00" }];
+  T["purchase.order.line"] = [];
+  M2O["purchase.order"] = { partner_id: "res.partner" };
+  M2O["purchase.order.line"] = { order_id: "purchase.order", product_id: "product.product" };
+}
 const log = [];
 const nextId = (m) => Math.max(0, ...T[m].map((r) => r.id)) + 1;
 const byId = (m, id) => T[m].find((r) => r.id === id);

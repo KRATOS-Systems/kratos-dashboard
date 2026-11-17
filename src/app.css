@@ -1389,3 +1389,30 @@ a.btn { text-decoration: none; }
 
 /* Knopf „Messen“: Werkerprüfung in QS zum gestempelten Auftrag */
 .bhero-top .messen { margin-left: auto; min-height: 44px; font-size: 16px; }
+
+/* Vollständigkeit der Kundenaufträge (Arbeitsvorbereitung) */
+.vollst { padding: 9px 14px; font-size: 12.5px; line-height: 1.45; }
+.vollst.bad { border-color: color-mix(in srgb, var(--bad) 55%, var(--line)); background: var(--bad-soft); }
+.vollst .vo-head { display: flex; align-items: baseline; gap: 9px; }
+.vollst .vo-head > span { flex: 1; min-width: 0; }
+.vollst .vo-head .dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--c); transform: translateY(-1px); }
+.vollst .vo-head .btn { flex: none; align-self: center; }
+.vollst .vo-faint { color: var(--muted); font-weight: 400; }
+.vollst .vo-late { color: var(--bad); font-weight: 600; }
+.vollst .vo-err { color: var(--bad); margin-top: 4px; }
+.vollst .vo-sub { margin: 8px 0 2px 17px; font-weight: 600; }
+.vollst .vo-list { margin: 4px 0 2px 17px; display: grid; gap: 2px; }
+.vollst .vo-row { display: grid; grid-template-columns: 74px minmax(110px, 1.2fr) minmax(120px, 1.1fr) 88px minmax(140px, 2fr); gap: 12px; align-items: center; padding: 3px 0; border-top: 1px solid color-mix(in srgb, var(--line) 70%, transparent); }
+.vollst .vo-row > * { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vollst .vo-no { font: 600 12.5px var(--f-mono); }
+.vollst .vo-age { color: var(--muted); }
+.vollst .vo-extra { display: flex; align-items: center; gap: 8px; justify-content: flex-end; }
+.vollst .vo-extra > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.vollst .vo-extra input { flex: 1; min-width: 90px; padding: 3px 8px; font-size: 12.5px; }
+.vollst .vo-toggle { margin: 6px 0 0 13px; padding: 2px 4px; border: 0; background: none; color: var(--muted); font: inherit; cursor: pointer; text-align: left; }
+.vollst .vo-toggle:hover { color: var(--ink); }
+@media (max-width: 760px) { .vollst .vo-row { grid-template-columns: 74px 1fr; } .vollst .vo-extra { grid-column: 1 / -1; justify-content: flex-start; } }
+/* Fertigungsauftrag in Odoo noch im Entwurf */
+.draftpill { display: inline-block; margin-left: 8px; padding: 0 7px; border-radius: 6px; font: 700 10.5px/17px var(--f-display); letter-spacing: .04em; color: var(--warn); background: var(--warn-soft); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--warn) 45%, transparent); vertical-align: 1px; white-space: nowrap; }
+.avkunde { color: var(--muted); font-size: 12px; max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.duelate { display: block; font-size: 11.5px; font-weight: 500; }
