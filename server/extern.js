@@ -391,36 +391,30 @@ export default function registerExtern(app, db, helpers) {
     return JSON.stringify(verlauf.slice(-30));
   };
 
+  const fail = (status, message) => Object.assign(new Error(message), { status });
   // "Lieferant angefragt" abhaken (Telefon oder Mail)
-  app.post("/api/extern/:po/angefragt", async (req, res) => {
-    const po = req.params.po;
+  async function markAsked(po, { weg, notiz, who }) {
     const item = await findItem(po);
-    if (!item) return res.status(404).json({ error: "Keine offene Bestellung " + po });
-    const who = sessionName(req) || String((req.body && req.body.von) || "").slice(0, 60) || "App";
-    const notiz = String((req.body && req.body.notiz) || "").slice(0, 300) || null;
-    const weg = req.body && req.body.weg === "telefon" ? "telefonisch" : "per Mail";
+    if (!item) throw fail(404, "Keine offene Bestellung " + po);
+    notiz = String(notiz || "").slice(0, 300) || null;
+    const how = weg === "telefon" ? "telefonisch" : "per Mail";
     db.prepare(
       `INSERT INTO extern_status (po, angefragt_am, angefragt_von, notiz, verlauf, geaendert) VALUES (?, ?, ?, ?, ?, ?)
        ON CONFLICT (po) DO UPDATE SET angefragt_am = excluded.angefragt_am, angefragt_von = excluded.angefragt_von, notiz = COALESCE(excluded.notiz, notiz), verlauf = excluded.verlauf, geaendert = excluded.geaendert`
-    ).run(po, now(), who, notiz, log(po, { was: `angefragt ${weg}`, von: who, notiz }), now());
+    ).run(po, now(), who, notiz, log(po, { was: `angefragt ${how}`, von: who, notiz }), now());
     invalidate();
-    res.json({ ok: true });
-  });
-
+    return { ok: true };
+  }
   // Neuer Termin vom Lieferanten: gilt sofort in der Planung (Materialtermin der Fertigungsaufträge, Dauer der Fremdfertigung)
-  app.post("/api/extern/:po/termin", async (req, res) => {
-    const po = req.params.po;
-    const termin = String((req.body && req.body.termin) || "");
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(termin)) return res.status(400).json({ error: "termin: JJJJ-MM-TT" });
+  async function setTermin(po, termin, { notiz, who }) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(termin || ""))) throw fail(400, "termin: JJJJ-MM-TT");
     const item = await findItem(po);
-    if (!item) return res.status(404).json({ error: "Keine offene Bestellung " + po });
-    const who = sessionName(req) || String((req.body && req.body.von) || "").slice(0, 60) || "App";
-    const notiz = String((req.body && req.body.notiz) || "").slice(0, 300) || null;
+    if (!item) throw fail(404, "Keine offene Bestellung " + po);
+    notiz = String(notiz || "").slice(0, 300) || null;
     db.prepare(
       `INSERT INTO extern_status (po, angefragt_am, angefragt_von, neuer_termin, notiz, verlauf, geaendert) VALUES (?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT (po) DO UPDATE SET neuer_termin = excluded.neuer_termin, angefragt_am = COALESCE(angefragt_am, excluded.angefragt_am), angefragt_von = COALESCE(angefragt_von, excluded.angefragt_von), notiz = COALESCE(excluded.notiz, notiz), verlauf = excluded.verlauf, geaendert = excluded.geaendert`
     ).run(po, now(), who, termin, notiz, log(po, { was: `neuer Termin ${fmtDay(termin)}`, von: who, notiz }), now());
-    // Planung: Fertigungsaufträge, deren Material an dieser Bestellung hängt, und Fremdfertigung dieser Bestellung
     const refsFA = refsOf(item.origin, /\bFA\d{4,}\b/g);
     const setMat = db.prepare("UPDATE orders SET material_date = ?, material_info = ? WHERE (odoo_ref = ? OR parent_ref = ?) AND done = 0");
     const info = `${po} ${item.lieferant}, Wareneingang offen, neuer Termin ${fmtDay(termin).slice(0, 6)} (vom Lieferanten)`;
@@ -429,7 +423,22 @@ export default function registerExtern(app, db, helpers) {
     const upd = db.prepare("UPDATE orders SET extern_days = ? WHERE id = ?");
     fert.forEach((o) => o.extern_start && upd.run(Math.max(1, Math.min(180, daysBetween(o.extern_start, termin))), o.id));
     invalidate();
-    res.json({ ok: true, planung: refsFA.length + fert.length });
+    return { ok: true, planung: refsFA.length + fert.length };
+  }
+  const whoOf = (req) => sessionName(req) || String((req.body && req.body.von) || "").slice(0, 60) || "App";
+  app.post("/api/extern/:po/angefragt", async (req, res) => {
+    try {
+      res.json(await markAsked(req.params.po, { weg: req.body && req.body.weg, notiz: req.body && req.body.notiz, who: whoOf(req) }));
+    } catch (err) {
+      res.status(err.status || 500).json({ error: err.message });
+    }
+  });
+  app.post("/api/extern/:po/termin", async (req, res) => {
+    try {
+      res.json(await setTermin(req.params.po, req.body && req.body.termin, { notiz: req.body && req.body.notiz, who: whoOf(req) }));
+    } catch (err) {
+      res.status(err.status || 500).json({ error: err.message });
+    }
   });
 
   // Neuer Termin, den die App selbst kennt (für den Odoo-Abgleich: der Materialtermin bleibt beim Termin des Lieferanten)
@@ -440,6 +449,13 @@ export default function registerExtern(app, db, helpers) {
   app.locals.extern = {
     get: (force) => get(force),
     zahlen: () => (cache ? cache.data.zahlen : null),
+    angefragt: markAsked,
+    termin: setTermin,
+    mail: async (po, opts) => {
+      const item = await findItem(po);
+      if (!item) throw fail(404, "Keine offene Bestellung " + po);
+      return mailFor({ ...item, lang: opts && opts.lang ? opts.lang : item.lang }, { sender: (opts && opts.sender) || "", vorab: item.aktion === "vorab" });
+    },
   };
 
   if (process.env.EXTERN_AUTO !== "0") {

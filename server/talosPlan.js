@@ -9,6 +9,7 @@ import { timingSafeEqual } from "node:crypto";
 import { MACHINES, addDays, mondayOf, daysBetween, todayStr, DEFAULT_WEEK_CAPACITY } from "../src/lib.js";
 import { buildPlanDeps, buildGroups, applyMove, byPosition, groupKeyOf, groupLabelOf } from "../src/planLogic.js";
 import { avKey, avSummary, AV_STATUS } from "../src/avLib.js";
+import { chatTools } from "./chatPlan.js";
 
 const MAX_TEXT = 60000;
 const round1 = (x) => (x == null ? null : Math.round(x * 10) / 10);
@@ -122,7 +123,7 @@ const machineOf = (key) => {
 };
 
 // Positionen per FA-Nummer, Auftragsnummer (Quelle) oder id finden
-function findPositions(orders, ref) {
+export function findPositions(orders, ref) {
   const r = String(ref || "").trim().toLowerCase();
   if (!r) return [];
   const open = orders.filter((o) => !o.done);
@@ -522,12 +523,16 @@ export function kiTools(locals) {
 
 // Minimaler MCP-Server (JSON-RPC über HTTP POST, zustandslos)
 export default function registerTalosPlan(app, db, helpers) {
+  // Zwei Schlüssel: TALOS_PLAN_SECRET (Talos: lesen, durchrechnen, Vorschläge ablegen) und PLAN_CHAT_SECRET (Planen im Chat:
+  // zusätzlich ändern, jede Änderung erst nach Vorschau und ausdrücklichem Ja, server/chatPlan.js). Je mind. 24 Zeichen.
   const SECRET = process.env.TALOS_PLAN_SECRET || "";
-  if (SECRET.length < 24) {
-    console.log("Talos-Planung (MCP) aus: TALOS_PLAN_SECRET fehlt");
+  const CHAT = process.env.PLAN_CHAT_SECRET || "";
+  if (SECRET.length < 24 && CHAT.length < 24) {
+    console.log("Planungs-MCP aus: TALOS_PLAN_SECRET und PLAN_CHAT_SECRET fehlen");
     return;
   }
-  const tools = [...planTools(() => loadPlanInputs(db, helpers)), ...kiTools(app.locals)];
+  const base = [...planTools(() => loadPlanInputs(db, helpers)), ...kiTools(app.locals)];
+  const chat = [...base, ...chatTools(app, db, helpers)];
   const same = (a, b) => {
     const x = Buffer.from(String(a)), y = Buffer.from(String(b));
     return x.length === y.length && timingSafeEqual(x, y);
@@ -537,7 +542,9 @@ export default function registerTalosPlan(app, db, helpers) {
 
   // Eigener Body-Parser: Die Route wird vor dem Passwortschutz der App angemeldet (Schutz hier über das Geheimnis)
   app.all("/mcp/:secret", express.json({ limit: "1mb" }), async (req, res) => {
-    if (!same(req.params.secret, SECRET)) return res.status(404).end();
+    const isChat = CHAT.length >= 24 && same(req.params.secret, CHAT);
+    if (!isChat && !(SECRET.length >= 24 && same(req.params.secret, SECRET))) return res.status(404).end();
+    const tools = isChat ? chat : base;
     if (req.method !== "POST") return res.status(405).set("Allow", "POST").end();
     const { id = null, method, params = {} } = req.body || {};
     if (id === null || id === undefined) return res.status(202).end(); // Benachrichtigung (z. B. initialized)
@@ -546,8 +553,9 @@ export default function registerTalosPlan(app, db, helpers) {
         protocolVersion: params.protocolVersion || "2025-06-18",
         capabilities: { tools: {} },
         serverInfo: { name: "kratos-planung", version: "1.0.0" },
-        instructions:
-          "Maschinenplanung der KRATOS Precision (Produktionsdashboard). Lesen und durchrechnen; einzig freigabe_vorschlagen legt einen Vorschlag für einen Menschen ab, sonst wird nichts gespeichert. Quelle in Antworten: „Planung Produktionsdashboard, Stand <Zeit>“.",
+        instructions: isChat
+          ? "Maschinenplanung der KRATOS Precision (Produktionsdashboard), Planen im Chat. Lesen und durchrechnen jederzeit. Werkzeuge, die etwas ändern (position_verschieben, stunden_setzen, liefertermin_setzen, position_fixieren, freigabe_entscheiden, lieferant_status_setzen), immer zuerst ohne bestaetigt aufrufen, dem Nutzer die Folgen nennen und erst nach seinem ausdrücklichen Ja mit bestaetigt: true ausführen. Mails an Lieferanten oder Kunden sendet die App nie."
+          : "Maschinenplanung der KRATOS Precision (Produktionsdashboard). Lesen und durchrechnen; einzig freigabe_vorschlagen legt einen Vorschlag für einen Menschen ab, sonst wird nichts gespeichert. Quelle in Antworten: „Planung Produktionsdashboard, Stand <Zeit>“.",
       });
     }
     if (method === "ping") return reply(res, id, {});
@@ -567,5 +575,5 @@ export default function registerTalosPlan(app, db, helpers) {
     }
     return error(res, id, -32601, `Methode ${method} nicht unterstützt`);
   });
-  console.log("Talos-Planung (MCP) an");
+  console.log(`Planungs-MCP an (${[SECRET.length >= 24 ? "Talos" : null, CHAT.length >= 24 ? "Chat" : null].filter(Boolean).join(", ")})`);
 }

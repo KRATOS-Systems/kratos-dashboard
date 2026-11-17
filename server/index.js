@@ -231,7 +231,7 @@ const isTotal = (v) => v === null || (typeof v === "number" && Number.isFinite(v
 const app = express();
 
 // Planung für Talos als MCP-Server (nur lesen); vor dem Passwortschutz, eigener Schutz über TALOS_PLAN_SECRET
-registerTalosPlan(app, db, { orderOut: (r) => orderOut(r), planSettingsOut: () => planSettingsOut() });
+registerTalosPlan(app, db, { orderOut: (r) => orderOut(r), planSettingsOut: () => planSettingsOut(), odooMachineMoves: (rows, to) => odooMachineMoves(rows, to), dueChange: (id, due, o) => dueHistory.change(id, due, o) });
 
 // Verbindung zu QS (Prüfplan/EMPB der Arbeitsvorbereitung); vor dem Passwortschutz, eigener Schutz über den Schlüssel (server/qsBridge.js)
 const qsBridge = registerQsBridge(app, db, { orderOut: (r) => orderOut(r), planSettingsOut: () => planSettingsOut() });
