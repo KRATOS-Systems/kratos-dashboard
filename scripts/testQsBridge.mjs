@@ -1,5 +1,5 @@
 // Prüft die Verbindung zu QS (server/qsBridge.js) ohne echtes QS und ohne echtes Odoo: Schlüssel, Liste offen, Rückmeldung „bereit“,
-// automatischer Status für neue Positionen (Prüfplan aus QS, EMPB über das Odoo-Schlagwort) und dass Handeinträge nie überschrieben werden.
+// automatischer Status für neue Positionen (Prüfplan aus QS, EMPB aus der Position „[EMPB]“ im Verkaufsauftrag) und dass Handeinträge nie überschrieben werden.
 // Start: node scripts/testQsBridge.mjs
 import express from "express";
 import { DatabaseSync } from "node:sqlite";
@@ -7,7 +7,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import assert from "node:assert/strict";
-import registerQsBridge, { artikelAus, gleicherArtikel, hatEmpb } from "../server/qsBridge.js";
+import registerQsBridge, { artikelAus, gleicherArtikel, hatEmpb, empbTeile } from "../server/qsBridge.js";
 
 const dir = mkdtempSync(path.join(tmpdir(), "qsbridge-"));
 const db = new DatabaseSync(path.join(dir, "t.db"));
@@ -23,7 +23,7 @@ db.exec(`
 const orderOut = (r) => ({ ...r, due: r.due_date, done: r.done === 1, extern_tags: [], qs_required: true, is_split: false });
 const planSettingsOut = () => ({ utilization: 80, tight_days: 3 });
 
-// Attrappen: QS kennt einen freigegebenen Plan für SK966-114000.001.0; in Odoo hat Kunde 7 das Schlagwort „EMPB“
+// Attrappen: QS kennt einen freigegebenen Plan für SK966-114000.001.0; im Verkaufsauftrag A100 steht unter dem Teil die Position „[EMPB]“
 const fetchImpl = async (url) => {
   const u = new URL(url);
   if (u.pathname.endsWith("/api/extern/plaene")) {
@@ -32,11 +32,16 @@ const fetchImpl = async (url) => {
   }
   return new Response("?", { status: 404 });
 };
+const L = (id, order, seq, product, name = "", display_type = false) => ({ id, order_id: [id, order], sequence: seq, product_id: product, name, display_type });
+const ZEILEN = [
+  L(1, "A100", 1, [5, "[SK966-114000.001.0] Schliessbolzen"]),
+  L(2, "A100", 2, [1150, "[EMPB] Erstmusterprüfbericht"], "[EMPB] Erstmusterprüfbericht"),
+  L(3, "A100", 3, [222, "AV"]),
+  L(4, "A200", 1, [6, "[NEU-1] Neuteil"]),
+  L(5, "A200", 2, [222, "AV"]),
+];
 const odooImpl = async (model, method, p) => {
-  if (model === "sale.order") return [{ name: "A100", tag_ids: [], partner_id: [8, "Max Muster"] }, { name: "A200", tag_ids: [], partner_id: [9, "Andere GmbH"] }].filter((s) => p.domain[0][2].includes(s.name));
-  if (model === "res.partner") return p.ids.map((id) => ({ id, category_id: id === 7 ? [1] : [], commercial_partner_id: id === 8 ? [7, "ACS"] : [id, "x"] }));
-  if (model === "res.partner.category") return p.ids.map((id) => ({ id, name: id === 1 ? "EMPB" : "Sonst" }));
-  if (model === "crm.tag") return [];
+  if (model === "sale.order.line") return ZEILEN.filter((l) => p.domain[0][2].includes(l.order_id[1]));
   throw new Error("unerwartet " + model);
 };
 
@@ -57,7 +62,19 @@ try {
   assert.equal(artikelAus("[SK966-114000.001.0] Schliessbolzen"), "SK966-114000.001.0");
   assert.ok(gleicherArtikel("SK954-080400.002.0", "sk954_080400_002_0_a") && !gleicherArtikel("327-62-18", "327-62-181"));
   assert.ok(hatEmpb(["Stammkunde", "EMPB"]) && !hatEmpb(["EMPBX"]));
-  ok("Artikel aus Odoo-Produkt, Vergleich mit Zeichnungsnummer, Schlagwort EMPB");
+  // Wie im echten Auftrag A01385: Teil, EMPB, Teil, EMPB, AV; dazu ein Teil mit „EMPB“ im Text und eins ohne
+  const t = empbTeile([
+    L(1, "A1", 1, [1, "[SK967-114000.001.0] Schliessbolzen-Fuss"]),
+    L(2, "A1", 2, [1150, "[EMPB] Erstmusterprüfbericht"]),
+    L(3, "A1", 3, [2, "[SK966-114100.005.0] Bundbuchse"]),
+    L(4, "A1", 4, [1150, "[EMPB] Erstmusterprüfbericht"]),
+    L(5, "A1", 5, [222, "AV"]),
+    L(6, "A2", 1, [3, "[X-1] Ohne"]),
+    L(7, "A3", 1, [1150, "[EMPB] Erstmusterprüfbericht"]),
+    L(8, "A4", 1, [49, "[Y-2] Frästeil"], "Muster mit EMPB"),
+  ]);
+  assert.deepEqual([...t].sort(), ["A1|sk9661141000050", "A1|sk9671140000010", "A4|y2"]);
+  ok("Artikel aus Odoo-Produkt, Vergleich mit Zeichnungsnummer, EMPB-Position gilt für das Teil darüber");
 
   assert.ok(KEY.length >= 40);
   assert.equal((await api("GET", "/api/extern/av-offen", null, "")).status, 401);
@@ -78,11 +95,11 @@ try {
   const st = (id, item) => db.prepare("SELECT status, auto FROM av_checks WHERE order_id = ? AND item = ?").get(id, item);
   assert.deepEqual({ ...st(2, "pruefplan") }, { status: "bereit", auto: 1 }, "Wiederholteil mit freigegebenem Plan");
   assert.deepEqual({ ...st(3, "pruefplan") }, { status: "offen", auto: 1 }, "Neuteil ohne Plan");
-  assert.deepEqual({ ...st(2, "empb") }, { status: "offen", auto: 1 }, "Kunde (Firma des Kontakts) hat Schlagwort EMPB");
+  assert.deepEqual({ ...st(2, "empb") }, { status: "offen", auto: 1 }, "EMPB-Position unter dem Teil im Verkaufsauftrag");
   assert.deepEqual({ ...st(3, "empb") }, { status: "entfaellt", auto: 0 }, "Handeintrag bleibt");
   assert.equal(st(1, "pruefplan"), undefined, "alte Positionen bleiben unberührt");
   assert.equal(r1.geprueft, 2);
-  ok("Automatischer Status: Prüfplan bereit/offen nach QS, EMPB nach Odoo-Schlagwort, Handeintrag und alte Positionen unberührt");
+  ok("Automatischer Status: Prüfplan bereit/offen nach QS, EMPB nach Verkaufsauftrag, Handeintrag und alte Positionen unberührt");
 
   const offen = await api("GET", "/api/extern/av-offen");
   assert.deepEqual(offen.zeilen.map((z) => z.id).sort(), [2, 3]);
