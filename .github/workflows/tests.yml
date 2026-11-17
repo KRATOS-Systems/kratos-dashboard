@@ -31,6 +31,10 @@ jobs:
         run: node scripts/testBackup.mjs
       - name: Maschine im Arbeitsplan
         run: node scripts/testArbeitsplan.mjs
+      - name: Arbeitsplan und Laufzeit mit den neuen Sammelplatz-Namen (Maschine offen)
+        run: node scripts/testArbeitsplan.mjs && node scripts/testLaufzeit.mjs
+        env:
+          MOCK_POOL_NEU: "1"
       - name: Rückmeldungen
         run: node scripts/testFeedback.mjs
       - name: Anmeldung

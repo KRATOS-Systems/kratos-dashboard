@@ -33,14 +33,22 @@ const unescape = (t) => String(t).replace(/&nbsp;/g, " ").replace(/&lt;/g, "<").
 const plain = (html) => strip(unescape(strip(html || "")))
   .replace(/\s+/g, " ")
   .trim();
-const RE_ANZAHL = /Aufspannungen(?: \(([^)]+)\))?:\s*(\d+)/;
-const RE_ZEILE = /Laufzeit Aufspannung (\d+)(?: \(([^)]+)\))?:\s*(\d+):(\d{2})(?:\D+?(\d+)\s*Teil)?/;
+// Der Maschinenname in der Klammer darf selbst einen Zusatz in Klammern haben, z. B. "(Fräsen (Maschine offen))"
+const RE_ANZAHL = /Aufspannungen(?: \(((?:[^()]|\([^()]*\))+)\))?:\s*(\d+)/;
+const RE_ZEILE = /Laufzeit Aufspannung (\d+)(?: \(((?:[^()]|\([^()]*\))+)\))?:\s*(\d+):(\d{2})(?:\D+?(\d+)\s*Teil)?/;
 const RE_VON = /\(([^,)]+),/;
 const FINAL = ["done", "cancel"];
 
 // Schritt eines Arbeitsgangs (am Namen, sonst am Arbeitsplatz)
 const stepOfWo = (w) => stepOf(w.name) || stepOf(m2o(w.workcenter_id)?.name);
 const machineOf = (w) => m2o(w.workcenter_id)?.name || "";
+// Name eines Arbeitsplatzes ohne Zusatz in Klammern und ohne Groß-/Kleinschreibung. Die Sammelplätze heißen in Odoo
+// "Fräsen (Maschine offen)" und "Rüsten (Maschine offen)", früher FRÄSEN und RÜSTEN: Beides ist derselbe Platz ("fräsen", "rüsten").
+export const baseName = (v) =>
+  String(v || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s*\([^()]*\)\s*$/, "");
 
 export default function registerBdeLaufzeit(app, ctx) {
   const { odoo } = ctx;
@@ -77,7 +85,7 @@ export default function registerBdeLaufzeit(app, ctx) {
       if (!z && !(a && Number(a[2]) > 0)) continue;
       const machines = out.get(m.res_id) || new Map();
       out.set(m.res_id, machines);
-      const key = ((z ? z[2] : a[1]) || "").trim();
+      const key = baseName(z ? z[2] : a[1]);
       const entry = machines.get(key) || { anzahl: 0, rows: new Map() };
       machines.set(key, entry);
       if (z) {
@@ -100,7 +108,7 @@ export default function registerBdeLaufzeit(app, ctx) {
     }
     return out;
   }
-  const entryFor = (notes, machine) => (notes && (notes.get(machine) || notes.get(""))) || { anzahl: 0, rows: new Map() };
+  const entryFor = (notes, machine) => (notes && (notes.get(baseName(machine)) || notes.get(""))) || { anzahl: 0, rows: new Map() };
 
   // Vorschlag bei Wiederholteilen: Zeiten des zuletzt erledigten Fräsens desselben Artikels auf derselben Maschine
   async function suggestionFor(w) {
@@ -394,10 +402,10 @@ export default function registerBdeLaufzeit(app, ctx) {
   // Maschinen für einen weiteren Arbeitsschritt: Arbeitsplätze, zu denen es einen passenden "… Rüsten"-Arbeitsplatz gibt (und die Sammelplätze FRÄSEN / RÜSTEN)
   async function machinePairs() {
     const wcs = await odoo.read("mrp.workcenter", "search_read", { domain: [], fields: ["name"], limit: 100 });
-    const byName = new Map(wcs.map((c) => [String(c.name).trim().toLowerCase(), c]));
+    const byName = new Map(wcs.map((c) => [baseName(c.name), c]));
     const pairs = [];
     for (const c of wcs) {
-      const n = String(c.name).trim().toLowerCase();
+      const n = baseName(c.name);
       if (n.endsWith(" rüsten") || n === "rüsten") continue;
       const r = byName.get(`${n} rüsten`) || (n === "fräsen" ? byName.get("rüsten") : null);
       if (r) pairs.push({ id: c.id, name: c.name, ruestenId: r.id, ruestenName: r.name });
@@ -488,15 +496,15 @@ export default function registerBdeLaufzeit(app, ctx) {
     if (!fraesen.length) return { status: "nichts", text: "" };
     const fromName = PLAN_MACHINES[fromKey] || null;
     let cands = fraesen;
-    if (cands.length > 1) cands = fraesen.filter((w) => (fromName && lc(machineOf(w)) === lc(fromName)) || lc(machineOf(w)) === "fräsen");
+    if (cands.length > 1) cands = fraesen.filter((w) => (fromName && lc(machineOf(w)) === lc(fromName)) || baseName(machineOf(w)) === "fräsen");
     if (cands.length !== 1) return { status: "mehrdeutig", text: "Der Auftrag hat mehrere offene Fräsen in Odoo, deshalb wurde dort nichts geändert. Bitte im Arbeitsplan prüfen" };
     const f = cands[0];
     const fromCenter = machineOf(f);
     if (lc(fromCenter) === lc(pair.name)) return { status: "passt", text: "" };
-    const expected = lc(fromCenter) === "fräsen" ? "rüsten" : `${lc(fromCenter)} rüsten`;
+    const expected = baseName(fromCenter) === "fräsen" ? "rüsten" : `${lc(fromCenter)} rüsten`;
     const r =
       open
-        .filter((w) => stepOfWo(w) === "Rüsten" && w.id !== f.id && (w.sequence || 0) <= (f.sequence || 0) && lc(machineOf(w)) === expected)
+        .filter((w) => stepOfWo(w) === "Rüsten" && w.id !== f.id && (w.sequence || 0) <= (f.sequence || 0) && baseName(machineOf(w)) === expected)
         .sort((a, b) => (b.sequence || 0) - (a.sequence || 0))[0] || null;
     const [prod] = await odoo.read("mrp.production", "read", { ids: [productionId], fields: ["name"] });
     const fa = prod ? prod.name : null;
@@ -568,7 +576,7 @@ export default function registerBdeLaufzeit(app, ctx) {
       for (let i = 0; i < plan.length; i++) {
         const { pair, fraesenMin } = plan[i];
         const fraesen = rows.filter((w) => stepOfWo(w) === "Fräsen" && !claimed.has(w.id));
-        const mine = fraesen.find((w) => machineOf(w).trim().toLowerCase() === pair.name.trim().toLowerCase()) || (i === 0 ? fraesen.find((w) => machineOf(w).trim().toUpperCase() === "FRÄSEN") : null);
+        const mine = fraesen.find((w) => machineOf(w).trim().toLowerCase() === pair.name.trim().toLowerCase()) || (i === 0 ? fraesen.find((w) => baseName(machineOf(w)) === "fräsen") : null);
         if (mine) {
           claimed.add(mine.id);
           continue;
