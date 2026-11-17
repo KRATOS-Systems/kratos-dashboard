@@ -1520,3 +1520,42 @@ a.btn { text-decoration: none; }
 .neuord .no-was { color: var(--muted); font-size: 11.5px; }
 .btn.pinned { border-color: var(--ink); background: var(--sunken); font-weight: 600; }
 .chkline { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); cursor: pointer; }
+.sugg { display: inline-block; margin-top: 3px; padding: 1px 8px; border: 1px dashed var(--line-strong); border-radius: 6px; background: transparent; color: var(--ink); font-size: 11.5px; cursor: pointer; text-align: left; }
+.sugg:hover { background: var(--sunken); }
+.sugg small { color: var(--muted); margin-left: 6px; }
+
+/* Heute zu tun, Plan verbessern (Planung) */
+.heute { padding: 10px 14px; font-size: 13px; }
+.heute.bad { border-color: color-mix(in srgb, var(--bad) 45%, var(--line)); }
+.heute .ht-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.heute .ht-head b { font: 600 15px var(--f-display); }
+.heute .ht-ok { color: var(--ok); font-weight: 500; }
+.heute .ht-list { margin-top: 6px; display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 6px; }
+.heute .ht-row { display: grid; grid-template-columns: 10px 34px minmax(0, 1fr) 14px; gap: 8px; align-items: center; text-align: left; padding: 7px 10px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface); color: var(--ink); font: inherit; cursor: pointer; }
+.heute .ht-row:hover { background: var(--sunken); }
+.heute .ht-row .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--c); }
+.heute .ht-n { font: 700 17px var(--f-mono); text-align: right; }
+.heute .ht-row.bad .ht-n { color: var(--bad); }
+.heute .ht-row.warn .ht-n { color: var(--warn); }
+.heute .ht-row.mute .ht-n { color: var(--muted); }
+.heute .ht-t { min-width: 0; }
+.heute .ht-t small { display: block; color: var(--muted); font-size: 11.5px; }
+.heute .ht-go { color: var(--muted); font-size: 18px; }
+.planverb { margin-bottom: 12px; font-size: 12.5px; }
+.planverb .pvb-bar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.planverb .pvb-bar > span { flex: 1; min-width: 200px; }
+.planverb .pvb-faint { color: var(--muted); }
+.planverb .pvb-body { margin-top: 10px; padding: 12px 14px; border: 1px solid var(--line-strong); border-radius: 12px; display: grid; gap: 16px; }
+.pvb-h { font: 600 14px var(--f-display); }
+.neuord .no-ok { color: var(--ok); font-weight: 600; }
+.pool-pv { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; padding: 0 2px 10px; font-size: 12.5px; color: var(--muted); }
+.fruehwarn .fw-group { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; padding: 8px 0 2px; border-top: 1px solid var(--line-strong); margin-top: 4px; }
+.fruehwarn .fw-group b { font-size: 13px; }
+.fruehwarn .fw-gform { display: inline-flex; gap: 6px; align-items: center; }
+.fruehwarn .fw-gform input { width: 180px; padding: 3px 8px; font-size: 12.5px; }
+
+/* Arbeitsvorbereitung: Kopfzeile bleibt beim Scrollen stehen, Symbol der Spalte vor jedem Status */
+.av-scroll { max-height: calc(100vh - 140px); overflow: auto; overscroll-behavior: contain; }
+.av-scroll .avtbl thead th { position: sticky; top: 0; z-index: 4; background: var(--surface); box-shadow: inset 0 -1px 0 var(--line); }
+.avcell .av .aic { --s: 16px; border-radius: 5px; animation: none !important; }
+.avcell .av .aic svg { width: 11px; height: 11px; }

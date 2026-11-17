@@ -3,13 +3,16 @@
 //   - das Anmelde-Cookie (nach Eingabe des Passworts auf /login, 30 Tage gültig), oder
 //   - die bisherige Anmeldung mit Benutzername und Passwort im Kopf (Basic), damit Skripte wie die Datensicherung auf dem PC weiterlaufen.
 // Browser ohne gültige Anmeldung werden auf /login geschickt; Skripte bekommen weiter die Aufforderung zur Basic-Anmeldung.
-// Ohne APP_PASSWORD (lokal) ist alles offen.
+// Ohne APP_PASSWORD ist die App nur direkt auf dem eigenen Rechner offen (lokale Entwicklung, Tests). Von außen (über einen Proxy)
+// antwortet sie dann nur mit einem Hinweis, damit ein vergessenes Passwort die Daten nicht offenlegt. APP_OFFEN=1 hebt das bewusst auf.
+// Fehlversuche (Anmeldeseite und Basic) sperren die Adresse des Aufrufers für ein paar Minuten (Adresse: server/clientIp.js).
 
 import express from "express";
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { clientIp, viaProxy, isLoopback } from "./clientIp.js";
 
 const COOKIE = "kratos_sess";
 const SESSION_DAYS = 30;
@@ -28,7 +31,15 @@ export function safeNext(n) {
 }
 
 export default function registerLogin(app, { user, password, distPath }) {
-  if (!password) return;
+  if (!password) {
+    if (process.env.APP_OFFEN === "1") return;
+    console.error("ACHTUNG: APP_PASSWORD fehlt. Die App antwortet nur direkt auf diesem Rechner, nicht von außen.");
+    app.use((req, res, next) => {
+      if (!viaProxy(req) && isLoopback(req.socket && req.socket.remoteAddress)) return next();
+      res.status(503).type("text").send("Die App ist nicht eingerichtet: Es fehlt das Passwort (APP_PASSWORD).");
+    });
+    return;
+  }
   const key = createHmac("sha256", "kratos-anmeldung-v1").update(password).digest();
   const sign = (exp) => createHmac("sha256", key).update(String(exp)).digest("base64url");
   const makeToken = () => {
@@ -61,7 +72,7 @@ export default function registerLogin(app, { user, password, distPath }) {
   const isSecure = (req) => req.secure || (req.headers["x-forwarded-proto"] || "").split(",")[0].trim() === "https";
   const setCookie = (req, res, token, maxAgeS) =>
     res.append("Set-Cookie", `${COOKIE}=${token}; Path=/; Max-Age=${maxAgeS}; HttpOnly; SameSite=Lax${isSecure(req) ? "; Secure" : ""}`);
-  const ipOf = (req) => String(req.headers["x-forwarded-for"] || req.socket.remoteAddress || "").split(",")[0].trim();
+  const ipOf = (req) => clientIp(req);
 
   // Fehlversuche je Adresse
   const fails = new Map();
@@ -121,9 +132,19 @@ export default function registerLogin(app, { user, password, distPath }) {
     res.redirect(303, "/login");
   });
 
+  // Für die Datensicherung: Anfrage mit gültiger Basic-Anmeldung (Skript auf dem PC), siehe index.js
+  app.locals.basicAuthed = (req) => basicOk(req);
+
   // Alles andere nur mit Anmeldung
   app.use((req, res, next) => {
-    if (validToken(cookieOf(req)) || basicOk(req)) return next();
+    if (validToken(cookieOf(req))) return next();
+    // Basic-Anmeldung (Skripte): Fehlversuche zählen wie auf der Anmeldeseite
+    if (String(req.headers.authorization || "").startsWith("Basic ")) {
+      const ip = ipOf(req);
+      if (locked(ip)) return res.status(429).send("Zu viele Versuche. Bitte in ein paar Minuten noch einmal.");
+      if (basicOk(req)) return next();
+      fail(ip);
+    }
     const fromBrowser = !!req.headers["sec-fetch-mode"];
     if (fromBrowser && req.method === "GET" && req.headers["sec-fetch-mode"] === "navigate") {
       noStore(res);

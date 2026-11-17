@@ -320,6 +320,7 @@ export default function AvView({ avStdOf = () => null, orders, checks, planStart
               onSet(r.o.id, item.id, { status: avCycle(st.status) });
             }}
           >
+            <AppTile id={item.id} size={16} />
             {label}
           </button>
           {QS_ITEMS.includes(item.id) && st.status !== "entfaellt" && (
@@ -545,7 +546,7 @@ export default function AvView({ avStdOf = () => null, orders, checks, planStart
       </div>
 
       <div className="card rise" style={{ "--i": 1 }}>
-        <div className="scroll">
+        <div className="scroll av-scroll">
           <table className="tbl avtbl" style={{ minWidth: 1100 }}>
             <thead>
               <tr>

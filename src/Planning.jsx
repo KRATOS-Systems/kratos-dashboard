@@ -4,13 +4,11 @@ import { isNewPlan, DEFAULT_WEEK_CAPACITY, MACHINES, SHIFT_MODELS, addDays, days
 import { parseOdooExport } from "./odooImport.js";
 import { holidaysBavaria } from "./holidays.js";
 import AvView, { avUrgentCount } from "./Av.jsx";
-import BomHinweis from "./BomHinweis.jsx";
-import Vollstaendig from "./Vollstaendig.jsx";
 import Fruehwarnung from "./Fruehwarnung.jsx";
-import Planvorschlag from "./Planvorschlag.jsx";
 import Terminverlauf from "./Terminverlauf.jsx";
 import Auslastung from "./Auslastung.jsx";
-import Neuordnen from "./Neuordnen.jsx";
+import PlanVerbessern from "./PlanVerbessern.jsx";
+import Heute from "./Heute.jsx";
 import { AV_ITEMS, AV_STATUS, AV_TEAM, isNewAv, avKey, avState, avSummary } from "./avLib.js";
 import { STAFF, ACTIVITIES, STAFF_DEFAULTS, responsible, avResponsible, sharedMachine } from "./staffLib.js";
 import Avatar from "./Avatar.jsx";
@@ -135,7 +133,23 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
   const [newFree, setNewFree] = useState({ from: "", to: "", name: "" });
   const [expanded, setExpanded] = useState({});
   const [expandedOrders, setExpandedOrders] = useState({});
-  const [tab, setTab] = useState("zeit"); // zeit | auf | einst
+  const [tab, setTab] = useState("zeit"); // zeit | auf | ausl | einst
+  const [fwOpen, setFwOpen] = useState(false); // Liste der Frühwarnung aufgeklappt
+  const [pvOpen, setPvOpen] = useState(false); // "Plan verbessern" aufgeklappt
+  // Sprung aus "Heute zu tun" an die Stelle, wo man es erledigt
+  const scrollTo = (id) => setTimeout(() => document.getElementById(id)?.scrollIntoView({ block: "start", behavior: "smooth" }), 80);
+  const jump = (ziel) => {
+    if (ziel === "av") return goTo && goTo("av");
+    if (ziel === "sync") return openSync();
+    setTab("zeit");
+    if (ziel === "fruehwarnung") {
+      setFwOpen(true);
+      scrollTo("fruehwarnung");
+    } else if (ziel === "planverbessern") {
+      setPvOpen(true);
+      scrollTo("planverbessern");
+    } else if (ziel === "pool") scrollTo("pool");
+  };
   const [hl, setHl] = useState(null); // late | pool | soon: Hervorhebung über die Kennzahlen
   const [hoverGroup, setHoverGroup] = useState(null);
   const [hoverAuftrag, setHoverAuftrag] = useState(null); // Auftrag des Balkens, über dem die Maus steht (alle Balken des Auftrags bekommen einen Rahmen)
@@ -2826,9 +2840,31 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
           <h2>Noch nicht eingeplant</h2>
           <p>Ungefähre Gesamtstunden eintragen, dann die Maschine wählen. Die Position erscheint im Zeitstrahl. Mehrere ankreuzen und gemeinsam zuweisen geht auch.</p>
         </div>
-        {poolOrders.length > 0 && <span className="pill mute">{poolOrders.length} Positionen</span>}
+        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+          {poolOrders.filter((o) => !(o.hours > 0) && o.hours_suggest > 0).length > 0 && (
+            <button
+              type="button"
+              className="btn sm"
+              title="Stunden aus den echten Zeiten des letzten Auftrags desselben Teils übernehmen (nur bei Positionen ohne Stunden)"
+              onClick={() => poolOrders.filter((o) => !(o.hours > 0) && o.hours_suggest > 0).forEach((o) => patchOrder(o.id, { hours: o.hours_suggest, hours_plan: o.hours_suggest }))}
+            >
+              {(() => {
+                const k = poolOrders.filter((o) => !(o.hours > 0) && o.hours_suggest > 0).length;
+                return k === 1 ? "Stunden-Vorschlag übernehmen" : `${k} Stunden-Vorschläge übernehmen`;
+              })()}
+            </button>
+          )}
+          {poolOrders.length > 0 && <span className="pill mute">{poolOrders.length} Positionen</span>}
+        </div>
       </div>
-      <Planvorschlag reloadKey={fwKey} onApply={applyProposals} poolCount={poolOrders.length} />
+      {poolOrders.some((o) => o.hours > 0) && (
+        <div className="pool-pv">
+          <button type="button" className="btn sm" onClick={() => jump("planverbessern")}>
+            Plan verbessern
+          </button>
+          <span>macht einen Vorschlag, auf welche Maschine und an welchen Platz die Positionen mit Stunden passen.</span>
+        </div>
+      )}
       {poolOrders.length === 0 && (
         <div className="empty">
           <div className="ring">
@@ -2905,6 +2941,16 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
                       <div>
                         <b onClick={() => openDetail(o.id)}>{o.order_no || "ohne Nummer"}</b> <OdooLink o={o} />{isNewPlan(o) && <span className="newpill" title="Neu aus Odoo übernommen">NEU</span>}{o.odoo_draft && <span className="draftpill" title="Fertigungsauftrag in Odoo noch im Entwurf">nicht freigegeben</span>}
                         <div title={metaLine(o, false)}>{metaLine(o, false)}</div>
+                        {!(o.hours > 0) && o.hours_suggest > 0 && (
+                          <button
+                            type="button"
+                            className="sugg"
+                            title={`Vorschlag ${o.hours_suggest_src || ""}. Klick übernimmt die Stunden.`}
+                            onClick={() => patchOrder(o.id, { hours: o.hours_suggest, hours_plan: o.hours_suggest })}
+                          >
+                            Vorschlag {String(o.hours_suggest).replace(".", ",")} h übernehmen <small>{o.hours_suggest_src}</small>
+                          </button>
+                        )}
                       </div>
                     </div>
                     <div className="hrs">
@@ -3523,9 +3569,8 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
         </div>
       </div>
 
-      <BomHinweis />
-      <Fruehwarnung reloadKey={fwKey} onChanged={() => fetch("/api/orders").then((r) => r.json()).then((d) => setOrders(d.orders)).catch(() => {})} />
-      <Vollstaendig compact onChanged={() => fetch("/api/orders").then((r) => r.json()).then((d) => setOrders(d.orders)).catch(() => {})} />
+      <Heute reloadKey={fwKey} onJump={jump} />
+      <Fruehwarnung reloadKey={fwKey} open={fwOpen} onToggle={() => setFwOpen((v) => !v)} onChanged={() => fetch("/api/orders").then((r) => r.json()).then((d) => setOrders(d.orders)).catch(() => {})} />
 
       {preview && (
         <div className="note warn rise" style={{ "--i": 1 }}>
@@ -3585,7 +3630,15 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
       {tab === "zeit" && (
         <>
           <div className="rise" style={{ "--i": 3 }}>
-            <Neuordnen reloadKey={fwKey} onApplied={() => fetch("/api/orders").then((r) => r.json()).then((d) => setOrders(d.orders)).catch(() => {})} onOdoo={(r) => odooHint(r, true)} />
+            <PlanVerbessern
+              open={pvOpen}
+              onToggle={() => setPvOpen((v) => !v)}
+              reloadKey={fwKey}
+              poolCount={poolOrders.length}
+              onApply={applyProposals}
+              onApplied={() => fetch("/api/orders").then((r) => r.json()).then((d) => setOrders(d.orders)).catch(() => {})}
+              onOdoo={(r) => odooHint(r, true)}
+            />
             {timeline}
           </div>
           <div className="rise" style={{ "--i": 4 }}>{poolCard}</div>

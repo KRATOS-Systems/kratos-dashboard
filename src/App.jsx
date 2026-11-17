@@ -447,6 +447,14 @@ function DataDialog({ onClose }) {
       setRestore({ error: "Die Datei konnte nicht gelesen werden" });
     }
   }
+  // Herunterladen, Einspielen und Sichern nur für die Leitung (mit PIN angemeldet); der Server prüft das auch (server/index.js)
+  const [leitung, setLeitung] = useState(null);
+  useEffect(() => {
+    fetch("/api/bde/session")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => setLeitung(!!(j && j.leitung)))
+      .catch(() => setLeitung(false));
+  }, []);
   const [auto, setAuto] = useState(null); // Stand der automatischen Sicherung
   const [autoBusy, setAutoBusy] = useState(false);
   const [autoErr, setAutoErr] = useState("");
@@ -485,6 +493,11 @@ function DataDialog({ onClose }) {
     <div className="modal" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="dialog" role="dialog" aria-modal="true" aria-label="Datensicherung">
         <h3>Datensicherung</h3>
+        {leitung === false && (
+          <div className="note warn" style={{ marginBottom: 16 }}>
+            Die Datensicherung enthält alle Daten und darf nur von der Leitung geladen oder eingespielt werden. Bitte zuerst unter „Mein Arbeitsplatz“ mit PIN anmelden (Frank oder Alexander).
+          </div>
+        )}
         {auto && (
           <div className="note" style={{ marginBottom: 16 }}>
             <b>Automatische Sicherung{auto.auto ? "" : " (ausgeschaltet)"}</b>
@@ -500,10 +513,10 @@ function DataDialog({ onClose }) {
             {auto.lastError && <div style={{ color: "var(--bad)", marginTop: 4 }}>Letzter Fehler: {auto.lastError}</div>}
             {autoErr && <div style={{ color: "var(--bad)", marginTop: 4 }}>{autoErr}</div>}
             <div className="actions" style={{ marginTop: 10 }}>
-              <button type="button" className="btn sm" disabled={autoBusy} onClick={runAuto}>
+              <button type="button" className="btn sm" disabled={autoBusy || leitung === false} onClick={runAuto}>
                 {autoBusy ? "Sichere …" : "Jetzt sichern"}
               </button>
-              {auto.latest && (
+              {auto.latest && leitung && (
                 <a className="btn sm" href="/api/backup/auto/latest" download>
                   <Ico n="down" s={14} />
                   Letzte Sicherung laden
@@ -513,6 +526,7 @@ function DataDialog({ onClose }) {
           </div>
         )}
         <p>Speichert alle Zählerstände, Aufträge, Arbeitsvorbereitung und Einstellungen als Datei.</p>
+        {leitung && (
         <div className="actions">
           <a className="btn primary" href="/api/backup" download>
             <Ico n="down" s={16} />
@@ -523,6 +537,7 @@ function DataDialog({ onClose }) {
             <input type="file" accept=".json,application/json" onChange={onRestoreFile} style={{ display: "none" }} />
           </label>
         </div>
+        )}
         {restore && (
           <div className="note" style={{ marginTop: 16, borderColor: restore.error ? "var(--bad)" : "var(--warn)" }}>
             {restore.error ? (

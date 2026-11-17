@@ -167,8 +167,19 @@ export default function registerOdooSync(app, db, { isDate, nextPosition }) {
         console.error("Odoo-Abgleich: Fräszeiten nicht lesbar", err.message); // ohne Zeiten weiter, der Rest des Abgleichs läuft
       }
     }
+    // Stunden-Vorschlag für Aufträge ohne Fräszeit im Arbeitsplan: echte Zeiten (gestempelt) des letzten erledigten Fertigungsauftrags desselben Teils
+    let history = new Map();
+    try {
+      const pids = [...new Set(prods.filter((p) => !(milling.get(p.id)?.minutes > 0)).map((p) => (Array.isArray(p.product_id) ? p.product_id[0] : null)).filter(Number.isInteger))];
+      history = await fetchHistory(pids);
+    } catch (err) {
+      console.error("Odoo-Abgleich: frühere Zeiten nicht lesbar", err.message);
+    }
     return prods.map((p) => {
       const mill = milling.get(p.id);
+      const hist = !(mill && mill.minutes > 0) && Array.isArray(p.product_id) ? history.get(p.product_id[0]) : null;
+      const qty = typeof p.product_qty === "number" && p.product_qty > 0 ? p.product_qty : 1;
+      const suggest = hist ? Math.max(0.5, Math.ceil(((hist.setup + (hist.mill / hist.qty) * qty) / 60) * 2) / 2) : null;
       const origin = (p.origin || "").trim();
       const sale = delivery.get(origin);
       const due = typeof p.date_deadline === "string" ? p.date_deadline.slice(0, 10) : null;
@@ -183,6 +194,8 @@ export default function registerOdooSync(app, db, { isDate, nextPosition }) {
         sale_date: sale ? dayPart(sale.date_order) : null,
         current: currentSale(p),
         test: isTestText(p.origin) || isTestText(m2oName(p.product_id)),
+        hours_suggest: suggest,
+        hours_suggest_src: hist ? `aus ${hist.ref}: Fräsen ${h1(hist.mill / 60)} h für ${hist.qty} Stk${hist.setup > 0 ? `, Rüsten ${h1(hist.setup / 60)} h` : ""}` : null,
         material_date: (material.get(String(p.name).trim()) || {}).date || null,
         material_info: (material.get(String(p.name).trim()) || {}).info || null,
         component_status: p.components_availability ? String(p.components_availability).slice(0, 60) : null,
@@ -195,6 +208,39 @@ export default function registerOdooSync(app, db, { isDate, nextPosition }) {
         saleCancelled: !!sale && sale.state === "cancel",
       };
     });
+  }
+
+  // Frühere echte Zeiten je Teil: der neueste erledigte Fertigungsauftrag mit gestempelter Fräszeit. Teil -> { ref, setup, mill (Minuten), qty }
+  const h1 = (x) => String(Math.round(x * 10) / 10).replace(".", ",");
+  async function fetchHistory(pids) {
+    const out = new Map();
+    for (let i = 0; i < pids.length; i += 100) {
+      const wos = await odoo("mrp.workorder", "search_read", {
+        domain: [["product_id", "in", pids.slice(i, i + 100)], ["state", "=", "done"], ["production_id.state", "=", "done"], "|", ["name", "ilike", "Fräs"], ["name", "ilike", "Rüst"]],
+        fields: ["production_id", "product_id", "name", "duration", "qty_production"],
+        limit: 3000,
+      });
+      const byProd = new Map();
+      wos.forEach((w) => {
+        const prod = Array.isArray(w.production_id) ? w.production_id : null;
+        const pid = Array.isArray(w.product_id) ? w.product_id[0] : null;
+        if (!prod || !pid) return;
+        const cur = byProd.get(prod[0]) || { pid, ref: String(prod[1]), setup: 0, mill: 0, qty: 0 };
+        const d = typeof w.duration === "number" ? w.duration : 0;
+        if (/fräs/i.test(w.name || "")) {
+          cur.mill += d;
+          cur.qty = Math.max(cur.qty, Number(w.qty_production) || 0);
+        } else cur.setup += d;
+        byProd.set(prod[0], cur);
+      });
+      // je Teil der neueste Fertigungsauftrag (höchste ID) mit Fräszeit
+      [...byProd.entries()]
+        .sort((a, b) => b[0] - a[0])
+        .forEach(([, c]) => {
+          if (c.mill > 0 && c.qty > 0 && !out.has(c.pid)) out.set(c.pid, c);
+        });
+    }
+    return out;
   }
 
   // Material laut Einkauf: Bestellungen, deren Herkunft eine FA-Nummer nennt (z. B. "FA01356" oder "FA01344, FA01345").
@@ -454,6 +500,7 @@ export default function registerOdooSync(app, db, { isDate, nextPosition }) {
     const hint = db.prepare("UPDATE orders SET odoo_hours = ?, odoo_machine = ?, odoo_bom = ? WHERE odoo_ref = ? AND done = 0");
     const setDraft = db.prepare("UPDATE orders SET odoo_draft = ?, customer = COALESCE(?, customer), sale_date = COALESCE(?, sale_date) WHERE (odoo_ref = ? OR parent_ref = ?) AND done = 0");
     const setMaterial = db.prepare("UPDATE orders SET material_date = ?, material_info = ? WHERE (odoo_ref = ? OR parent_ref = ?) AND done = 0");
+    const setSuggest = db.prepare("UPDATE orders SET hours_suggest = ?, hours_suggest_src = ? WHERE odoo_ref = ? AND done = 0");
     const takeHours = db.prepare("UPDATE orders SET hours = ?, odoo_hours_applied = 1 WHERE odoo_ref = ? AND done = 0 AND is_split = 0 AND odoo_hours_applied = 0 AND (hours IS NULL OR hours = 0)");
     const seen = db.prepare("INSERT OR IGNORE INTO odoo_seen (odoo_id, first_seen) VALUES (?, ?)");
     const seenOld = db.prepare("INSERT OR IGNORE INTO odoo_seen (odoo_id, first_seen) VALUES (?, 'baseline')");
@@ -498,11 +545,13 @@ export default function registerOdooSync(app, db, { isDate, nextPosition }) {
       [...plan.created, ...plan.updated].forEach((i) => {
         setDraft.run(i.draft ? 1 : 0, i.customer || null, i.sale_date || null, i.odoo_ref, i.odoo_ref);
         if (i.material_date !== undefined) setMaterial.run(i.material_date, i.material_info, i.odoo_ref, i.odoo_ref);
+        if (i.hours_suggest !== undefined) setSuggest.run(i.hours_suggest, i.hours_suggest_src, i.odoo_ref);
         if (i.odoo_hours === undefined) return;
         hint.run(i.odoo_hours, i.odoo_machine, i.odoo_bom || null, i.odoo_ref);
         if (i.odoo_hours > 0 && i.odoo_hours <= MAX_TAKE_HOURS) takeHours.run(i.odoo_hours, i.odoo_ref);
       });
       closeRefs.forEach((ref) => close.run(ref, ref));
+      materialAv();
       if (markAllSeen) plan.all.forEach((i) => seenOld.run(i.odoo_id));
       db.exec("COMMIT");
     } catch (err) {
@@ -522,7 +571,32 @@ export default function registerOdooSync(app, db, { isDate, nextPosition }) {
       fields: ["name", "partner_id", "date_order", "commitment_date", "delivery_status"],
       limit: 2000,
     });
-    const names = sales.map((s) => String(s.name).trim());
+    let names = sales.map((s) => String(s.name).trim());
+    // Aufträge nur aus Dienstleistungen (z. B. Servicetechniker, Fracht): es gibt nichts zu fertigen. Nicht lesbar = alle bleiben drin
+    // (nur Aufträge mit Positionen zählen: hat ein Auftrag Positionen, aber keine Ware mit Menge, gibt es nichts zu fertigen)
+    const goods = new Set();
+    const withLines = new Set();
+    let linesRead = false;
+    try {
+      for (let i = 0; i < names.length; i += 150) {
+        const ls = await odoo("sale.order.line", "search_read", { domain: [["order_id.name", "in", names.slice(i, i + 150)], ["display_type", "=", false]], fields: ["order_id", "product_type", "product_uom_qty"], limit: 5000 });
+        ls.forEach((l) => {
+          if (!Array.isArray(l.order_id)) return;
+          const n = String(l.order_id[1]).trim();
+          withLines.add(n);
+          if (l.product_type !== "service" && (l.product_uom_qty || 0) > 0) goods.add(n);
+        });
+      }
+      linesRead = true;
+    } catch (err) {
+      console.error("Vollständigkeit: Positionen der Kundenaufträge nicht lesbar", err.message);
+    }
+    const serviceOnly = linesRead ? names.filter((n) => withLines.has(n) && !goods.has(n)) : [];
+    if (serviceOnly.length) {
+      const skip = new Set(serviceOnly);
+      sales.splice(0, sales.length, ...sales.filter((s) => !skip.has(String(s.name).trim())));
+      names = names.filter((n) => !skip.has(n));
+    }
     const mos = new Map(); // A-Nummer -> Fertigungsaufträge
     for (let i = 0; i < names.length; i += 150) {
       const recs = await odoo("mrp.production", "search_read", {
@@ -564,7 +638,7 @@ export default function registerOdooSync(app, db, { isDate, nextPosition }) {
       if (r.done === 0 && r.source) openBySource.set(r.source, (openBySource.get(r.source) || 0) + 1);
     });
     const OPEN = new Set([...OPEN_STATES, "draft"]);
-    const out = { at: new Date().toISOString(), since: ORDERS_SINCE, total: sales.length, sichtbar: 0, fehlt: [], ohneBeleg: [], lieferungOffen: [], poError };
+    const out = { at: new Date().toISOString(), since: ORDERS_SINCE, total: sales.length, sichtbar: 0, fehlt: [], ohneBeleg: [], lieferungOffen: [], poError, nurDienstleistung: serviceOnly };
     sales.forEach((s) => {
       const name = String(s.name).trim();
       const e = { source: name, customer: customerOf(s.partner_id), due: dayPart(s.commitment_date), date: dayPart(s.date_order), partial: s.delivery_status === "partial" };
@@ -617,6 +691,29 @@ export default function registerOdooSync(app, db, { isDate, nextPosition }) {
       ohneBeleg: (r.ohneBeleg || []).filter((e) => !acks.has(e.source)),
       lieferungOffen: [...(r.lieferungOffen || []), ...acked].sort((a, b) => (a.due || "9999").localeCompare(b.due || "9999") || a.source.localeCompare(b.source)),
     };
+  }
+
+  // AV-Punkt Material aus dem Einkauf setzen (nur Punkte, die noch niemand von Hand geändert hat, wie bei der QS-Verbindung):
+  //   bestätigt, Wareneingang offen -> in Arbeit, Termin = Liefertermin des Lieferanten
+  //   eingegangen                   -> bereit
+  //   nur angefragt                 -> offen, mit Hinweis
+  function materialAv() {
+    if (!db.prepare("PRAGMA table_info(av_checks)").all().some((c) => c.name === "auto")) return;
+    const rows = db.prepare("SELECT id, material_date, material_info FROM orders WHERE done = 0 AND material_info IS NOT NULL").all();
+    const cur = db.prepare("SELECT status, due, note, auto FROM av_checks WHERE order_id = ? AND item = 'material'");
+    const put = db.prepare(
+      `INSERT INTO av_checks (order_id, item, status, due, note, assignee, updated_at, auto) VALUES (?, 'material', ?, ?, ?, NULL, datetime('now'), 1)
+       ON CONFLICT (order_id, item) DO UPDATE SET status = excluded.status, due = excluded.due, note = excluded.note, updated_at = excluded.updated_at WHERE av_checks.auto = 1`
+    );
+    rows.forEach((r) => {
+      const c = cur.get(r.id);
+      if (c && c.auto !== 1) return; // von Hand gesetzt: nie anfassen
+      const received = /eingegangen/.test(r.material_info);
+      const want = received ? ["bereit", null] : r.material_date ? ["in_arbeit", r.material_date] : ["offen", null];
+      const note = "Einkauf: " + r.material_info;
+      if (c && c.status === want[0] && (c.due || null) === want[1] && c.note === note) return;
+      put.run(r.id, want[0], want[1], note);
+    });
   }
 
   let running = false;
@@ -738,6 +835,17 @@ export default function registerOdooSync(app, db, { isDate, nextPosition }) {
       vollst: vollstSummary(),
     });
   });
+
+  // für "Heute zu tun" (server/heute.js): Vollständigkeit, Schließvorschläge, Musterwerte
+  app.locals.odooHeute = () => {
+    let pending = [];
+    try {
+      pending = JSON.parse(getState("pending_closing") || "[]");
+    } catch {
+      pending = [];
+    }
+    return { vollst: completeness(), closing: pending.length, muster: bomCheck().muster.length };
+  };
 
   // Kurzfassung der Vollständigkeitsprüfung für Hinweise (Zahlen statt Listen)
   function vollstSummary() {

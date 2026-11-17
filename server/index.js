@@ -13,6 +13,7 @@ import registerPlanvorschlag from "./planvorschlag.js";
 import setupDueHistory from "./dueHistory.js";
 import registerAuslastung from "./auslastung.js";
 import registerNeuordnen from "./neuordnen.js";
+import registerHeute from "./heute.js";
 import { staffName } from "../src/staffLib.js";
 import registerOdooFiles from "./odooFiles.js";
 import registerBde from "./bde.js";
@@ -41,6 +42,7 @@ const DEFAULT_CAPACITY = 40;
 // DB_PATH sollte außerhalb des per Git deployten App-Ordners liegen,
 // sonst wird die Datenbank bei jedem Redeploy zurückgesetzt.
 const DB_PATH = process.env.DB_PATH || path.join(__dirname, "dashboard.db");
+if (!process.env.DB_PATH) console.error("ACHTUNG: DB_PATH fehlt. Die Daten liegen im App-Ordner und gehen beim nächsten Deploy verloren: " + DB_PATH);
 mkdirSync(path.dirname(DB_PATH), { recursive: true });
 
 const db = new DatabaseSync(DB_PATH);
@@ -170,6 +172,8 @@ const orderColumns = columnsOf();
   ["material_date", "TEXT"], // Material laut Einkauf: Liefertermin der bestätigten Bestellung, Wareneingang offen (sonst leer)
   ["material_info", "TEXT"], // Material laut Einkauf kurz, z. B. "P00601 Erwin Telle, Wareneingang offen, geplant 17.11."
   ["pinned", "INTEGER NOT NULL DEFAULT 0"], // 1 = fixiert: Neu ordnen verschiebt die Position nicht
+  ["hours_suggest", "REAL"], // Stunden-Vorschlag aus den echten Zeiten des letzten erledigten Fertigungsauftrags desselben Teils (Odoo)
+  ["hours_suggest_src", "TEXT"], // woher der Vorschlag kommt, z. B. "aus FA01335: Fräsen 4,1 h für 3 Stk, Rüsten 2,9 h"
   ["restricted_ok", "INTEGER NOT NULL DEFAULT 0"], // 1 = passt auch auf die eingeschränkte Maschine (M1), die App darf sie dorthin legen
   ["sale_date", "TEXT"], // Auftragsdatum des Kundenauftrags (für das Alter in Tagen)
   ["qs_required", "INTEGER NOT NULL DEFAULT 1"],
@@ -228,6 +232,18 @@ registerTalosPlan(app, db, { orderOut: (r) => orderOut(r), planSettingsOut: () =
 
 // Verbindung zu QS (Prüfplan/EMPB der Arbeitsvorbereitung); vor dem Passwortschutz, eigener Schutz über den Schlüssel (server/qsBridge.js)
 const qsBridge = registerQsBridge(app, db, { orderOut: (r) => orderOut(r), planSettingsOut: () => planSettingsOut() });
+
+// Lebenszeichen für Überwachung und Hoster: ohne Anmeldung, ohne Daten. 503, wenn die Datenbank nicht antwortet.
+app.get(["/health", "/api/health"], (req, res) => {
+  let dbOk = false;
+  try {
+    db.prepare("SELECT 1").get();
+    dbOk = true;
+  } catch {
+    dbOk = false;
+  }
+  res.status(dbOk ? 200 : 503).json({ ok: dbOk, zeit: new Date().toISOString(), datenDauerhaft: !!process.env.DB_PATH });
+});
 
 // Passwortschutz mit eigener Anmeldeseite (server/login.js): Ist APP_PASSWORD gesetzt (z. B. in den Umgebungsvariablen bei Hostinger),
 // fragt die App beim Öffnen nach dem Passwort. Ohne Variable (lokal) ist alles offen.
@@ -388,6 +404,8 @@ const orderOut = (r) => ({
   material_info: r.material_info || null,
   pinned: r.pinned === 1,
   restricted_ok: r.restricted_ok === 1,
+  hours_suggest: r.hours_suggest ?? null,
+  hours_suggest_src: r.hours_suggest_src || null,
   sale_date: r.sale_date || null,
   qs_required: r.qs_required === 1,
   is_split: r.is_split === 1,
@@ -1091,8 +1109,18 @@ app.post("/api/av/bulk", (req, res) => {
   res.json({ ok: true });
 });
 
+// Datensicherung und Wiederherstellung enthalten bzw. ersetzen ALLE Daten: nur für die Leitung (mit PIN angemeldet) oder das
+// Sicherungs-Skript auf dem PC (Basic-Anmeldung mit dem App-Passwort). Ohne APP_PASSWORD (nur lokal erreichbar) offen.
+function leitungOderSkript(req, res, next) {
+  if (!process.env.APP_PASSWORD) return next();
+  if (app.locals.basicAuthed && app.locals.basicAuthed(req)) return next();
+  const s = app.locals.bdeSession ? app.locals.bdeSession(req) : null;
+  if (s && s.leitung) return next();
+  res.status(403).json({ error: "Nur für die Leitung: bitte zuerst mit PIN anmelden (Mein Arbeitsplatz)." });
+}
+
 // Datensicherung: alle Daten als lesbare JSON-Datei zum Herunterladen
-app.get("/api/backup", (req, res) => {
+app.get("/api/backup", leitungOderSkript, (req, res) => {
   const all = (sql) => db.prepare(sql).all();
   const created = new Date().toISOString();
   const backup = {
@@ -1132,7 +1160,7 @@ const RESTORE_TABLES = [
   "order_staff",
   "staff_info",
 ];
-app.post("/api/restore", (req, res) => {
+app.post("/api/restore", leitungOderSkript, (req, res) => {
   const { backup, dryRun } = req.body || {};
   const isRow = (r) =>
     r && typeof r === "object" && !Array.isArray(r) && Object.values(r).every((v) => v === null || ["string", "number"].includes(typeof v));
@@ -1171,13 +1199,14 @@ app.post("/api/restore", (req, res) => {
   res.json({ counts });
 });
 
-registerAutoBackup(app, db, { dbPath: DB_PATH });
+registerAutoBackup(app, db, { dbPath: DB_PATH, guard: leitungOderSkript });
 registerPartImages(app, db);
 registerOdooSync(app, db, { isDate, nextPosition });
 registerFruehwarnung(app, db, { orderOut: (r) => orderOut(r), planSettingsOut: () => planSettingsOut(), dueChange: dueHistory.change });
 registerPlanvorschlag(app, db, { orderOut: (r) => orderOut(r), planSettingsOut: () => planSettingsOut() });
 dueHistory.register(app);
 registerAuslastung(app, db, { orderOut: (r) => orderOut(r), planSettingsOut: () => planSettingsOut() });
+registerHeute(app, db, { orderOut: (r) => orderOut(r), planSettingsOut: () => planSettingsOut() });
 registerNeuordnen(app, db, { orderOut: (r) => orderOut(r), planSettingsOut: () => planSettingsOut(), odooMachineMoves: (rows, to) => odooMachineMoves(rows, to) });
 registerOdooFiles(app, db);
 const staff = registerStaff(app, db);
