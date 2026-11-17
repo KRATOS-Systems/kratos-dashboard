@@ -47,6 +47,8 @@ jobs:
         run: node scripts/testFruehwarnung.mjs
       - name: Planvorschlag für nicht eingeplante Positionen
         run: node scripts/testPlanvorschlag.mjs
+      - name: Leitstand (Auslastung, Plan neu ordnen, Material aus dem Einkauf)
+        run: node scripts/testLeitstand.mjs
       - name: Aufgaben (Von mir vergeben)
         run: node scripts/testAufgaben.mjs
       - name: Verbindung zu QS (Prüfplan, EMPB)

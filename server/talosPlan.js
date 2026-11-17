@@ -46,7 +46,9 @@ export function makeContext({ rates, weekCap, freeDays, checks, settings, today 
     list.map((o) => {
       if (o.done) return o;
       const s = avSummary(checks, o.id);
-      return !s.ready && s.readyDate ? { ...o, av_ready: s.readyDate } : o;
+      const mat = s.states.find((x) => x.id === "material");
+      const material_ok = !!mat && (mat.status === "bereit" || mat.status === "entfaellt");
+      return !s.ready && s.readyDate ? { ...o, av_ready: s.readyDate, material_ok } : material_ok ? { ...o, material_ok } : o;
     });
   const dateOf = (off) => addDays(monday0, Math.floor(off));
   const endDateOf = (off) => dateOf(off - 1e-6);
@@ -71,7 +73,7 @@ export function avOut(checks, o) {
   };
 }
 
-const WAIT = { av: "Arbeitsvorbereitung (offene Punkte)", dep: "vorheriger Arbeitsgang", earliest: "Start frühestens (Material/Werkzeug)" };
+const WAIT = { av: "Arbeitsvorbereitung (offene Punkte)", material: "Material aus dem Einkauf (Wareneingang)", dep: "vorheriger Arbeitsgang", earliest: "Start frühestens (Material/Werkzeug)" };
 
 function itemOut(ctx, i, index) {
   const o = i.o;

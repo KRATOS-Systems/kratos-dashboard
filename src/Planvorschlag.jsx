@@ -8,7 +8,7 @@ const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 const BASIS = {
   odoo: ["laut Odoo-Arbeitsplan", "mute", "Die Maschine steht im Arbeitsplan des Fertigungsauftrags in Odoo."],
   wiederholteil: ["wie beim letzten Mal", "mute", "Dasselbe Teil lief zuletzt auf dieser Maschine."],
-  frei: ["Maschine prüfen", "warn", "Odoo nennt keine Maschine und das Teil ist neu. Vorgeschlagen ist die Maschine mit dem besten Termin. Ob das Teil dort gefertigt werden kann, bitte prüfen."],
+  frei: ["beste Maschine", "mute", "Odoo nennt keine Maschine und das Teil ist neu. Vorgeschlagen ist die Maschine mit dem besten Termin."],
 };
 
 export default function Planvorschlag({ reloadKey, onApply, poolCount }) {

@@ -161,6 +161,7 @@ function AvPanel({ avStdOf = () => null, r, checks, orders, onSet, onBulk, peopl
             );
           })}
           {o.component_status && <div className="avp-odoo">Materialstatus laut Odoo: {o.component_status}</div>}
+          {o.material_info && <div className="avp-odoo">Einkauf: {o.material_info}{o.material_date ? " (die Planung startet frühestens danach, außer Material steht hier auf bereit)" : ""}</div>}
           {(o.odoo_hours > 0 || o.odoo_machine) && (
             <div className="avp-odoo">
               Fräsen laut Odoo: {[o.odoo_machine && (MACHINES.find((m) => m.id === o.odoo_machine) || {}).short, o.odoo_hours > 0 && `${String(o.odoo_hours).replace(".", ",")} h`].filter(Boolean).join(", ")}
@@ -421,6 +422,7 @@ export default function AvView({ avStdOf = () => null, orders, checks, planStart
       mat.due ? "bereit am " + fmtShort(mat.due) : "",
       mat.note || "",
       o.component_status ? "laut Odoo: " + o.component_status : "",
+      o.material_info ? "Einkauf: " + o.material_info : "",
     ]
       .filter(Boolean)
       .join(" · ");
