@@ -1416,3 +1416,34 @@ a.btn { text-decoration: none; }
 .draftpill { display: inline-block; margin-left: 8px; padding: 0 7px; border-radius: 6px; font: 700 10.5px/17px var(--f-display); letter-spacing: .04em; color: var(--warn); background: var(--warn-soft); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--warn) 45%, transparent); vertical-align: 1px; white-space: nowrap; }
 .avkunde { color: var(--muted); font-size: 12px; max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .duelate { display: block; font-size: 11.5px; font-weight: 500; }
+
+/* Frühwarnung: Liefertermine in Gefahr (Planung) */
+.fruehwarn { padding: 9px 14px; font-size: 12.5px; line-height: 1.45; }
+.fruehwarn.bad { border-color: color-mix(in srgb, var(--bad) 55%, var(--line)); background: var(--bad-soft); }
+.fruehwarn .fw-head { display: flex; align-items: baseline; gap: 9px; }
+.fruehwarn .fw-head > span { flex: 1; min-width: 0; }
+.fruehwarn .fw-head .dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--c); transform: translateY(-1px); }
+.fruehwarn .fw-list { margin: 6px 0 2px 17px; display: grid; }
+.fruehwarn .fw-row { display: grid; grid-template-columns: minmax(130px, 1.1fr) minmax(170px, 1.2fr) minmax(160px, 2.4fr) auto; gap: 14px; align-items: center; padding: 6px 0; border-top: 1px solid color-mix(in srgb, var(--line) 70%, transparent); }
+.fruehwarn .fw-row > * { min-width: 0; }
+.fruehwarn .fw-who, .fruehwarn .fw-dates { display: grid; gap: 1px; }
+.fruehwarn .fw-who b { font: 700 14px var(--f-mono); }
+.fruehwarn .fw-who span, .fruehwarn .fw-why { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fruehwarn .fw-why { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.fruehwarn .fw-late { color: var(--bad); font-weight: 600; }
+.fruehwarn .fw-faint { color: var(--muted); }
+.fruehwarn .fw-err { color: var(--bad); margin: 4px 0; }
+.fruehwarn .fw-hint { color: var(--warn); }
+.fruehwarn .fw-state { display: flex; align-items: center; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
+.fruehwarn .pill.bad { background: var(--bad-soft); color: var(--bad); border-color: color-mix(in srgb, var(--bad) 40%, transparent); }
+.fruehwarn .fw-mail { margin: 2px 0 10px; padding: 12px 14px; border: 1px solid var(--line-strong); border-radius: 10px; background: var(--surface); display: grid; gap: 9px; max-width: 760px; }
+.fruehwarn .fw-mail label { display: grid; gap: 3px; font-size: 11.5px; font-weight: 600; color: var(--muted); }
+.fruehwarn .fw-mail input, .fruehwarn .fw-mail textarea { font: 400 13px/1.5 var(--f-body); color: var(--ink); padding: 6px 9px; width: 100%; }
+.fruehwarn .fw-mail textarea { resize: vertical; }
+.fruehwarn .fw-mail-top { display: flex; gap: 14px; align-items: end; flex-wrap: wrap; }
+.fruehwarn .fw-mail-top label { flex: none; }
+.fruehwarn .fw-mail-top input { width: 160px; }
+.fruehwarn .fw-mail-top > span { flex: 1; min-width: 200px; }
+.fruehwarn .fw-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.fruehwarn .fw-actions a.btn { text-decoration: none; }
+@media (max-width: 900px) { .fruehwarn .fw-row { grid-template-columns: 1fr 1fr; } .fruehwarn .fw-why, .fruehwarn .fw-state { grid-column: 1 / -1; justify-content: flex-start; } }

@@ -39,6 +39,8 @@ jobs:
         run: node scripts/testStueckliste.mjs
       - name: Vollständigkeit der Kundenaufträge (Entwürfe, Warnliste, Differenz)
         run: node scripts/testEntwuerfe.mjs
+      - name: Frühwarnung bei Lieferverzug (Mail-Entwurf, Kunde informiert)
+        run: node scripts/testFruehwarnung.mjs
       - name: Aufgaben (Von mir vergeben)
         run: node scripts/testAufgaben.mjs
       - name: Verbindung zu QS (Prüfplan, EMPB)

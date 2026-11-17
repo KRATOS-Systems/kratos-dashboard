@@ -6,6 +6,7 @@ import { holidaysBavaria } from "./holidays.js";
 import AvView, { avUrgentCount } from "./Av.jsx";
 import BomHinweis from "./BomHinweis.jsx";
 import Vollstaendig from "./Vollstaendig.jsx";
+import Fruehwarnung from "./Fruehwarnung.jsx";
 import { AV_ITEMS, AV_STATUS, AV_TEAM, isNewAv, avKey, avState, avSummary } from "./avLib.js";
 import { STAFF, ACTIVITIES, STAFF_DEFAULTS, responsible, avResponsible, sharedMachine } from "./staffLib.js";
 import Avatar from "./Avatar.jsx";
@@ -111,6 +112,8 @@ function RestInput({ value, onCommit, title }) {
 export default function Planning({ section = "planung", today, shift, weekCap, onSaveShift, onDeleteShift, onAvCount, onNewCount, onShared, openReq, onOpenHandled, goTo, openTalos }) {
   const toast = useToast();
   const [orders, setOrders] = useState([]);
+  // Schlüssel für die Frühwarnung: ändert sich mit jeder Änderung an der Planung, dann wird neu gerechnet
+  const fwKey = useMemo(() => orders.map((o) => [o.id, o.machine, o.position, o.hours, o.done_hours, o.done ? 1 : 0, o.due || "", o.extern_days, o.extern_start || ""].join(":")).join("|"), [orders]);
   const [checks, setChecks] = useState(() => new Map()); // Arbeitsvorbereitung: Position|Punkt -> { status, due, note }
   // Zuständigkeiten: Stammbediener je Maschine, Rollen, Abweichungen je Position und Tätigkeit ("id|tätigkeit" -> Name)
   const [staff, setStaff] = useState(() => ({ defaults: { ...STAFF_DEFAULTS }, overrides: new Map(), info: [] }));
@@ -3477,6 +3480,7 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
       </div>
 
       <BomHinweis />
+      <Fruehwarnung reloadKey={fwKey} />
       <Vollstaendig compact onChanged={() => fetch("/api/orders").then((r) => r.json()).then((d) => setOrders(d.orders)).catch(() => {})} />
 
       {preview && (

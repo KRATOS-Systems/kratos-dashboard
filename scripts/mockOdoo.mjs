@@ -196,7 +196,7 @@ const T = {
     ...(process.env.MOCK_ENTWURF
       ? [
           { id: 1422, name: "A01422", state: "sale", delivery_status: "pending", partner_id: 136, date_order: "2026-10-27 08:30:00", commitment_date: "2026-11-05 08:00:00" },
-          { id: 1385, name: "A01385", state: "sale", delivery_status: "pending", partner_id: 187, date_order: "2026-10-21 09:42:04", commitment_date: "2026-11-05 07:00:00" },
+          { id: 1385, name: "A01385", state: "sale", delivery_status: "pending", partner_id: 187, date_order: "2026-10-21 09:42:04", commitment_date: "2026-11-05 07:00:00", client_order_ref: "723835" },
           { id: 1444, name: "A01444", state: "sale", delivery_status: "pending", partner_id: 138, date_order: "2026-10-27 14:10:53", commitment_date: "2026-11-06 14:00:00" },
           { id: 1423, name: "A01423", state: "draft", partner_id: 138, date_order: "2026-10-26 14:11:33" },
           { id: 380, name: "A00380", state: "sale", delivery_status: "pending", partner_id: 138, date_order: "2025-04-14 10:00:00" },
@@ -223,7 +223,7 @@ const T = {
 };
 // Zur Vollständigkeitsprüfung: Kunden, weitere Artikel und der Einkauf (nur mit MOCK_ENTWURF=1)
 if (process.env.MOCK_ENTWURF) {
-  T["res.partner"].push({ id: 136, name: "Ernst Meck GmbH" }, { id: 187, name: "ACS Armoured Car Systems GmbH, Markus Fuss" }, { id: 138, name: "Schneider Gmbh & Co. KG" }, { id: 108, name: "Konecranes GmbH" });
+  T["res.partner"].push({ id: 136, name: "Ernst Meck GmbH" }, { id: 187, name: "ACS Armoured Car Systems GmbH, Markus Fuss", email: "einkauf@acs.example" }, { id: 138, name: "Schneider Gmbh & Co. KG" }, { id: 108, name: "Konecranes GmbH" });
   T["product.product"].push(
     { id: 2903, name: "Flach 40x20, 70lg.", default_code: "89058665", product_tmpl_id: 70 },
     { id: 2904, name: "Bundbuchse", default_code: "SK966-114100.005.0", product_tmpl_id: 70 },
