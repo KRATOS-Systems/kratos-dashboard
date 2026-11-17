@@ -258,6 +258,46 @@ if (process.env.MOCK_ENTWURF) {
   M2O["purchase.order"] = { partner_id: "res.partner" };
   M2O["purchase.order.line"] = { order_id: "purchase.order", product_id: "product.product" };
 }
+// Extern & Wareneingang (nur mit MOCK_ENTWURF=1 und MOCK_EXTERN=1), nach den echten Fällen vom 18.11.2026:
+//   P00581 AV CNC Milling (Rumänien, englisch) 7 Tage überfällig; P00601 Erwin Telle Material für FA01322, 1 Tag überfällig;
+//   P00582 CNC Kolodziej morgen fällig; P00557 bestätigt ohne Wareneingang (Altlast); FA01122 hat "Strahlen extern" ohne Bestellung
+if (process.env.MOCK_ENTWURF && process.env.MOCK_EXTERN) {
+  T["res.country"] = [{ id: 57, name: "Deutschland" }, { id: 186, name: "Rumänien" }];
+  T["res.partner"].push(
+    { id: 508, name: "AV CNC MILLING S.R.L.", email: "office@avcnc.example", phone: "+40 744 000 111", lang: "en_US", country_id: 186 },
+    { id: 230, name: "CNC Kolodziej", email: "info@kolodziej.example", lang: "de_DE", country_id: 57 },
+    { id: 781, name: "Erwin Telle GmbH", email: "info@telle.example", phone: "+49 911 000 222", lang: "de_DE", country_id: 57 },
+    { id: 782, name: "Erwin Telle GmbH, Jörg Mühlbauer", email: false, parent_id: 781, lang: "de_DE" },
+    { id: 242, name: "EHG Stahl.Metall Aichach GmbH", email: "verkauf@ehg.example", lang: "de_DE", country_id: 57 }
+  );
+  T["purchase.order"].push(
+    { id: 581, name: "P00581", origin: "A01419 / ANF-000012", partner_id: 508, partner_ref: "B-000003", state: "purchase", receipt_status: "pending", date_order: ago(24 * 23), date_approve: ago(24 * 23), date_planned: day(-7) + " 08:00:00" },
+    { id: 601, name: "P00601", origin: "FA01322", partner_id: 782, partner_ref: "Angebot 61423946", state: "purchase", receipt_status: "pending", date_order: ago(24 * 6), date_approve: ago(24 * 6), date_planned: day(-1) + " 07:00:00" },
+    { id: 582, name: "P00582", origin: "A01429 / ANF-000009", partner_id: 230, partner_ref: "B-000004", state: "purchase", receipt_status: "pending", date_order: ago(24 * 22), date_approve: ago(24 * 22), date_planned: day(1) + " 08:00:00" },
+    { id: 557, name: "P00557", origin: "A01335", partner_id: 242, state: "purchase", receipt_status: false, date_order: ago(24 * 57), date_approve: ago(24 * 57) },
+    { id: 540, name: "P00540", origin: "A01300", partner_id: 508, state: "purchase", receipt_status: "full", date_order: ago(24 * 60), date_approve: ago(24 * 60) },
+    { id: 541, name: "P00541", origin: "A01301", partner_id: 508, state: "purchase", receipt_status: "full", date_order: ago(24 * 40), date_approve: ago(24 * 40) }
+  );
+  T["purchase.order.line"].push(
+    { id: 1725, order_id: 581, name: "[05842.100-123] Auflagepad", product_id: false, product_qty: 48, qty_received: 0, date_planned: day(-7) + " 08:00:00", display_type: false },
+    { id: 1727, order_id: 581, name: "[05842.100-519] Greifbacke", product_id: false, product_qty: 12, qty_received: 4, date_planned: day(-7) + " 08:00:00", display_type: false },
+    { id: 1767, order_id: 601, name: "POM-C schwarz (25x45x50)", product_id: false, product_qty: 60, qty_received: 0, date_planned: day(-1) + " 07:00:00", display_type: false },
+    { id: 1734, order_id: 582, name: "[2023-17314] Mitnehmer", product_id: false, product_qty: 1, qty_received: 0, date_planned: day(1) + " 08:00:00", display_type: false }
+  );
+  T["stock.picking"] = [
+    { id: 1213, name: "WH/IN/00437", picking_type_code: "incoming", state: "assigned", partner_id: 508, purchase_id: 581, scheduled_date: day(-7) + " 08:00:00", date_deadline: day(-7) + " 08:00:00", date_done: false },
+    { id: 1262, name: "WH/IN/00448", picking_type_code: "incoming", state: "assigned", partner_id: 782, purchase_id: 601, scheduled_date: day(-1) + " 07:00:00", date_deadline: day(-1) + " 07:00:00", date_done: false },
+    { id: 1216, name: "WH/IN/00438", picking_type_code: "incoming", state: "assigned", partner_id: 230, purchase_id: 582, scheduled_date: day(1) + " 08:00:00", date_deadline: day(1) + " 08:00:00", date_done: false },
+    { id: 866, name: "WH/IN/00296", picking_type_code: "incoming", state: "draft", partner_id: 242, purchase_id: false, scheduled_date: "2026-04-17 12:11:38", date_deadline: false, date_done: false },
+    // erledigt (Lieferanten-Bewertung): AV CNC einmal 3 Tage zu spät, einmal pünktlich
+    { id: 1100, name: "WH/IN/00390", picking_type_code: "incoming", state: "done", partner_id: 508, purchase_id: 540, scheduled_date: day(-50) + " 08:00:00", date_deadline: day(-50) + " 08:00:00", date_done: day(-47) + " 10:00:00" },
+    { id: 1101, name: "WH/IN/00395", picking_type_code: "incoming", state: "done", partner_id: 508, purchase_id: 541, scheduled_date: day(-30) + " 08:00:00", date_deadline: day(-30) + " 08:00:00", date_done: day(-31) + " 10:00:00" },
+  ];
+  M2O["stock.picking"] = { partner_id: "res.partner", purchase_id: "purchase.order" };
+  M2O["res.partner"] = { parent_id: "res.partner", country_id: "res.country" };
+  T["mrp.workcenter"].push({ id: 3, name: "OBERFLÄCHENBEHANDLUNG (EXTERN)" });
+  T["mrp.workorder"].push({ id: 8000, name: "Strahlen extern", sequence: 3, production_id: 1122, workcenter_id: 3, product_id: 2902, state: "blocked", duration_expected: 0, duration: 0 });
+}
 const log = [];
 const nextId = (m) => Math.max(0, ...T[m].map((r) => r.id)) + 1;
 const byId = (m, id) => T[m].find((r) => r.id === id);

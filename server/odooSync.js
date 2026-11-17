@@ -277,8 +277,10 @@ export default function registerOdooSync(app, db, { isDate, nextPosition }) {
       const pending = ordered.filter((p) => p.receipt_status !== "full" && dayPart(p.date_planned));
       if (pending.length) {
         const last = pending.reduce((a, b) => (dayPart(b.date_planned) > dayPart(a.date_planned) ? b : a));
-        const d = dayPart(last.date_planned);
-        out.set(fa, { date: d, info: `${who(last)}, Wareneingang offen, geplant ${fmtDay(d)}` });
+        // Hat der Lieferant auf Nachfrage einen neuen Termin genannt (Extern & Wareneingang), gilt der
+        const neu = app.locals.externTermin ? app.locals.externTermin(String(last.name)) : null;
+        const d = neu || dayPart(last.date_planned);
+        out.set(fa, { date: d, info: `${who(last)}, Wareneingang offen, ${neu ? "neuer Termin" : "geplant"} ${fmtDay(d)}${neu ? " (vom Lieferanten)" : ""}` });
       } else if (ordered.length) out.set(fa, { date: null, info: `${who(ordered[0])}, Material eingegangen` });
       else out.set(fa, { date: null, info: `${who(list[0])}, Material noch nicht bestellt (Anfrage)` });
     });

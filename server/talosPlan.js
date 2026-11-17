@@ -452,6 +452,52 @@ export function kiTools(locals) {
       },
     },
     {
+      name: "extern_offen",
+      description:
+        "Extern & Wareneingang: offene Einkaufsbestellungen (Fremdfertigung, Lohnarbeit, Material), deren Wareneingang noch nicht validiert ist – mit Lieferant, zugesagtem und neuem Termin, überfällig seit, ob schon angefragt, welche Kundenaufträge daran hängen; dazu externe Arbeitsgänge (Strahlen, Schleifen, Härten …) ohne Bestellung und die Termintreue je Lieferant. Erste Wahl für „Was ist bei Lieferant X offen?“, „Welche Lieferungen sind überfällig?“, „Wo fehlt eine Bestellung?“.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          lieferant: { type: "string", description: "nur dieser Lieferant (Teil des Namens)" },
+          nur_handlungsbedarf: { type: "boolean", description: "nur überfällige, bald fällige und fehlende Bestellungen" },
+        },
+        additionalProperties: false,
+      },
+      run: async ({ lieferant, nur_handlungsbedarf } = {}) => {
+        const d = await need("extern").get(false);
+        if (!d.enabled) return { hinweis: "Odoo ist im Dashboard nicht angebunden." };
+        const l = String(lieferant || "").toLowerCase();
+        const offen = d.offen
+          .filter((x) => !l || x.partner.toLowerCase().includes(l))
+          .filter((x) => !nur_handlungsbedarf || x.aktion)
+          .map((x) => ({
+            bestellung: x.po,
+            lieferant: x.lieferant,
+            art: x.art,
+            deren_referenz: x.partnerRef || undefined,
+            wareneingang: x.wareneingang.join(", ") || undefined,
+            zugesagt: x.zugesagt,
+            termin_jetzt: x.termin,
+            neuer_termin_vom_lieferanten: x.neuerTermin || undefined,
+            status: x.status === "ueberfaellig" ? `${x.tage} Tage überfällig` : x.status,
+            zu_tun: x.aktion || undefined,
+            angefragt: x.angefragt ? `${x.angefragt}${x.angefragtVon ? " von " + x.angefragtVon : ""}` : undefined,
+            positionen: x.lines.filter((p) => p.offen > 0).map((p) => `${p.offen} x ${p.name}`),
+            kundenauftraege: x.betroffen.map((b) => `${b.source || b.ref}${b.customer ? " (" + b.customer + ")" : ""}${b.due ? ", Liefertermin " + b.due : ""}`),
+            kunde_in_gefahr: x.kundeGefahr || undefined,
+            kontakt: [x.email, x.phone].filter(Boolean).join(", ") || undefined,
+          }));
+        return {
+          stand: d.stand,
+          zahlen: d.zahlen,
+          offen,
+          bestellung_fehlt: d.fehlt.filter((x) => !nur_handlungsbedarf || x.dringend).slice(0, 30).map((x) => ({ fa: x.fa, auftrag: x.source, schritt: x.schritt, arbeitsplatz: x.arbeitsplatz, maschine_fertig: x.maschineFertig || undefined, dringend: x.dringend })),
+          termintreue: l ? d.bewertung.filter((b) => b.lieferant.toLowerCase().includes(l)) : d.bewertung.slice(0, 10),
+          hinweis: "Nur lesen. Nachfragen schickt ein Mensch (Knopf „Lieferant anfragen“ im Reiter Extern).",
+        };
+      },
+    },
+    {
       name: "freigabe_vorschlagen",
       description:
         "Legt einen Vorschlag oder Hinweis in die Freigabe-Liste der Planung (z. B. „FA01350 vor FA01347 ziehen, weil …“, „Kunde X wegen Verzug anrufen“). Ändert sonst nichts: Ein Mensch liest ihn, entscheidet und setzt ihn selbst um. Nur nutzen, wenn der Nutzer darum bittet oder etwas Wichtiges auffällt.",
@@ -490,7 +536,7 @@ export default function registerTalosPlan(app, db, helpers) {
   const error = (res, id, code, message) => res.json({ jsonrpc: "2.0", id, error: { code, message } });
 
   // Eigener Body-Parser: Die Route wird vor dem Passwortschutz der App angemeldet (Schutz hier über das Geheimnis)
-  app.all("/mcp/:secret", express.json({ limit: "1mb" }), (req, res) => {
+  app.all("/mcp/:secret", express.json({ limit: "1mb" }), async (req, res) => {
     if (!same(req.params.secret, SECRET)) return res.status(404).end();
     if (req.method !== "POST") return res.status(405).set("Allow", "POST").end();
     const { id = null, method, params = {} } = req.body || {};
@@ -512,7 +558,7 @@ export default function registerTalosPlan(app, db, helpers) {
       const tool = tools.find((t) => t.name === params.name);
       if (!tool) return error(res, id, -32602, `Werkzeug ${params.name} unbekannt`);
       try {
-        let text = JSON.stringify(tool.run(params.arguments || {}));
+        let text = JSON.stringify(await tool.run(params.arguments || {}));
         if (text.length > MAX_TEXT) text = text.slice(0, MAX_TEXT) + "…[gekürzt – Maschine angeben oder nur_auftraege nutzen]";
         return reply(res, id, { content: [{ type: "text", text }] });
       } catch (e) {
