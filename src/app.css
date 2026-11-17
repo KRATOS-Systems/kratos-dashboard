@@ -1384,3 +1384,6 @@ a.btn { text-decoration: none; }
 .apl-st.progress { color: var(--warn); font-weight: 600; }
 .apl-st.ready { color: var(--ink); font-weight: 600; }
 .apl-st.blocked, .apl-st.pending, .apl-st.waiting { color: var(--muted); }
+
+/* Knopf „Messen“: Werkerprüfung in QS zum gestempelten Auftrag */
+.bhero-top .messen { margin-left: auto; min-height: 44px; font-size: 16px; }
