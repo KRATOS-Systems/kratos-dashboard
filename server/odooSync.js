@@ -27,6 +27,8 @@
 //   Position noch keine stehen, einmalig und ohne etwas zu überschreiben. Maschine und Zeit laut Odoo stehen als Hinweis an der Position.
 // Odoo wird nur gelesen, und nur wenn ODOO_URL und ODOO_API_KEY gesetzt sind.
 
+import { staffName } from "../src/staffLib.js";
+
 const OPEN_STATES = ["confirmed", "progress", "to_close"];
 // Stichtag für das laufende Geschäft: Kundenaufträge mit Auftragsdatum ab diesem Tag. Ältere offene Aufträge sind Altlasten und bleiben draußen.
 const ORDERS_SINCE = /^\d{4}-\d{2}-\d{2}$/.test(process.env.ORDERS_SINCE || "") ? process.env.ORDERS_SINCE : "2026-01-01";
@@ -87,6 +89,8 @@ export default function registerOdooSync(app, db, { isDate, nextPosition }) {
   const key = process.env.ODOO_API_KEY || "";
   const database = process.env.ODOO_DB || "";
   const enabled = !!(url && key);
+  // Lesender Odoo-Zugang für andere Teile der App (z. B. Frühwarnung: Ansprechpartner des Kundenauftrags)
+  app.locals.odooRead = enabled ? (model, params) => odoo(model, "search_read", params) : null;
 
   async function odoo(model, method, params) {
     const headers = { "Content-Type": "application/json; charset=utf-8", Authorization: `bearer ${key}`, "User-Agent": "kratos-dashboard/1.0" };
@@ -718,7 +722,7 @@ export default function registerOdooSync(app, db, { isDate, nextPosition }) {
       db.prepare("INSERT INTO odoo_sale_ack (source, note, by_name, at) VALUES (?, ?, ?, ?) ON CONFLICT (source) DO UPDATE SET note = excluded.note, by_name = excluded.by_name, at = excluded.at").run(
         source,
         note,
-        session && session.name ? String(session.name).slice(0, 80) : null,
+        session ? staffName(session.e) || null : null,
         new Date().toISOString()
       );
     }
