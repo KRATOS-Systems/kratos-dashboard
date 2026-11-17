@@ -397,6 +397,83 @@ export function planTools(getInputs) {
   ];
 }
 
+// Werkzeuge rund um "Heute zu tun" und die Freigaben. Talos liest und schlägt vor; ändern tut erst ein Mensch mit Freigabe.
+export function kiTools(locals) {
+  const need = (name) => {
+    if (!locals[name]) throw new Error("Dieser Teil der App ist gerade nicht verfügbar.");
+    return locals[name];
+  };
+  const kurz = (f) => ({
+    id: f.id,
+    art: f.art,
+    titel: f.titel,
+    bezug: f.bezug || undefined,
+    quelle: f.quelle,
+    erstellt: f.erstellt,
+    text: f.text ? String(f.text).slice(0, 600) : undefined,
+    ...(f.art === "av"
+      ? {
+          stunden: f.daten.hours || undefined,
+          stunden_quelle: f.daten.hoursSrc || undefined,
+          maschine: f.daten.machine ? MACHINES.find((m) => m.id === f.daten.machine.id)?.short : undefined,
+          warnungen: f.daten.warnungen?.length ? f.daten.warnungen : undefined,
+          hinweise: f.daten.hinweise?.length ? f.daten.hinweise : undefined,
+          av_notizen: Object.keys(f.daten.notes || {}).length ? f.daten.notes : undefined,
+        }
+      : {}),
+    ...(f.art === "plan" ? { einplanen: f.daten.einplanen?.length || 0, umstellen: f.daten.umgestellt || 0, vorher: f.daten.vorher, nachher: f.daten.nachher } : {}),
+  });
+  return [
+    {
+      name: "plan_heute",
+      description:
+        "„Heute zu tun“ in Planung und Arbeitsvorbereitung: offene Freigaben, Aufträge im Verzug ohne Kundeninfo, fehlende Kundenaufträge, überfällige AV, Positionen ohne Stunden oder ohne Maschine, Material nicht bestellt. Erste Wahl für „Was ist heute zu tun?“ und den Morgenbericht.",
+      inputSchema: { type: "object", properties: {}, additionalProperties: false },
+      run: () => need("heuteListe")(),
+    },
+    {
+      name: "plan_vorschlag",
+      description:
+        "Rechnet den Planvorschlag für heute durch (neue Positionen einplanen, Reihenfolge verbessern, ohne Maschinenwechsel) und zeigt vorher/nachher: verspätete Aufträge, Verspätungstage, was eingeplant und was umgestellt würde. Speichert nichts.",
+      inputSchema: { type: "object", properties: {}, additionalProperties: false },
+      run: () => {
+        const { reihenfolge, stamp, ...rest } = need("freigaben").vorschau();
+        return { simulation: true, hinweis: "Nur durchgerechnet. Übernommen wird erst, wenn ein Mensch den Planvorschlag in der App freigibt.", ...rest };
+      },
+    },
+    {
+      name: "freigaben_offen",
+      description:
+        "Alles, was die App vorbereitet hat und auf eine menschliche Freigabe wartet: AV-Pakete (Stunden, Maschine, Hinweise, Warnungen je Fertigungsauftrag), den Planvorschlag des Tages und Hinweise. Nur lesen.",
+      inputSchema: { type: "object", properties: { art: { type: "string", enum: ["av", "plan", "hinweis"], description: "nur diese Art" } }, additionalProperties: false },
+      run: ({ art } = {}) => {
+        const list = need("freigaben").offen().filter((f) => !art || f.art === art);
+        return { anzahl: list.length, freigaben: list.slice(0, 40).map(kurz), ...(list.length > 40 ? { hinweis: (list.length - 40) + " weitere" } : {}) };
+      },
+    },
+    {
+      name: "freigabe_vorschlagen",
+      description:
+        "Legt einen Vorschlag oder Hinweis in die Freigabe-Liste der Planung (z. B. „FA01350 vor FA01347 ziehen, weil …“, „Kunde X wegen Verzug anrufen“). Ändert sonst nichts: Ein Mensch liest ihn, entscheidet und setzt ihn selbst um. Nur nutzen, wenn der Nutzer darum bittet oder etwas Wichtiges auffällt.",
+      readOnly: false,
+      inputSchema: {
+        type: "object",
+        properties: {
+          titel: { type: "string", maxLength: 140, description: "kurz, was getan werden soll" },
+          text: { type: "string", maxLength: 2000, description: "Begründung mit Zahlen aus den Werkzeugen" },
+          bezug: { type: "string", description: "FA- oder Auftragsnummer, falls es um eine Position geht" },
+        },
+        required: ["titel", "text"],
+        additionalProperties: false,
+      },
+      run: ({ titel, text, bezug }) => {
+        const id = need("freigaben").hinweis({ titel, text, bezug });
+        return { ok: true, id, hinweis: "In der Freigabe-Liste der Planung abgelegt. Geändert wurde nichts." };
+      },
+    },
+  ];
+}
+
 // Minimaler MCP-Server (JSON-RPC über HTTP POST, zustandslos)
 export default function registerTalosPlan(app, db, helpers) {
   const SECRET = process.env.TALOS_PLAN_SECRET || "";
@@ -404,7 +481,7 @@ export default function registerTalosPlan(app, db, helpers) {
     console.log("Talos-Planung (MCP) aus: TALOS_PLAN_SECRET fehlt");
     return;
   }
-  const tools = planTools(() => loadPlanInputs(db, helpers));
+  const tools = [...planTools(() => loadPlanInputs(db, helpers)), ...kiTools(app.locals)];
   const same = (a, b) => {
     const x = Buffer.from(String(a)), y = Buffer.from(String(b));
     return x.length === y.length && timingSafeEqual(x, y);
@@ -424,12 +501,12 @@ export default function registerTalosPlan(app, db, helpers) {
         capabilities: { tools: {} },
         serverInfo: { name: "kratos-planung", version: "1.0.0" },
         instructions:
-          "Maschinenplanung der KRATOS Precision (Produktionsdashboard). Nur lesen und durchrechnen, nichts wird gespeichert. Quelle in Antworten: „Planung Produktionsdashboard, Stand <Zeit>“.",
+          "Maschinenplanung der KRATOS Precision (Produktionsdashboard). Lesen und durchrechnen; einzig freigabe_vorschlagen legt einen Vorschlag für einen Menschen ab, sonst wird nichts gespeichert. Quelle in Antworten: „Planung Produktionsdashboard, Stand <Zeit>“.",
       });
     }
     if (method === "ping") return reply(res, id, {});
     if (method === "tools/list") {
-      return reply(res, id, { tools: tools.map(({ name, description, inputSchema }) => ({ name, description, inputSchema, annotations: { readOnlyHint: true } })) });
+      return reply(res, id, { tools: tools.map(({ name, description, inputSchema, readOnly }) => ({ name, description, inputSchema, annotations: { readOnlyHint: readOnly !== false } })) });
     }
     if (method === "tools/call") {
       const tool = tools.find((t) => t.name === params.name);

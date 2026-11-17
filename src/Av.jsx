@@ -7,6 +7,7 @@ import BomHinweis from "./BomHinweis.jsx";
 import Vollstaendig from "./Vollstaendig.jsx";
 import Terminverlauf from "./Terminverlauf.jsx";
 import FehlerMelden from "./FehlerMelden.jsx";
+import { AvPaket } from "./Freigaben.jsx";
 import { ArbeitsplanKette, ArbeitsplanPanel } from "./Arbeitsplan.jsx";
 import { deviation, fixInOdoo, useArbeitsplaene } from "./arbeitsplan.js";
 
@@ -40,7 +41,7 @@ const store = (k, v) => {
 };
 
 // Aufgeklapptes Fenster einer Position: links Zeichnung und 3D-Modell als Vorschau (Klick = groß), rechts Plan und Checkliste
-function AvPanel({ avStdOf = () => null, r, checks, orders, onSet, onBulk, people, repeatSrc, onApplyRepeat, leadDays, today, openPlanning, matText, ap }) {
+function AvPanel({ avStdOf = () => null, r, checks, orders, onSet, onBulk, people, repeatSrc, onApplyRepeat, leadDays, today, openPlanning, matText, ap, onReload }) {
   const { o, sum, plan, muss } = r;
   const ids = orders.filter((x) => !x.done && !LANE_IDS.includes(x.machine) && groupKey(x) === groupKey(o)).map((x) => x.id);
   const late = !sum.ready && muss && muss < today;
@@ -103,6 +104,7 @@ function AvPanel({ avStdOf = () => null, r, checks, orders, onSet, onBulk, peopl
             <b style={{ color: o.due && o.due < today ? "var(--bad)" : undefined }}>{o.due ? fmtShort(o.due) : "–"}</b>
           </div>
         </div>
+        <AvPaket orderId={o.id} onChanged={onReload} />
         {repeatSrc && (
           <div className="note" style={{ margin: "10px 0 0" }}>
             <b>Wiederholteil:</b> Das gleiche Teil wurde schon als {posNo(repeatSrc)} vorbereitet. Programm, Werkzeuge, Spannmittel, Prüfplan und EMPB samt Zuständigem können übernommen werden.
@@ -473,7 +475,7 @@ export default function AvView({ avStdOf = () => null, orders, checks, planStart
       {isOpen && (
         <tr className="xrow">
           <td colSpan={COLS}>
-            <AvPanel avStdOf={avStdOf}
+            <AvPanel onReload={onReload} avStdOf={avStdOf}
               r={r}
               checks={checks}
               orders={orders}

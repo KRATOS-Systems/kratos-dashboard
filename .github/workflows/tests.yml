@@ -55,6 +55,8 @@ jobs:
         run: node scripts/testSicherheit.mjs
       - name: Aurels Wünsche (Laufzeit nachtragen, Fehler melden)
         run: node scripts/testAurel.mjs
+      - name: KI-Planer (AV-Pakete, Freigaben, Morgenvorschlag, Fortschritt, Kennzahlen, Talos)
+        run: node scripts/testKiPlaner.mjs
       - name: Aufgaben (Von mir vergeben)
         run: node scripts/testAufgaben.mjs
       - name: Verbindung zu QS (Prüfplan, EMPB)
