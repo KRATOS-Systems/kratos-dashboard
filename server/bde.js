@@ -9,6 +9,7 @@
 //   die Prüfung der Maschinenzeit gegen die Zählerstände in bdeMachines.js, Meine Aufgaben (Odoo-Aktivitäten) in bdeTasks.js.
 // Zeiten speichert Odoo in UTC, gerechnet und angezeigt wird in Europe/Berlin.
 
+import { clientIp } from "./clientIp.js";
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { createOdooClient } from "./odooClient.js";
 import registerBdeActions from "./bdeActions.js";
@@ -440,7 +441,7 @@ export default function registerBde(app, db, staff) {
   app.post("/api/bde/login", async (req, res) => {
     const id = Number(req.body && req.body.id);
     const pin = String((req.body && req.body.pin) || "");
-    const ip = req.ip || "?";
+    const ip = clientIp(req);
     if (!PEOPLE.includes(id)) return res.status(400).json({ error: "Unbekannter Mitarbeiter" });
     const wait = Math.max(lockedFor(`e${id}`), lockedFor(`ip${ip}`));
     if (wait) return res.status(429).json({ error: `Zu viele falsche Versuche. Bitte in ${Math.ceil(wait / 60000)} Minuten noch einmal.` });

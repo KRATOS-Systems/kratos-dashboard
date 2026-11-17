@@ -49,6 +49,10 @@ jobs:
         run: node scripts/testPlanvorschlag.mjs
       - name: Leitstand (Auslastung, Plan neu ordnen, Material aus dem Einkauf)
         run: node scripts/testLeitstand.mjs
+      - name: Planungsalltag (Stunden-Vorschlag, Material in der AV, Heute zu tun)
+        run: node scripts/testAlltag.mjs
+      - name: Sicherheit (Passwort, Sperren, Datensicherung nur Leitung)
+        run: node scripts/testSicherheit.mjs
       - name: Aufgaben (Von mir vergeben)
         run: node scripts/testAufgaben.mjs
       - name: Verbindung zu QS (Prüfplan, EMPB)

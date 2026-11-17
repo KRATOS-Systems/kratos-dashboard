@@ -7,9 +7,10 @@ import { fmtShort } from "./lib.js";
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 const full = (d) => (d ? `${fmtShort(d)}${d.slice(0, 4)}` : "–");
 
-export default function Neuordnen({ reloadKey, onApplied, onOdoo }) {
-  const [open, setOpen] = useState(false);
-  const [wechseln, setWechseln] = useState(true);
+export default function Neuordnen({ reloadKey, onApplied, onOdoo, embedded = false }) {
+  const [openState, setOpen] = useState(false);
+  const open = embedded || openState; // eingebettet in "Plan verbessern": immer offen, ohne eigenen Knopf
+  const [wechseln, setWechseln] = useState(false);
   const [data, setData] = useState(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
@@ -56,9 +57,14 @@ export default function Neuordnen({ reloadKey, onApplied, onOdoo }) {
   return (
     <div className="neuord">
       <div className="no-bar">
-        <button type="button" className={`btn sm${open ? "" : " primary"}`} onClick={() => (setOpen((v) => !v), setDone(""))} aria-expanded={open}>
-          {open ? "Neu ordnen schließen" : "Plan neu ordnen"}
-        </button>
+        {embedded ? (
+          <b className="pvb-h">Reihenfolge verbessern</b>
+        ) : (
+          <button type="button" className={`btn sm${open ? "" : " primary"}`} onClick={() => (setOpen((v) => !v), setDone(""))} aria-expanded={open}>
+            {open ? "Neu ordnen schließen" : "Plan neu ordnen"}
+          </button>
+        )}
+        {embedded && done && <span className="no-ok">{done}</span>}
         {!open && <span className="no-faint">{done || "Rechnet eine bessere Reihenfolge aus. Laufende und fixierte Positionen bleiben, wo sie sind. Gespeichert wird erst beim Übernehmen."}</span>}
         {open && (
           <label className="no-check" title="Positionen verspäteter Aufträge dürfen auf eine andere Maschine. In Odoo wird der noch nicht begonnene Arbeitsplan dann mit umgestellt, wie beim Ziehen einer Karte.">

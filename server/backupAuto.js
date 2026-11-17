@@ -28,7 +28,7 @@ const berlin = (d = new Date()) => {
 };
 const dayNumber = (s) => Math.floor(Date.parse(`${s}T00:00:00Z`) / 86400000);
 
-export default function registerAutoBackup(app, db, { dbPath }) {
+export default function registerAutoBackup(app, db, { dbPath, guard = (req, res, next) => next() }) {
   const dir = process.env.BACKUP_DIR || path.join(path.dirname(dbPath), "backups");
   mkdirSync(dir, { recursive: true });
   const state = { lastOk: null, lastError: null, running: false };
@@ -101,7 +101,7 @@ export default function registerAutoBackup(app, db, { dbPath }) {
     res.json({ dir, auto: process.env.BACKUP_AUTO !== "0", lastOk: state.lastOk, lastError: state.lastError, files: list, latest: list[0] || null });
   });
 
-  app.post("/api/backup/run", (req, res) => {
+  app.post("/api/backup/run", guard, (req, res) => {
     try {
       const name = run();
       res.json({ ok: true, name, files: files() });
@@ -110,7 +110,7 @@ export default function registerAutoBackup(app, db, { dbPath }) {
     }
   });
 
-  app.get("/api/backup/auto/:name", (req, res) => {
+  app.get("/api/backup/auto/:name", guard, (req, res) => {
     const list = files();
     const want = req.params.name === "latest" ? list[0] && list[0].name : req.params.name;
     if (!want || !FILE_RE.test(want) || !existsSync(path.join(dir, want))) return res.status(404).json({ error: "Keine Sicherung gefunden" });

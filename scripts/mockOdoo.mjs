@@ -208,6 +208,8 @@ const T = {
           { id: 1043, name: "A01043", state: "sale", delivery_status: "pending", partner_id: 138, date_order: "2026-02-11 13:36:21", commitment_date: "2026-03-06 13:00:00" },
           // weder Fertigungsauftrag noch Einkauf
           { id: 1109, name: "A01109", state: "sale", delivery_status: "pending", partner_id: 108, date_order: "2026-03-16 10:27:03", commitment_date: "2026-04-13 11:00:00" },
+          // nur Servicetechniker: es gibt nichts zu fertigen, gehört nicht in die Warnliste
+          { id: 9991, name: "A09991", state: "sale", delivery_status: "pending", partner_id: 108, date_order: "2026-10-20 09:00:00", commitment_date: "2026-11-10 09:00:00" },
           // nur Einkauf (Fremdfertigung)
           { id: 1446, name: "A01446", state: "sale", delivery_status: "pending", partner_id: 138, date_order: "2026-11-02 12:00:11", commitment_date: "2026-11-18 11:00:00" },
         ]
@@ -239,6 +241,18 @@ if (process.env.MOCK_ENTWURF) {
     { id: 622, name: "P00622", origin: "FA01309", state: "purchase", receipt_status: "full", partner_id: 187, date_order: ago(72), date_planned: day(-1) + " 07:00:00" },
   ];
   T["purchase.order.line"] = [];
+  // Positionen der Kundenaufträge (für die Regel "nur Dienstleistung"): A01109 hat Ware, A09991 nur Servicetechniker
+  T["sale.order.line"] = [
+    { id: 90001, order_id: 1109, product_id: 2901, product_type: "consu", product_uom_qty: 2, display_type: false },
+    { id: 90002, order_id: 9991, product_id: 2901, product_type: "service", product_uom_qty: 5, display_type: false },
+  ];
+  M2O["sale.order.line"] = { order_id: "sale.order", product_id: "product.product" };
+  // Früher erledigter Fertigungsauftrag der Motorplatte (Teil 2902): 4 Stück, Rüsten 60 min, Fräsen 240 min gestempelt (für den Stunden-Vorschlag)
+  T["mrp.production"].push({ id: 1050, name: "FA01050", product_id: 2902, state: "done", origin: "A01050", product_qty: 4, qty_producing: 4 });
+  T["mrp.workorder"].push(
+    { id: 5050, name: "Rüsten", sequence: 1, production_id: 1050, workcenter_id: 16, product_id: 2902, state: "done", duration_expected: 60, duration: 60, qty_production: 4 },
+    { id: 5051, name: "Fräsen", sequence: 2, production_id: 1050, workcenter_id: 14, product_id: 2902, state: "done", duration_expected: 200, duration: 240, qty_production: 4 }
+  );
   M2O["purchase.order"] = { partner_id: "res.partner" };
   M2O["purchase.order.line"] = { order_id: "purchase.order", product_id: "product.product" };
 }

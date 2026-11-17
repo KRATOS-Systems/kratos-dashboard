@@ -10,7 +10,9 @@
 //   2. Maschine wechseln (abschaltbar): Positionen von Aufträgen, die zu spät fertig werden, werden auf die anderen Maschinen probiert.
 //      Auf eine eingeschränkte Maschine (M1) nur, wenn klar ist, dass das Teil dort geht (server/maschinenRegel.js).
 //      Arbeitsgänge einer Kette (AG …) bleiben auf ihrer Maschine.
-// Bewertung (kleiner ist besser): verspätete Aufträge x 1000 + Verspätungstage x 10 + Summe der Fertigstellungen x 0,01.
+// Bewertung (kleiner ist besser): verspätete Aufträge x 1000 + Verspätungstage x 10 + Summe der Fertigstellungen x 0,01
+// + Unruhe: jede Position auf einem anderen Platz 3, jeder Maschinenwechsel 40 (so viel wie 4 Tage Verspätung).
+// Damit schlägt die App nur Änderungen vor, die sich lohnen, und lässt den Rest stehen.
 // Übernommen wird wie beim Ziehen der Karten: Reihenfolge und Maschine speichern, in Odoo stellt sich der noch nicht begonnene Arbeitsplan mit um.
 
 import { createHash } from "node:crypto";
@@ -21,13 +23,15 @@ import { makeAllowed } from "./maschinenRegel.js";
 
 const IDS = MACHINES.map((m) => m.id);
 const short = (id) => (MACHINES.find((m) => m.id === id) || {}).short || id;
-const MAX_MOVES = 25;
+const MAX_MOVES = 6;
+const COST_SHIFT = 3;
+const COST_SWITCH = 40;
 const due = (o) => o.due || "9999-12-31";
 
 export const startedOf = (o, today) => (o.done_hours || 0) > 0 || !!o.progress_date || (!!o.earliest_start && o.earliest_start < today);
 const chained = (o) => !!o.after_id || /^AG /.test(o.part_label || "");
 
-function score(res) {
+function score(res, churn = 0) {
   let late = 0;
   let days = 0;
   let ends = 0;
@@ -38,7 +42,7 @@ function score(res) {
     }
     if (g.end != null) ends += g.end;
   });
-  return { value: late * 1000 + days * 10 + ends * 0.01, late, days };
+  return { value: late * 1000 + days * 10 + ends * 0.01 + churn, late, days };
 }
 
 // Fingerabdruck der Planung: Übernehmen gilt nur, wenn sich seit dem Berechnen nichts geändert hat
@@ -50,7 +54,7 @@ export function stampOf(orders) {
   return createHash("sha1").update(rows.join("|")).digest("hex").slice(0, 16);
 }
 
-export function reorderPlan(inp, { wechseln = true } = {}) {
+export function reorderPlan(inp, { wechseln = false } = {}) {
   const ctx = makeContext(inp);
   const today = inp.today;
   const fixed = (o) => startedOf(o, today) || !!o.pinned;
@@ -62,6 +66,22 @@ export function reorderPlan(inp, { wechseln = true } = {}) {
   };
 
   const fits = makeAllowed(inp.orders);
+  // Unruhe gegenüber der jetzigen Planung
+  const origMach = new Map();
+  const origAt = new Map();
+  IDS.forEach((mid) => queueOf(inp.orders, mid).forEach((o, i) => (origMach.set(o.id, mid), origAt.set(o.id, i))));
+  const churnOf = (orders) => {
+    let c = 0;
+    IDS.forEach((mid) =>
+      queueOf(orders, mid).forEach((o, i) => {
+        if (!origMach.has(o.id)) return;
+        if (origMach.get(o.id) !== mid) c += COST_SWITCH;
+        else if (origAt.get(o.id) !== i) c += COST_SHIFT;
+      })
+    );
+    return c;
+  };
+  const rate = (r, orders) => score(r, churnOf(orders));
   const before = ctx.compute(inp.orders);
   const s0 = score(before);
   let work = inp.orders;
@@ -74,7 +94,7 @@ export function reorderPlan(inp, { wechseln = true } = {}) {
     work = setQueue(work, mid, q.map((o) => (fixed(o) ? o : free[k++])));
   }
   let best = ctx.compute(work);
-  let bestScore = score(best);
+  let bestScore = rate(best, work);
   if (bestScore.value > s0.value) {
     // Liefertermin-Reihenfolge ist schlechter als die jetzige: von der jetzigen aus weiter verbessern
     work = inp.orders;
@@ -99,7 +119,7 @@ export function reorderPlan(inp, { wechseln = true } = {}) {
           if (list.some((o, i) => fixed(o) && cur[i].id !== o.id)) continue;
           const trial = setQueue(work, mid, list);
           const r = ctx.compute(trial);
-          const sc = score(r);
+          const sc = rate(r, trial);
           if (sc.value < bestScore.value - 1e-9) {
             work = trial;
             best = r;
@@ -132,7 +152,7 @@ export function reorderPlan(inp, { wechseln = true } = {}) {
             while (idx < q.length && (fixed(q[idx]) || due(q[idx]) <= due(o))) idx++;
             const trial = applyMove(work, [o.id], mid, idx).orders;
             const r = ctx.compute(trial);
-            const sc = score(r);
+            const sc = rate(r, trial);
             if (sc.value < bestScore.value - 1e-9 && (!cand || sc.value < cand.sc.value)) cand = { o, from: o.machine, mid, trial, r, sc };
           }
         }
@@ -207,7 +227,7 @@ export function reorderPlan(inp, { wechseln = true } = {}) {
 
 export default function registerNeuordnen(app, db, helpers) {
   const inputs = () => loadPlanInputs(db, helpers);
-  const flag = (v) => v !== "0" && v !== false;
+  const flag = (v) => v === "1" || v === true;
 
   app.get("/api/neuordnen", (req, res) => res.json(reorderPlan(inputs(), { wechseln: flag(req.query.wechseln) })));
 
@@ -217,7 +237,7 @@ export default function registerNeuordnen(app, db, helpers) {
     const { stamp, wechseln } = req.body || {};
     const inp = inputs();
     if (stampOf(inp.orders) !== stamp) return res.status(409).json({ error: "Die Planung hat sich inzwischen geändert. Bitte den Vorschlag neu berechnen." });
-    const r = reorderPlan(inp, { wechseln: wechseln !== false });
+    const r = reorderPlan(inp, { wechseln: wechseln === true });
     if (!r.verbessert) return res.json({ ok: true, geaendert: 0, odoo: [] });
     const beforeRows = new Map(db.prepare("SELECT id, machine, odoo_id, odoo_ref, done FROM orders WHERE done = 0").all().map((x) => [x.id, x]));
     const update = db.prepare("UPDATE orders SET machine = ?, position = ? WHERE id = ? AND done = 0");

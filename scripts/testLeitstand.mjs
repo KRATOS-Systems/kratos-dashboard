@@ -132,12 +132,14 @@ try {
   await mk("Q2", null, 8, day(5));
   pv1 = await api("GET", "/api/planvorschlag");
   assert.notEqual(pv1.vorschlaege.find((x) => x.source === "Q2").machine, "m1", JSON.stringify(pv1.vorschlaege));
+  // Die anderen drei Maschinen vorne zu (alles fixiert außer Q1, hinten 300 h): dort wäre es zu spät, auf der M1 pünktlich
+  const pinnedIds = (await api("GET", "/api/orders")).orders.filter((x) => !x.done && ["dmu40", "dmu50", "h800u"].includes(x.machine) && !x.pinned && x.id !== q1).map((x) => x.id);
+  for (const id of pinnedIds) await api("PUT", `/api/orders/${id}`, { pinned: true });
+  const q1Blocked = await api("GET", "/api/neuordnen?wechseln=1");
+  assert.ok(!q1Blocked.wechsel.some((w) => w.nach === "M1"), "auch dann nicht ohne Freigabe: " + JSON.stringify(q1Blocked.wechsel));
   await api("PUT", `/api/orders/${q1}`, { restricted_ok: true });
   const q1Ok = await api("GET", "/api/neuordnen?wechseln=1");
   assert.ok(q1Ok.wechsel.some((w) => w.source === "Q1" && w.nach === "M1"), JSON.stringify(q1Ok.wechsel));
-  // Die anderen drei Maschinen vorne zu (alles fixiert, hinten 300 h): Q2 wäre dort zu spät, auf der M1 pünktlich
-  const pinnedIds = (await api("GET", "/api/orders")).orders.filter((x) => !x.done && ["dmu40", "dmu50", "h800u"].includes(x.machine) && !x.pinned).map((x) => x.id);
-  for (const id of pinnedIds) await api("PUT", `/api/orders/${id}`, { pinned: true });
   pv1 = await api("GET", "/api/planvorschlag");
   assert.notEqual(pv1.vorschlaege.find((x) => x.source === "Q2").machine, "m1", "ohne Haken auch dann nicht auf die M1");
   const q2 = (await api("GET", "/api/orders")).orders.find((o) => o.source === "Q2");

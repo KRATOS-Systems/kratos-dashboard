@@ -190,7 +190,56 @@ function Kontakt({ item, startTab, onDone, onClose }) {
   );
 }
 
-export default function Fruehwarnung({ reloadKey, onChanged }) {
+// Kopf einer Kundengruppe: mehrere verspätete Aufträge desselben Kunden sind ein Anruf. "Alle telefonisch informiert" hakt jeden Auftrag
+// mit seinem vorgeschlagenen Termin ab (ohne Vorschlag bleibt der Liefertermin, wie er ist).
+function GroupHead({ name, items, onDone }) {
+  const [form, setForm] = useState(false);
+  const [person, setPerson] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const todo = items.filter((i) => i.state === "offen" || i.state === "erneut");
+  const save = async () => {
+    setBusy(true);
+    setErr("");
+    try {
+      let last = null;
+      for (const i of todo) last = await call("/api/fruehwarnung/informiert", "POST", { source: i.source, date: i.proposal || null, channel: "telefon", contact: person });
+      setForm(false);
+      onDone(last);
+    } catch (e) {
+      setErr(e.message);
+    }
+    setBusy(false);
+  };
+  return (
+    <div className="fw-group">
+      <b>{name}</b>
+      <span className="fw-faint">
+        {plural(items.length, "Auftrag", "Aufträge")}
+        {todo.length > 1 ? ` · ein Anruf für alle ${todo.length}` : ""}
+      </span>
+      {todo.length > 1 && !form && (
+        <button type="button" className="btn sm" onClick={() => setForm(true)} title="Alle offenen Aufträge dieses Kunden als telefonisch informiert vermerken, jeweils mit dem vorgeschlagenen neuen Termin">
+          Alle telefonisch informiert
+        </button>
+      )}
+      {form && (
+        <span className="fw-gform">
+          <input value={person} maxLength={120} onChange={(ev) => setPerson(ev.target.value)} placeholder="Gesprochen mit" aria-label={"Gesprochen mit bei " + name} />
+          <button type="button" className="btn sm primary" disabled={busy} onClick={save}>
+            {busy ? "Speichere …" : `${todo.length} abhaken`}
+          </button>
+          <button type="button" className="btn sm quiet" onClick={() => setForm(false)}>
+            Abbrechen
+          </button>
+        </span>
+      )}
+      {err && <span className="fw-err">{err}</span>}
+    </div>
+  );
+}
+
+export default function Fruehwarnung({ reloadKey, onChanged, open = true, onToggle }) {
   const [data, setData] = useState(null);
   const [openFor, setOpenFor] = useState(null); // { source, tab }
   const [showAll, setShowAll] = useState(false);
@@ -311,7 +360,7 @@ export default function Fruehwarnung({ reloadKey, onChanged }) {
   };
 
   return (
-    <div className={`fruehwarn note${c.nichtInformiert ? " bad" : ""} rise`} style={{ "--i": 1 }}>
+    <div id="fruehwarnung" className={`fruehwarn note${c.nichtInformiert ? " bad" : ""} rise`} style={{ "--i": 1 }}>
       <div className="fw-head">
         <i className="dot" style={{ "--c": c.nichtInformiert ? "var(--bad)" : c.risiko ? "var(--warn)" : "var(--ok)" }} />
         <span>
@@ -324,14 +373,48 @@ export default function Fruehwarnung({ reloadKey, onChanged }) {
           </b>{" "}
           {plural(c.verzug, "Auftrag", "Aufträge")} im Verzug{c.risiko ? `, ${c.risiko} mit Liefertermin in ${data.riskDays} Tagen noch nicht eingeplant` : ""}.
         </span>
-        {rest.length > 0 && (
+        {open && rest.length > 0 && (
           <button type="button" className="btn sm quiet" onClick={() => setShowAll((v) => !v)}>
             {showAll ? "Nur Offene zeigen" : `Alle ${data.items.length} zeigen`}
           </button>
         )}
+        {onToggle && (
+          <button type="button" className="btn sm" onClick={onToggle} aria-expanded={open}>
+            {open ? "Liste schließen" : "Liste öffnen"}
+          </button>
+        )}
       </div>
       {err && <div className="fw-err">{err}</div>}
-      {shown.length > 0 && <div className="fw-list">{shown.map(row)}</div>}
+      {open && shown.length > 0 && (
+        <div className="fw-list">
+          {groups(shown).map((g) => (
+            <React.Fragment key={g.name}>
+              {g.items.length > 1 && (
+                <GroupHead
+                  name={g.name}
+                  items={g.items}
+                  onDone={(j) => {
+                    if (j) setData(j);
+                    if (onChanged) onChanged();
+                  }}
+                />
+              )}
+              {g.items.map(row)}
+            </React.Fragment>
+          ))}
+        </div>
+      )}
     </div>
   );
+}
+
+// Nach Kunde bündeln: Reihenfolge nach dem dringendsten Auftrag des Kunden, innerhalb wie bisher
+function groups(list) {
+  const map = new Map();
+  list.forEach((i) => {
+    const k = i.customer || i.label;
+    if (!map.has(k)) map.set(k, { name: k, items: [] });
+    map.get(k).items.push(i);
+  });
+  return [...map.values()];
 }

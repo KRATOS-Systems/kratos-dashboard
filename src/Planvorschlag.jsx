@@ -11,8 +11,9 @@ const BASIS = {
   frei: ["beste Maschine", "mute", "Odoo nennt keine Maschine und das Teil ist neu. Vorgeschlagen ist die Maschine mit dem besten Termin."],
 };
 
-export default function Planvorschlag({ reloadKey, onApply, poolCount }) {
-  const [open, setOpen] = useState(false);
+export default function Planvorschlag({ reloadKey, onApply, poolCount, embedded = false }) {
+  const [openState, setOpen] = useState(false);
+  const open = embedded || openState; // eingebettet in "Plan verbessern": immer offen, ohne eigenen Knopf
   const [data, setData] = useState(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
@@ -65,9 +66,13 @@ export default function Planvorschlag({ reloadKey, onApply, poolCount }) {
   return (
     <div className="planvor">
       <div className="pv-bar">
-        <button type="button" className={`btn sm${open ? "" : " primary"}`} onClick={() => setOpen((v) => !v)} aria-expanded={open}>
-          {open ? "Planvorschlag schließen" : "Planvorschlag berechnen"}
-        </button>
+        {embedded ? (
+          <b className="pvb-h">Neu einplanen</b>
+        ) : (
+          <button type="button" className={`btn sm${open ? "" : " primary"}`} onClick={() => setOpen((v) => !v)} aria-expanded={open}>
+            {open ? "Planvorschlag schließen" : "Planvorschlag berechnen"}
+          </button>
+        )}
         {open && data && list.length > 0 && (
           <>
             <span className="pv-faint">

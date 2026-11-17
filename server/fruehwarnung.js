@@ -234,6 +234,8 @@ export default function registerFruehwarnung(app, db, helpers) {
   };
 
   app.get("/api/fruehwarnung", (req, res) => res.json(compute().out));
+  // für "Heute zu tun" (server/heute.js)
+  app.locals.fruehwarnung = () => compute().out;
 
   app.get("/api/fruehwarnung/kontakt", async (req, res) => {
     const source = String(req.query.source || "").trim();
