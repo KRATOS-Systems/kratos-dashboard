@@ -53,6 +53,8 @@ jobs:
         run: node scripts/testAlltag.mjs
       - name: Sicherheit (Passwort, Sperren, Datensicherung nur Leitung)
         run: node scripts/testSicherheit.mjs
+      - name: Aurels Wünsche (Laufzeit nachtragen, Fehler melden)
+        run: node scripts/testAurel.mjs
       - name: Aufgaben (Von mir vergeben)
         run: node scripts/testAufgaben.mjs
       - name: Verbindung zu QS (Prüfplan, EMPB)

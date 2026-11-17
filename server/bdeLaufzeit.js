@@ -203,6 +203,18 @@ export default function registerBdeLaufzeit(app, ctx) {
     return s;
   }
   const toInt = (v) => (v == null || v === "" ? null : Number(v));
+  // Nachtragen: Ist das Fräsen schon abgeschlossen (z. B. Auftrag beendet, bevor die Laufzeit eingetragen war), darf die Laufzeit noch als
+  // Notiz nachgetragen werden: von der Leitung oder von dem, der auf dem Arbeitsgang gestempelt hat. Am Arbeitsgang selbst ändert sich nichts.
+  async function mayBackfill(s, w) {
+    if (w.state !== "done") return false;
+    if (s.leitung) return true;
+    return (await odoo.read("mrp.workcenter.productivity", "search_count", { domain: [["workorder_id", "=", w.id], ["employee_id", "=", s.e]] })) > 0;
+  }
+  const closedCheck = async (s, w, b) => {
+    if (!FINAL.includes(w.state)) return false;
+    if (b && b.nachtragen === true && (await mayBackfill(s, w))) return true;
+    throw userErr("Das Fräsen ist schon abgeschlossen");
+  };
   const readWo = async (id) => {
     if (!Number.isInteger(id) || id <= 0) throw userErr("Arbeitsgang nicht gefunden");
     const [w] = await odoo.read("mrp.workorder", "read", { ids: [id], fields: WO_FIELDS });
@@ -258,6 +270,47 @@ export default function registerBdeLaufzeit(app, ctx) {
     }
   });
 
+  // Abgeschlossenes Fräsen der letzten 30 Tage, bei dem Laufzeiten fehlen (Auftrag beendet, bevor sie eingetragen waren):
+  // eigene Arbeitsgänge, für die Leitung alle. Zum Nachtragen auf Mein Arbeitsplatz.
+  app.get("/api/bde/nachtragen", async (req, res) => {
+    const s = guard(req, res);
+    if (!s) return;
+    try {
+      await ctx.ensureEmployees();
+      const since = toOdoo(Date.now() - 30 * 24 * 3600 * 1000);
+      let ids;
+      if (s.leitung) {
+        const wos = await odoo.read("mrp.workorder", "search_read", { domain: [["state", "=", "done"], ["name", "ilike", "Fräs"], ["date_finished", ">=", since]], fields: ["id"], order: "id desc", limit: 300 });
+        ids = wos.map((w) => w.id);
+      } else {
+        const lines = await odoo.read("mrp.workcenter.productivity", "search_read", { domain: [["employee_id", "=", s.e], ["date_start", ">=", since]], fields: ["workorder_id"], limit: 500 });
+        ids = [...new Set(lines.map((l) => m2o(l.workorder_id)?.id).filter(Boolean))];
+      }
+      if (!ids.length) return res.json({ items: [] });
+      const wos = (await odoo.read("mrp.workorder", "read", { ids, fields: WO_FIELDS })).filter((w) => w.state === "done" && m2o(w.production_id) && stepOfWo(w) === "Fräsen");
+      if (!wos.length) return res.json({ items: [] });
+      const notes = await notesOf([...new Set(wos.map((w) => m2o(w.production_id).id))]);
+      const items = wos
+        .map((w) => {
+          const n = entryFor(notes.get(m2o(w.production_id).id), machineOf(w));
+          return {
+            workorderId: w.id,
+            productionId: m2o(w.production_id).id,
+            fa: m2o(w.production_id).name || null,
+            product: Array.isArray(w.product_id) ? String(w.product_id[1]) : null,
+            machine: machineOf(w),
+            anzahl: n.anzahl || 0,
+            erfasst: n.rows.size,
+          };
+        })
+        .filter((i) => !i.anzahl || i.erfasst < i.anzahl)
+        .sort((a, b) => String(b.fa).localeCompare(String(a.fa)));
+      res.json({ items });
+    } catch (err) {
+      ctx.fail(res, err);
+    }
+  });
+
   // Anzahl der Aufspannungen festlegen (nach der Programmierung oder beim ersten Ausstempeln des Fräsens)
   app.post("/api/bde/laufzeit/anzahl", async (req, res) => {
     const s = guardWrite(req, res);
@@ -265,14 +318,14 @@ export default function registerBdeLaufzeit(app, ctx) {
     try {
       await ctx.ensureEmployees();
       const w = await fraesenOf({ workorderId: toInt(req.body && req.body.workorderId), productionId: toInt(req.body && req.body.productionId) });
-      if (FINAL.includes(w.state)) throw userErr("Das Fräsen ist schon abgeschlossen");
+      const late = await closedCheck(s, w, req.body);
       const n = toInt(req.body && req.body.anzahl);
       if (!Number.isInteger(n) || n < 1 || n > MAX_AUFSPANNUNGEN) throw userErr(`Die Anzahl der Aufspannungen muss zwischen 1 und ${MAX_AUFSPANNUNGEN} liegen`);
       const st = await status(w);
       const maxNr = Math.max(0, ...st.rows.map((r) => r.nr));
       if (n < maxNr) throw userErr(`Für Aufspannung ${maxNr} gibt es schon eine Laufzeit, weniger als ${maxNr} geht nicht`);
       if (!st.productionId) throw userErr("Der Arbeitsgang gehört zu keinem Fertigungsauftrag");
-      if (st.anzahl !== n) await postNote(st.productionId, `Aufspannungen (${st.machine}): ${n} (${nameOf(s.e)}, ${today()})`);
+      if (st.anzahl !== n) await postNote(st.productionId, `Aufspannungen (${st.machine}): ${n} (${nameOf(s.e)}, ${today()}${late ? ", nachgetragen" : ""})`);
       res.json({ ok: true, ...(await status(w)) });
     } catch (err) {
       ctx.fail(res, err);
@@ -287,7 +340,7 @@ export default function registerBdeLaufzeit(app, ctx) {
       await ctx.ensureEmployees();
       const b = req.body || {};
       const w = await fraesenOf({ workorderId: toInt(b.workorderId), productionId: toInt(b.productionId) });
-      if (FINAL.includes(w.state)) throw userErr("Das Fräsen ist schon abgeschlossen");
+      const late = await closedCheck(s, w, b);
       const st = await status(w);
       const anzahl = st.anzahl;
       if (!anzahl) throw userErr("Bitte zuerst die Anzahl der Aufspannungen angeben");
@@ -314,7 +367,7 @@ export default function registerBdeLaufzeit(app, ctx) {
 
       const geaendert = !!b.geaendert;
       const uebernommen = !!b.uebernommen && !geaendert;
-      const tail = [nameOf(s.e), today(), geaendert ? "Programm geändert" : uebernommen ? "unverändert" : null].filter(Boolean).join(", ");
+      const tail = [nameOf(s.e), today(), geaendert ? "Programm geändert" : uebernommen ? "unverändert" : null, late ? "nachgetragen" : null].filter(Boolean).join(", ");
       await postNote(st.productionId, `Laufzeit Aufspannung ${nr} (${st.machine}): ${mmss(minutes)} Min:Sek für ${teile} ${teile === 1 ? "Teil" : "Teile"} = ${mmss(perPiece)} je Stück (${tail})`);
       res.json({ ok: true, ...(await status(w)) });
     } catch (err) {

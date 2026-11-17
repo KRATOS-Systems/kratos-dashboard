@@ -1,5 +1,5 @@
 import { Ampel } from "./Ampel.jsx";
-import React, { useState, useEffect, useLayoutEffect, useMemo, useRef } from "react";
+import React, { useState, useEffect, useLayoutEffect, useMemo, useRef, Suspense, lazy } from "react";
 import { isNewPlan, DEFAULT_WEEK_CAPACITY, MACHINES, SHIFT_MODELS, addDays, daysBetween, fmtH, fmtShort, isoWeekOf, mondayOf } from "./lib.js";
 import { parseOdooExport } from "./odooImport.js";
 import { holidaysBavaria } from "./holidays.js";
@@ -9,6 +9,9 @@ import Terminverlauf from "./Terminverlauf.jsx";
 import Auslastung from "./Auslastung.jsx";
 import PlanVerbessern from "./PlanVerbessern.jsx";
 import Heute from "./Heute.jsx";
+import FehlerMelden from "./FehlerMelden.jsx";
+// Zeichnung und 3D erst laden, wenn jemand sie öffnet (three.js ist groß)
+const DocsDialog = lazy(() => import("./PartDocs.jsx").then((m) => ({ default: m.DocsDialog })));
 import { AV_ITEMS, AV_STATUS, AV_TEAM, isNewAv, avKey, avState, avSummary } from "./avLib.js";
 import { STAFF, ACTIVITIES, STAFF_DEFAULTS, responsible, avResponsible, sharedMachine } from "./staffLib.js";
 import Avatar from "./Avatar.jsx";
@@ -135,6 +138,7 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
   const [expandedOrders, setExpandedOrders] = useState({});
   const [tab, setTab] = useState("zeit"); // zeit | auf | ausl | einst
   const [fwOpen, setFwOpen] = useState(false); // Liste der Frühwarnung aufgeklappt
+  const [docsFor, setDocsFor] = useState(null); // Position, deren Zeichnung und 3D-Modell gerade offen sind
   const [pvOpen, setPvOpen] = useState(false); // "Plan verbessern" aufgeklappt
   // Sprung aus "Heute zu tun" an die Stelle, wo man es erledigt
   const scrollTo = (id) => setTimeout(() => document.getElementById(id)?.scrollIntoView({ block: "start", behavior: "smooth" }), 80);
@@ -1549,6 +1553,12 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
                   In Arbeitsvorbereitung öffnen <Ico n="muss" s={15} />
                 </button>
               )}
+              {o.odoo_id && (
+                <button type="button" className="btn" onClick={() => setDocsFor(o)} title="Zeichnung und 3D-Modell aus Odoo ansehen">
+                  Zeichnung und 3D
+                </button>
+              )}
+              <FehlerMelden o={o} small={false} />
             </div>
           )}
 
@@ -1858,8 +1868,16 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
                 {externEditor(o)}
                 <div className="dact" style={{ marginTop: 14 }}>
                   {laneButtons(o)}
+                  {o.odoo_id && (
+                    <button type="button" className="btn" onClick={() => setDocsFor(o)} title="Zeichnung und 3D-Modell aus Odoo ansehen">
+                      Zeichnung und 3D
+                    </button>
+                  )}
                   <span style={{ flex: 1 }} />
                   {deleteButton(o)}
+                </div>
+                <div style={{ marginTop: 8 }}>
+                  <FehlerMelden o={o} />
                 </div>
                 <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 8 }}>{end != null ? `${lane.id === "qs" ? "fertig" : "zurück"} ca. ${fmtShort(endDateOf(end))}` : "Beginn eintragen"}</div>
               </div>
@@ -3652,6 +3670,11 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
         </div>
       )}
       {tab === "einst" && <div className="rise" style={{ "--i": 3 }}>{settings}</div>}
+      {docsFor && (
+        <Suspense fallback={null}>
+          <DocsDialog o={docsFor} onClose={() => setDocsFor(null)} />
+        </Suspense>
+      )}
 
       {draggedBar && (() => {
         // Aus dem Maschinen-Board: die ganze Karte hängt am Mauszeiger, die anderen rücken zur Seite und lassen eine Lücke
