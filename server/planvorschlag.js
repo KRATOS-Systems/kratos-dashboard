@@ -2,7 +2,8 @@
 //
 // - Reihenfolge: nach Liefertermin, das Dringendste zuerst. Jeder Vorschlag rechnet die vorherigen Vorschläge schon mit ein.
 // - Maschine: laut Arbeitsplan in Odoo, sonst die Maschine, auf der dasselbe Teil zuletzt lief (Wiederholteil), sonst werden alle
-//   Maschinen durchgerechnet (fast alle Teile können auf allen vier Maschinen laufen, die mit dem besten Termin gewinnt).
+//   Maschinen durchgerechnet (die mit dem besten Termin gewinnt). Eingeschränkte Maschinen (M1) nur, wenn klar ist, dass das Teil dort geht
+//   (server/maschinenRegel.js).
 // - Platz: jede Stelle der Maschine wird durchgerechnet, aber nie vor eine Position, die schon läuft oder vorne fixiert ist. Bewertung wie beim Platz-Finden für Talos:
 //   zuerst keinen anderen Auftrag neu verspäten, dann wenig zusätzliche Verspätungstage, dann der eigene Termin, dann das frühere Ende.
 // - Übernommen wird ein Vorschlag erst per Knopf im Planungsfenster (über die normale Reihenfolge-Speicherung, wie beim Ziehen einer Karte).
@@ -11,6 +12,7 @@
 import { loadPlanInputs, makeContext } from "./talosPlan.js";
 import { MACHINES } from "../src/lib.js";
 import { applyMove, byPosition, groupKeyOf, groupLabelOf } from "../src/planLogic.js";
+import { makeAllowed } from "./maschinenRegel.js";
 
 const MACHINE_IDS = MACHINES.map((m) => m.id);
 const short = (id) => (MACHINES.find((m) => m.id === id) || {}).short || id;
@@ -32,13 +34,14 @@ export function planProposals(inp) {
       if (m) lastMachine.set(o.product, m);
     });
 
+  const fits = makeAllowed(inp.orders);
   let work = inp.orders;
   let base = ctx.compute(work);
   const first = base;
   const proposals = [];
   for (const o of todo) {
     const key = groupKeyOf(o);
-    let allowed = MACHINE_IDS;
+    let allowed = MACHINE_IDS.filter((mid) => fits(o, mid));
     let basis = "frei";
     if (MACHINE_IDS.includes(o.odoo_machine)) {
       allowed = [o.odoo_machine];
