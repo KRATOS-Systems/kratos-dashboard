@@ -6,6 +6,8 @@ import { loadPlanInputs, makeContext } from "./talosPlan.js";
 import { avSummary } from "../src/avLib.js";
 import { addDays, daysBetween } from "../src/lib.js";
 import { LANE_IDS } from "../src/planLogic.js";
+import { MACHINES } from "../src/lib.js";
+import { liveStand } from "./maschinenLive.js";
 
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 
@@ -34,6 +36,13 @@ export function heuteListe(inp, { fw, vollst, closing = 0, muster = 0, freigaben
 
   const items = [];
   const add = (id, n, text, tone, ziel, hint) => n > 0 && items.push({ id, n, text, tone, ziel, hint: hint || null });
+  // Maschine meldet eine Störung (Live-Daten aus dem Maschinen-Dienst): ganz oben, damit umgeplant wird, wenn es länger dauert
+  const live = liveStand();
+  const gestoert = Object.values(live).filter((m) => m.zustand === "stoerung");
+  if (gestoert.length) {
+    const names = gestoert.map((m) => (MACHINES.find((x) => x.id === m.id) || {}).short || m.id);
+    add("stoerung", gestoert.length, `${names.join(", ")} ${gestoert.length === 1 ? "meldet" : "melden"} eine Störung`, "bad", "planverbessern", (gestoert[0].fehler || [])[0] || "Dauert es länger: Positionen auf andere Maschinen umlegen");
+  }
   // Was die KI vorbereitet hat und auf eine Freigabe wartet, steht ganz oben
   if (freigaben) {
     const plan = freigaben.filter((f) => f.art === "plan").length;

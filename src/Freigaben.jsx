@@ -72,6 +72,16 @@ function PaketInhalt({ p }) {
           ))}
         </ul>
       )}
+      {Object.entries(p.status || {}).map(([k, v]) => (
+        <div key={k}>
+          <b>{ITEM[k] || k}</b> → {v}
+        </div>
+      ))}
+      {p.zeichnung && (
+        <div className="fg-faint">
+          Zeichnung {p.zeichnung.anhang || ""}{p.zeichnung.index ? ` · Index ${p.zeichnung.index}` : ""}{p.zeichnung.abmessungen ? ` · ${p.zeichnung.abmessungen}` : ""}{p.zeichnung.sicherheit && p.zeichnung.sicherheit !== "hoch" ? ` · gelesen mit Sicherheit ${p.zeichnung.sicherheit}` : ""}{p.zeichnung.grund ? ` · ${p.zeichnung.grund}` : ""}
+        </div>
+      )}
       {p.programmingMin > 0 && <div className="fg-faint">Programmieren laut Kalkulation: {Math.round(p.programmingMin)} min</div>}
       {(p.warnungen || []).map((w) => (
         <div key={w} className="fg-warn">
@@ -126,6 +136,31 @@ function Entscheiden({ f, onDone, labelYes = "Freigeben", labelNo = "Ablehnen", 
       {extra}
       {err && <span className="fg-err">{err}</span>}
     </div>
+  );
+}
+
+function ZeichnungKnopf({ f, onDone }) {
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const run = async () => {
+    setBusy(true);
+    setErr("");
+    try {
+      await post(`/api/freigaben/${f.id}/zeichnung`, {});
+      onDone && onDone();
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <>
+      <button type="button" className="btn sm" disabled={busy} onClick={run} title="Zeichnung aus Odoo von der KI lesen lassen: Werkstoff, Oberfläche, Härte, Toleranzen; Abgleich mit Arbeitsplan und Kalkulation">
+        {busy ? "Lese Zeichnung …" : f.daten.zeichnung && f.daten.zeichnung.anhang ? "Zeichnung neu lesen" : "Zeichnung lesen"}
+      </button>
+      {err && <span className="fg-err">{err}</span>}
+    </>
   );
 }
 
@@ -255,7 +290,7 @@ function AvKarte({ f, onDone, compact }) {
         </div>
       )}
       <PaketInhalt p={p} />
-      <Entscheiden f={f} onDone={onDone} extra={<KalkKnopf f={f} onDone={() => onDone && onDone(null)} />} />
+      <Entscheiden f={f} onDone={onDone} extra={<><KalkKnopf f={f} onDone={() => onDone && onDone(null)} /><ZeichnungKnopf f={f} onDone={() => onDone && onDone(null)} /></>} />
     </div>
   );
 }

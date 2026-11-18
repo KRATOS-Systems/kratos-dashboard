@@ -514,7 +514,7 @@ export default function registerOdooSync(app, db, { isDate, nextPosition }) {
     const setStamped = db.prepare(
       "UPDATE orders SET done_hours = MIN(?, ROUND(hours * 0.95, 1)), progress_date = COALESCE(progress_date, date('now')) WHERE odoo_ref = ? AND done = 0 AND is_split = 0 AND hours > 0 AND COALESCE(done_hours, 0) + 0.05 < MIN(?, ROUND(hours * 0.95, 1))"
     );
-    const takeHours = db.prepare("UPDATE orders SET hours = ?, odoo_hours_applied = 1 WHERE odoo_ref = ? AND done = 0 AND is_split = 0 AND odoo_hours_applied = 0 AND (hours IS NULL OR hours = 0)");
+    const takeHours = db.prepare("UPDATE orders SET hours = ?, hours_basis = 'odoo', odoo_hours_applied = 1 WHERE odoo_ref = ? AND done = 0 AND is_split = 0 AND odoo_hours_applied = 0 AND (hours IS NULL OR hours = 0)");
     const seen = db.prepare("INSERT OR IGNORE INTO odoo_seen (odoo_id, first_seen) VALUES (?, ?)");
     const seenOld = db.prepare("INSERT OR IGNORE INTO odoo_seen (odoo_id, first_seen) VALUES (?, 'baseline')");
     // Neue Positionen eines bekannten Auftrags übernehmen dessen aktuellen Liefertermin (den frühesten der offenen Positionen)

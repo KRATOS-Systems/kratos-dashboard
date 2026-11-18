@@ -15,6 +15,9 @@ import { loadPlanInputs, makeContext } from "./talosPlan.js";
 import { planProposals } from "./planvorschlag.js";
 import { reorderPlan, stampOf } from "./neuordnen.js";
 import { kalkFromEnv, codeOf } from "./kalkClient.js";
+import { programmHinweis } from "./programme.js";
+import { basisOf } from "./sollIst.js";
+import { zeichnungAbgleich } from "./zeichnung.js";
 import { avKey, avSummary, AV_DEFAULT, AV_ITEMS } from "../src/avLib.js";
 import { MACHINES, todayStr } from "../src/lib.js";
 import { applyMove, byPosition, LANE_IDS } from "../src/planLogic.js";
@@ -24,6 +27,7 @@ const MACHINE_IDS = MACHINES.map((m) => m.id);
 const short = (id) => (MACHINES.find((m) => m.id === id) || {}).short || id;
 const AV_EVERY = 15 * 60 * 1000;
 const KALK_PER_RUN = 12;
+const ZEICHNUNG_PER_RUN = 3; // Zeichnungen, die je Lauf (alle 15 min) neu gelesen werden (kostet je Zeichnung einige Cent)
 const MORNING_HOUR = 6;
 const NOTE_ITEMS = ["programm", "werkzeuge", "spannmittel"];
 const h1 = (x) => String(Math.round(x * 10) / 10).replace(".", ",");
@@ -136,10 +140,10 @@ export default function registerFreigaben(app, db, helpers) {
           /* ohne Arbeitsplan weiter */
         }
     }
-    return [...new Set(out.filter((s) => /elox|brünier|bruenier|härt|haert|pulver|beschicht|vernick|verzink|oberfläche/i.test(s)))];
+    return [...new Set(out.filter((s) => /elox|brünier|bruenier|härt|haert|pulver|beschicht|vernick|verzink|oberfläche|strahl|schleif/i.test(s)))];
   }
 
-  async function buildPaket(o, kalkLeft, checks) {
+  async function buildPaket(o, kalkLeft, checks, zLeft = { n: 0 }) {
     const qty = Number(o.quantity) || 1;
     const code = codeOf(o.product);
     let k = null;
@@ -154,8 +158,28 @@ export default function registerFreigaben(app, db, helpers) {
     const rep = repeatNotes(o);
     const surfaces = await surfacesOf(o);
     // Werkstoff aus der Kalkulation, sonst aus dem Produktnamen (wenn dort einer steht)
-    const werkstoff = k && k.material ? k.material : werkstoffArt(o.product) ? o.product : "";
-    const warnungen = plausibility({ werkstoff, oberflaechen: surfaces });
+    // Zeichnung (PDF aus Odoo, von Talos gelesen): gespeichert oder, wenn noch nie gelesen, im Hintergrund (wenige je Lauf)
+    const fa = o.odoo_ref || o.parent_ref || "";
+    const zs = app.locals.zeichnung;
+    let z = null;
+    if (zs && zs.enabled && /^FA\d/.test(fa)) {
+      z = zs.gespeichert(fa);
+      if (!z && zLeft.n > 0) {
+        zLeft.n--;
+        try {
+          z = await zs.lesen(fa);
+        } catch (err) {
+          z = { grund: err.message, daten: null };
+        }
+      }
+    }
+    const zd = z && z.daten ? z.daten : null;
+    // Werkstoff: Zeichnung vor Kalkulation vor Produktname
+    const werkstoff = zd && zd.werkstoff ? zd.werkstoff : k && k.material ? k.material : werkstoffArt(o.product) ? o.product : "";
+    const verlangt = zd ? [...(zd.oberflaeche || []), zd.waermebehandlung || ""].filter(Boolean) : [];
+    const warnungen = plausibility({ werkstoff, oberflaechen: [...surfaces, ...verlangt] });
+    const abgleich = zeichnungAbgleich(zd, { oberflaechenArbeitsplan: surfaces, kalkWerkstoff: (k && k.material) || "", werkstoffArtOf: werkstoffArt });
+    warnungen.push(...abgleich.warnungen);
     // Stunden: vorhandene bleiben; sonst frühere Aufträge (echte Zeiten), sonst Kalkulation
     let hours = null;
     let hoursSrc = null;
@@ -166,6 +190,14 @@ export default function registerFreigaben(app, db, helpers) {
       } else if (k && k.known && k.hours > 0) {
         hours = k.hours;
         hoursSrc = `aus der Kalkulation (${k.basis || "Schätzung"}${k.confidence ? ", Sicherheit " + k.confidence : ""}): Rüsten ${h1(k.setupMin / 60)} h, Fräsen ${h1(k.perPieceMin)} min je Stück`;
+        // gelernt aus Soll/Ist: liegt die Kalkulation auf dieser Maschine regelmäßig daneben, korrigieren
+        const mid = MACHINE_IDS.includes(o.odoo_machine) ? o.odoo_machine : machineFromText(k.machine);
+        const f = app.locals.sollIst ? app.locals.sollIst.faktor("kalkulation", mid) : null;
+        if (f && Math.abs(f.faktor - 1) >= 0.1) {
+          const raw = hours;
+          hours = Math.max(0.5, Math.ceil(raw * f.faktor * 2) / 2);
+          hoursSrc += `; korrigiert ${h1(raw)} → ${h1(hours)} h, weil die Kalkulation ${f.machine ? "auf der " + f.maschine : ""} bei ${f.n} erledigten Aufträgen im Mittel ${Math.round(Math.abs(f.faktor - 1) * 100)} % zu ${f.faktor > 1 ? "niedrig" : "hoch"} lag`;
+        }
       }
     }
     const kalkMachine = k ? machineFromText(k.machine) : null;
@@ -173,13 +205,27 @@ export default function registerFreigaben(app, db, helpers) {
     const notes = {};
     if (rep && rep.notes) for (const it of NOTE_ITEMS) if (rep.notes[it]) notes[it] = `${rep.notes[it]} (wie ${rep.from})`;
     if (!notes.programm && k && k.reference && k.reference.type === "repeat") notes.programm = `Wiederholteil laut Kalkulation (${k.reference.part}${k.reference.order ? ", " + k.reference.order : ""}): Programm vermutlich vorhanden`;
+    if (zd && zd.werkstoff) notes.material = `Werkstoff ${zd.werkstoff} (Zeichnung${zd.index ? ", Index " + zd.index : ""})${k && k.rawPart ? ", Rohteil " + k.rawPart + " (Kalkulation)" : ""}`;
     if (!notes.material && k && (k.material || k.rawPart)) notes.material = materialNote(k);
+    // Mastercam-Programm im Auftragsordner (gemeldet von auftragsordner/programme_melden.py) geht vor allen anderen Hinweisen
+    const status = {};
+    const prog = app.locals.programmOf ? programmHinweis(app.locals.programmOf(o.odoo_ref || o.parent_ref)) : null;
+    if (prog) {
+      notes.programm = prog.text;
+      if (prog.status) status.programm = prog.status;
+    }
     // nur vorschlagen, wo die AV noch nichts notiert hat und der Punkt nicht schon erledigt ist
     for (const it of Object.keys(notes)) {
       const c = checks && checks.get(avKey(o.id, it));
       if (c && ((c.note && c.note.trim()) || c.status === "bereit" || c.status === "entfaellt")) delete notes[it];
     }
+    for (const it of Object.keys(status)) {
+      const c = checks && checks.get(avKey(o.id, it));
+      if (c && (c.status === "bereit" || c.status === "entfaellt")) delete status[it];
+    }
     const hinweise = [];
+    hinweise.push(...abgleich.hinweise);
+    if (zd && zd.werkstoff && !notes.material) hinweise.push(`Werkstoff laut Zeichnung: ${zd.werkstoff}${zd.index ? " (Index " + zd.index + ")" : ""}`);
     if (o.odoo_draft) hinweise.push("Fertigungsauftrag in Odoo noch im Entwurf: nach der AV dort bestätigen");
     if (o.odoo_bom === "muster") hinweise.push("Stückliste läuft auf Musterwerten: Maschine und Zeit in Odoo prüfen");
     if (/noch nicht bestellt/.test(o.material_info || "")) hinweise.push("Material nur angefragt, noch nicht bestellt");
@@ -195,7 +241,8 @@ export default function registerFreigaben(app, db, helpers) {
       hoursSrc,
       machine,
       material: o.material_info || null,
-      werkstoff: (k && k.material) || null,
+      werkstoff: (zd && zd.werkstoff) || (k && k.material) || null,
+      zeichnung: z ? { anhang: z.anhang || null, nummer: zd ? zd.zeichnungsnummer || null : null, index: zd ? zd.index || null : null, sicherheit: zd ? zd.sicherheit : null, grund: z.grund || null, abmessungen: zd ? zd.abmessungen || null : null } : null,
       rohteil: (k && k.rawPart) || null,
       programmingMin: (k && k.programmingMin) || null,
       kalkLink: (k && k.link) || null,
@@ -205,6 +252,7 @@ export default function registerFreigaben(app, db, helpers) {
       kalkFehler: (k && k.error) || null,
       wiederholteil: rep ? rep.from : null,
       notes,
+      status,
       oberflaechen: surfaces,
       warnungen,
       hinweise,
@@ -213,7 +261,7 @@ export default function registerFreigaben(app, db, helpers) {
 
   // Ein Paket lohnt sich nur, wenn es etwas Neues bringt: Stunden für eine Position ohne Stunden, Hinweise für leere AV-Punkte
   // oder eine Warnung. Positionen ohne Stunden bekommen immer eines (dort fehlt das Wichtigste).
-  const isPaketWorth = (p, o) => !(o.hours > 0) || Object.keys(p.notes).length > 0 || p.warnungen.length > 0;
+  const isPaketWorth = (p, o) => !(o.hours > 0) || Object.keys(p.notes).length > 0 || Object.keys(p.status || {}).length > 0 || p.warnungen.length > 0;
 
   async function prepareAv() {
     const inp = inputs();
@@ -222,6 +270,7 @@ export default function registerFreigaben(app, db, helpers) {
       .filter((o) => !o.done && !LANE_IDS.includes(o.machine) && !o.is_split)
       .sort((a, b) => (a.hours > 0) - (b.hours > 0) || (a.due || "9999").localeCompare(b.due || "9999") || a.id - b.id);
     const kalkLeft = { n: KALK_PER_RUN };
+    const zLeft = { n: process.env.ZEICHNUNG_AUTO === "0" ? 0 : ZEICHNUNG_PER_RUN };
     let made = 0;
     for (const o of open) {
       const key = "av:" + o.id;
@@ -233,12 +282,13 @@ export default function registerFreigaben(app, db, helpers) {
         if (cur) setStatus.run("hinfaellig", now(), "App", "AV inzwischen fertig", cur.id);
         continue;
       }
-      const p = await buildPaket(o, kalkLeft, inp.checks);
+      const p = await buildPaket(o, kalkLeft, inp.checks, zLeft);
       if (!isPaketWorth(p, o)) {
         if (cur) setStatus.run("hinfaellig", now(), "App", "nichts mehr vorzuschlagen", cur.id);
         continue;
       }
-      upsert({
+      p.kategorie = kategorieOf(p);
+      const fid = upsert({
         art: "av",
         schluessel: key,
         bezug: o.odoo_ref || o.order_no,
@@ -247,6 +297,7 @@ export default function registerFreigaben(app, db, helpers) {
         daten: p,
       });
       made++;
+      await autopilot(fid, p.kategorie);
     }
     // Pakete zu erledigten oder verschwundenen Positionen schließen
     const alive = new Set(open.map((o) => "av:" + o.id));
@@ -262,7 +313,7 @@ export default function registerFreigaben(app, db, helpers) {
     if (!o || o.done) throw Object.assign(new Error("Die Position ist schon erledigt."), { status: 409 });
     const done = [];
     if (p.hours > 0 && !(o.hours > 0)) {
-      db.prepare("UPDATE orders SET hours = ?, hours_plan = ? WHERE id = ?").run(p.hours, p.hours, o.id);
+      db.prepare("UPDATE orders SET hours = ?, hours_plan = ?, hours_basis = ? WHERE id = ?").run(p.hours, p.hours, p.hoursBasis || basisOf(p.hoursSrc), o.id);
       done.push(`${h1(p.hours)} h eingetragen`);
     }
     const cur = db.prepare("SELECT status, note FROM av_checks WHERE order_id = ? AND item = ?");
@@ -276,6 +327,18 @@ export default function registerFreigaben(app, db, helpers) {
       if (c && c.note && c.note.trim()) continue; // vorhandene Notizen nie überschreiben
       put.run(o.id, item, AV_DEFAULT[item] || "offen", String(text).slice(0, 300));
       done.push(`Hinweis ${AV_ITEMS.find((x) => x.id === item).label}`);
+    }
+    // Status-Vorschläge (z. B. Programm liegt im Auftragsordner -> bereit), nur wenn der Punkt noch offen ist
+    const setSt = db.prepare(
+      `INSERT INTO av_checks (order_id, item, status, due, note, assignee, updated_at, auto) VALUES (?, ?, ?, NULL, '', NULL, datetime('now'), 0)
+       ON CONFLICT (order_id, item) DO UPDATE SET status = excluded.status, updated_at = excluded.updated_at`
+    );
+    for (const [item, st] of Object.entries(p.status || {})) {
+      if (!AV_ITEMS.some((x) => x.id === item)) continue;
+      const c = cur.get(o.id, item);
+      if (c && c.status !== "offen" && c.status !== AV_DEFAULT[item]) continue;
+      setSt.run(o.id, item, st);
+      done.push(`${AV_ITEMS.find((x) => x.id === item).label} auf ${st}`);
     }
     // Kalkulation rechnet das Teil auf der M1: dann passt es dort (Planung darf es auf die M1 legen)
     if (p.machine && p.machine.id === "m1" && p.machine.why === "laut Kalkulation") {
@@ -381,8 +444,10 @@ export default function registerFreigaben(app, db, helpers) {
     }
     const nothing = !pr.einplanen.length && !pr.umgestellt;
     const titel = nothing ? "Morgenbericht: am Plan ist nichts zu ändern" : `Planvorschlag für heute: ${pr.einplanen.length} einplanen, ${pr.umgestellt} umstellen`;
+    pr.kategorie = !nothing && pr.nachher.zuSpaet <= pr.vorher.zuSpaet && pr.nachher.tage <= pr.vorher.tage ? "plan" : null;
     const id = upsert({ art: "plan", schluessel: key, bezug: today, titel, text: ruleText(pr, heute), daten: pr });
     if (talos) talosText(pr, id);
+    if (pr.kategorie && autoOn(pr.kategorie)) autopilot(id, pr.kategorie).catch((err) => console.error("Autopilot Plan:", err.message));
     return id;
   }
 
@@ -418,6 +483,74 @@ export default function registerFreigaben(app, db, helpers) {
     }
     return moved;
   }
+
+  // ---------- Autopilot ----------
+  // Arten von Vorschlägen, die die App selbst freigeben darf, wenn die Leitung es einschaltet. Einschalten geht nur, wenn Menschen diese Art
+  // in den letzten 90 Tagen mindestens AUTO_MIN_N-mal entschieden und mindestens AUTO_QUOTE % davon unverändert freigegeben haben.
+  // Mit Warnung (z. B. Eloxieren bei Edelstahl) gibt der Autopilot nie frei. Im Verlauf steht "Autopilot".
+  const AUTO_MIN_N = 10;
+  const AUTO_QUOTE = 90;
+  const KATEGORIEN = [
+    { id: "av_historie", label: "AV-Pakete mit Stunden aus früheren Aufträgen", beschreibung: "Wiederholteil: echte gestempelte Zeiten, keine Warnung" },
+    { id: "av_kalk_ist", label: "AV-Pakete mit Stunden aus der Kalkulation (Ist-Zeiten)", beschreibung: "Kalkulation rechnet mit Ist-Zeiten eines Wiederholteils, keine Warnung" },
+    { id: "av_hinweise", label: "AV-Pakete nur mit Hinweisen", beschreibung: "Stunden stehen schon; Programm, Werkstoff, Hinweise vom Wiederholteil, keine Warnung" },
+    { id: "plan", label: "Planvorschlag am Morgen", beschreibung: "nur wenn danach nicht mehr Aufträge zu spät sind als vorher" },
+  ];
+  db.exec("CREATE TABLE IF NOT EXISTS autopilot (kategorie TEXT PRIMARY KEY, an INTEGER NOT NULL DEFAULT 0, von TEXT, geaendert TEXT)");
+  function kategorieOf(p) {
+    if ((p.warnungen || []).length) return null;
+    if (p.hours > 0 && /aus der Kalkulation \(Wiederholteil/.test(p.hoursSrc || "") && !/korrigiert/.test(p.hoursSrc || "")) return "av_kalk_ist";
+    if (p.hours > 0 && !/Kalkulation/.test(p.hoursSrc || "")) return "av_historie";
+    if (!p.hours && (Object.keys(p.notes || {}).length || Object.keys(p.status || {}).length) && !(p.hinweise || []).some((h) => /Keine Zeiten|kalkuliert/.test(h))) return "av_hinweise";
+    return null;
+  }
+  const autoOn = (k) => !!(k && (db.prepare("SELECT an FROM autopilot WHERE kategorie = ?").get(k) || {}).an);
+  function quoteOf(k) {
+    const r = db
+      .prepare(
+        `SELECT SUM(status = 'freigegeben') AS ja, SUM(status = 'abgelehnt') AS nein FROM freigaben
+         WHERE json_extract(daten, '$.kategorie') = ? AND status IN ('freigegeben', 'abgelehnt') AND COALESCE(von, '') != 'Autopilot' AND erstellt >= ?`
+      )
+      .get(k, new Date(Date.now() - 90 * 86400000).toISOString());
+    const n = (r.ja || 0) + (r.nein || 0);
+    return { n, quote: n ? Math.round(((r.ja || 0) / n) * 100) : null };
+  }
+  async function autopilot(id, k) {
+    if (!autoOn(k)) return;
+    const f = db.prepare("SELECT status FROM freigaben WHERE id = ?").get(id);
+    if (!f || f.status !== "offen") return;
+    try {
+      await decide(id, "freigeben", "automatisch freigegeben", "Autopilot");
+    } catch (err) {
+      console.error("Autopilot:", err.message);
+    }
+  }
+  app.get("/api/autopilot", (req, res) =>
+    res.json({
+      minN: AUTO_MIN_N,
+      minQuote: AUTO_QUOTE,
+      kategorien: KATEGORIEN.map((k) => {
+        const q = quoteOf(k.id);
+        const row = db.prepare("SELECT * FROM autopilot WHERE kategorie = ?").get(k.id) || {};
+        const auto = db.prepare("SELECT COUNT(*) AS n FROM freigaben WHERE json_extract(daten, '$.kategorie') = ? AND von = 'Autopilot'").get(k.id).n;
+        const moeglich = q.n >= AUTO_MIN_N && q.quote >= AUTO_QUOTE;
+        return { ...k, an: !!row.an, von: row.von || null, geaendert: row.geaendert || null, ...q, automatisch: auto, moeglich, grund: moeglich ? null : q.n < AUTO_MIN_N ? `erst ${q.n} von ${AUTO_MIN_N} Entscheidungen` : `nur ${q.quote} % unverändert freigegeben (nötig ${AUTO_QUOTE} %)` };
+      }),
+    })
+  );
+  app.post("/api/autopilot", (req, res) => {
+    const s = sessionOf(req);
+    if (!s || !s.leitung) return res.status(403).json({ error: "Den Autopilot kann nur die Leitung (PIN) ein- oder ausschalten." });
+    const k = KATEGORIEN.find((x) => x.id === (req.body && req.body.kategorie));
+    if (!k) return res.status(400).json({ error: "kategorie unbekannt" });
+    const an = !!(req.body && req.body.an);
+    if (an) {
+      const q = quoteOf(k.id);
+      if (q.n < AUTO_MIN_N || q.quote < AUTO_QUOTE) return res.status(409).json({ error: `Noch nicht sicher genug: ${q.n} Entscheidungen, ${q.quote ?? 0} % unverändert freigegeben (nötig ${AUTO_MIN_N} und ${AUTO_QUOTE} %).` });
+    }
+    db.prepare("INSERT INTO autopilot (kategorie, an, von, geaendert) VALUES (?, ?, ?, ?) ON CONFLICT (kategorie) DO UPDATE SET an = excluded.an, von = excluded.von, geaendert = excluded.geaendert").run(k.id, an ? 1 : 0, staffName(s.e) || `Mitarbeiter ${s.e}`, now());
+    res.json({ ok: true, kategorie: k.id, an });
+  });
 
   // ---------- API ----------
   app.get("/api/freigaben", (req, res) => {
@@ -473,6 +606,29 @@ export default function registerFreigaben(app, db, helpers) {
       res.json(await decide(req.params.id, req.body && req.body.aktion, req.body && req.body.notiz, staffName(s.e) || `Mitarbeiter ${s.e}`));
     } catch (err) {
       res.status(err.status || 500).json({ error: err.message });
+    }
+  });
+
+  // AV-Paket: Zeichnung (neu) lesen und das Paket damit neu aufbauen
+  app.post("/api/freigaben/:id/zeichnung", async (req, res) => {
+    const s = sessionOf(req);
+    if (!s) return res.status(401).json({ error: "Bitte zuerst unter „Mein Arbeitsplatz“ mit PIN anmelden." });
+    const f = db.prepare("SELECT * FROM freigaben WHERE id = ? AND art = 'av' AND status = 'offen'").get(Number(req.params.id));
+    if (!f) return res.status(404).json({ error: "Kein offenes AV-Paket" });
+    const zs = app.locals.zeichnung;
+    if (!zs || !zs.enabled) return res.status(400).json({ error: "Zeichnung lesen ist nicht eingerichtet (TALOS_KEY_DASHBOARD)." });
+    const p = JSON.parse(f.daten);
+    const inp = inputs();
+    const o = inp.orders.find((x) => x.id === p.orderId);
+    if (!o) return res.status(404).json({ error: "Position nicht mehr offen" });
+    try {
+      await zs.lesen(o.odoo_ref || o.parent_ref, { neu: true });
+      const next = await buildPaket(o, { n: 1 }, inp.checks, { n: 0 });
+      next.kategorie = kategorieOf(next);
+      db.prepare("UPDATE freigaben SET daten = ?, geaendert = ? WHERE id = ?").run(JSON.stringify(next), now(), f.id);
+      res.json({ ok: true, paket: next });
+    } catch (err) {
+      res.status(502).json({ error: err.message });
     }
   });
 
