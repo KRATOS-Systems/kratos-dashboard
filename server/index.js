@@ -22,6 +22,8 @@ import registerTalosPlan from "./talosPlan.js";
 import registerTalosChat from "./talosChat.js";
 import registerLogin from "./login.js";
 import registerQsBridge from "./qsBridge.js";
+import registerFreigaben from "./freigaben.js";
+import registerKennzahlen from "./kennzahlen.js";
 
 // Lokal dürfen Umgebungsvariablen in einer Datei .env stehen (nicht im Repository). Bei Hostinger gibt es sie nicht.
 try {
@@ -1211,6 +1213,8 @@ registerNeuordnen(app, db, { orderOut: (r) => orderOut(r), planSettingsOut: () =
 registerOdooFiles(app, db);
 const staff = registerStaff(app, db);
 registerBde(app, db, staff);
+registerFreigaben(app, db, { orderOut: (r) => orderOut(r), planSettingsOut: () => planSettingsOut(), odooMachineMoves: (rows, to) => odooMachineMoves(rows, to) });
+registerKennzahlen(app, db);
 registerFeedback(app, db);
 registerTalosChat(app);
 qsBridge.start();

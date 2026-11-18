@@ -9,7 +9,7 @@ import { LANE_IDS } from "../src/planLogic.js";
 
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 
-export function heuteListe(inp, { fw, vollst, closing = 0, muster = 0 } = {}) {
+export function heuteListe(inp, { fw, vollst, closing = 0, muster = 0, freigaben = null } = {}) {
   const today = inp.today;
   const open = inp.orders.filter((o) => !o.done);
   const pool = open.filter((o) => o.machine === "");
@@ -34,6 +34,14 @@ export function heuteListe(inp, { fw, vollst, closing = 0, muster = 0 } = {}) {
 
   const items = [];
   const add = (id, n, text, tone, ziel, hint) => n > 0 && items.push({ id, n, text, tone, ziel, hint: hint || null });
+  // Was die KI vorbereitet hat und auf eine Freigabe wartet, steht ganz oben
+  if (freigaben) {
+    const plan = freigaben.filter((f) => f.art === "plan").length;
+    const av = freigaben.filter((f) => f.art === "av").length;
+    const rest = freigaben.length - plan - av;
+    const parts = [plan ? "Planvorschlag" : null, av ? plural(av, "AV-Paket", "AV-Pakete") : null, rest ? plural(rest, "Hinweis", "Hinweise") : null].filter(Boolean);
+    add("freigaben", freigaben.length, `${plural(freigaben.length, "Vorschlag wartet", "Vorschläge warten")} auf Freigabe`, "warn", "freigaben", parts.join(", ") + " prüfen und freigeben");
+  }
   if (fw) {
     const late = (fw.items || []).filter((i) => i.state === "offen" || i.state === "erneut");
     const kunden = new Set(late.map((i) => i.customer || i.label)).size;
@@ -52,7 +60,7 @@ export function heuteListe(inp, { fw, vollst, closing = 0, muster = 0 } = {}) {
 }
 
 export default function registerHeute(app, db, helpers) {
-  app.get("/api/heute", (req, res) => {
+  const liste = () => {
     const inp = loadPlanInputs(db, helpers);
     let fw = null;
     let odoo = {};
@@ -66,6 +74,14 @@ export default function registerHeute(app, db, helpers) {
     } catch {
       odoo = {};
     }
-    res.json(heuteListe(inp, { fw, vollst: odoo.vollst || null, closing: odoo.closing || 0, muster: odoo.muster || 0 }));
-  });
+    let freigaben = null;
+    try {
+      freigaben = app.locals.freigaben ? app.locals.freigaben.offen() : null;
+    } catch {
+      freigaben = null;
+    }
+    return heuteListe(inp, { fw, vollst: odoo.vollst || null, closing: odoo.closing || 0, muster: odoo.muster || 0, freigaben });
+  };
+  app.locals.heuteListe = liste;
+  app.get("/api/heute", (req, res) => res.json(liste()));
 }

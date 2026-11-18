@@ -9,6 +9,8 @@ import Terminverlauf from "./Terminverlauf.jsx";
 import Auslastung from "./Auslastung.jsx";
 import PlanVerbessern from "./PlanVerbessern.jsx";
 import Heute from "./Heute.jsx";
+import Freigaben from "./Freigaben.jsx";
+const Kennzahlen = lazy(() => import("./Kennzahlen.jsx"));
 import FehlerMelden from "./FehlerMelden.jsx";
 // Zeichnung und 3D erst laden, wenn jemand sie öffnet (three.js ist groß)
 const DocsDialog = lazy(() => import("./PartDocs.jsx").then((m) => ({ default: m.DocsDialog })));
@@ -140,13 +142,17 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
   const [fwOpen, setFwOpen] = useState(false); // Liste der Frühwarnung aufgeklappt
   const [docsFor, setDocsFor] = useState(null); // Position, deren Zeichnung und 3D-Modell gerade offen sind
   const [pvOpen, setPvOpen] = useState(false); // "Plan verbessern" aufgeklappt
+  const [fgOpen, setFgOpen] = useState(false); // KI-Vorschläge zur Freigabe aufgeklappt
   // Sprung aus "Heute zu tun" an die Stelle, wo man es erledigt
   const scrollTo = (id) => setTimeout(() => document.getElementById(id)?.scrollIntoView({ block: "start", behavior: "smooth" }), 80);
   const jump = (ziel) => {
     if (ziel === "av") return goTo && goTo("av");
     if (ziel === "sync") return openSync();
     setTab("zeit");
-    if (ziel === "fruehwarnung") {
+    if (ziel === "freigaben") {
+      setFgOpen(true);
+      scrollTo("freigaben");
+    } else if (ziel === "fruehwarnung") {
       setFwOpen(true);
       scrollTo("fruehwarnung");
     } else if (ziel === "planverbessern") {
@@ -3588,6 +3594,7 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
       </div>
 
       <Heute reloadKey={fwKey} onJump={jump} />
+      <Freigaben reloadKey={fwKey} open={fgOpen} onToggle={() => setFgOpen((v) => !v)} onChanged={() => fetch("/api/orders").then((r) => r.json()).then((d) => setOrders(d.orders)).catch(() => {})} />
       <Fruehwarnung reloadKey={fwKey} open={fwOpen} onToggle={() => setFwOpen((v) => !v)} onChanged={() => fetch("/api/orders").then((r) => r.json()).then((d) => setOrders(d.orders)).catch(() => {})} />
 
       {preview && (
@@ -3640,6 +3647,9 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
         <button type="button" className={tab === "ausl" ? "on" : ""} onClick={() => setTab("ausl")} title="Wie voll sind die Maschinen in den nächsten Wochen?">
           Auslastung
         </button>
+        <button type="button" className={tab === "kz" ? "on" : ""} onClick={() => setTab("kz")} title="Liefertreue, Stunden für AV und Planung, Übernahme der KI-Vorschläge">
+          Kennzahlen
+        </button>
         <button type="button" className={tab === "einst" ? "on" : ""} onClick={() => setTab("einst")}>
           Einstellungen
         </button>
@@ -3664,6 +3674,13 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
         </>
       )}
       {tab === "auf" && <div className="rise" style={{ "--i": 3 }}>{ordersCard}</div>}
+      {tab === "kz" && (
+        <div className="rise" style={{ "--i": 3 }}>
+          <Suspense fallback={<div className="card fg-faint">Kennzahlen werden geladen …</div>}>
+            <Kennzahlen reloadKey={fwKey} />
+          </Suspense>
+        </div>
+      )}
       {tab === "ausl" && (
         <div className="rise" style={{ "--i": 3 }}>
           <Auslastung reloadKey={fwKey} />

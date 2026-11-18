@@ -145,22 +145,27 @@ export default function registerOdooSync(app, db, { isDate, nextPosition }) {
     } catch (err) {
       console.error("Odoo-Abgleich: Einkauf (Material) nicht lesbar", err.message);
     }
-    // Geplante Fräszeit und Maschine je Fertigungsauftrag aus den Fräsen-Arbeitsgängen (Minuten laut Arbeitsplan, 0 = Odoo hat keine Zeit)
+    // Geplante Fräszeit und Maschine je Fertigungsauftrag aus den Fräsen-Arbeitsgängen (Minuten laut Arbeitsplan, 0 = Odoo hat keine Zeit).
+    // Dazu die schon gestempelte Zeit auf Rüsten und Fräsen (Fortschritt aus dem Stempeln).
     const milling = new Map();
     const prodIds = prods.map((p) => p.id).filter(Number.isInteger);
     for (let i = 0; i < prodIds.length; i += 150) {
       try {
         const wos = await odoo("mrp.workorder", "search_read", {
-          domain: [["production_id", "in", prodIds.slice(i, i + 150)], ["state", "!=", "cancel"], ["name", "ilike", "Fräs"]],
-          fields: ["production_id", "workcenter_id", "duration_expected"],
-          limit: 1500,
+          domain: [["production_id", "in", prodIds.slice(i, i + 150)], ["state", "!=", "cancel"], "|", ["name", "ilike", "Fräs"], ["name", "ilike", "Rüst"]],
+          fields: ["production_id", "workcenter_id", "duration_expected", "duration", "name", "state"],
+          limit: 3000,
         });
         wos.forEach((w) => {
           const pid = Array.isArray(w.production_id) ? w.production_id[0] : null;
           if (!pid) return;
-          const cur = milling.get(pid) || { minutes: 0, machine: null };
-          cur.minutes += typeof w.duration_expected === "number" ? w.duration_expected : 0;
-          if (cur.machine === null) cur.machine = Array.isArray(w.workcenter_id) ? WORKCENTER_MACHINE[String(w.workcenter_id[1]).trim()] || "" : "";
+          const cur = milling.get(pid) || { minutes: 0, machine: null, stamped: 0, open: 0 };
+          cur.stamped += typeof w.duration === "number" && w.duration > 0 ? w.duration : 0;
+          if (w.state !== "done") cur.open++;
+          if (/fräs/i.test(w.name || "")) {
+            cur.minutes += typeof w.duration_expected === "number" ? w.duration_expected : 0;
+            if (cur.machine === null) cur.machine = Array.isArray(w.workcenter_id) ? WORKCENTER_MACHINE[String(w.workcenter_id[1]).trim()] || "" : "";
+          }
           milling.set(pid, cur);
         });
       } catch (err) {
@@ -201,6 +206,7 @@ export default function registerOdooSync(app, db, { isDate, nextPosition }) {
         component_status: p.components_availability ? String(p.components_availability).slice(0, 60) : null,
         odoo_hours: mill && mill.minutes > 0 ? Math.round((mill.minutes / 60) * 100) / 100 : null,
         odoo_machine: mill ? mill.machine : null,
+        stamped_hours: mill && mill.stamped > 0 ? Math.round((mill.stamped / 60) * 100) / 100 : null,
         odoo_bom: bomState(p, musterIds),
         draft: p.state === "draft",
         created: typeof p.create_date === "string" ? p.create_date.replace(" ", "T") + "Z" : null,
@@ -501,6 +507,11 @@ export default function registerOdooSync(app, db, { isDate, nextPosition }) {
     const setDraft = db.prepare("UPDATE orders SET odoo_draft = ?, customer = COALESCE(?, customer), sale_date = COALESCE(?, sale_date) WHERE (odoo_ref = ? OR parent_ref = ?) AND done = 0");
     const setMaterial = db.prepare("UPDATE orders SET material_date = ?, material_info = ? WHERE (odoo_ref = ? OR parent_ref = ?) AND done = 0");
     const setSuggest = db.prepare("UPDATE orders SET hours_suggest = ?, hours_suggest_src = ? WHERE odoo_ref = ? AND done = 0");
+    // Fortschritt aus dem Stempeln: gestempelte Stunden (Rüsten + Fräsen) als erledigte Stunden, nie weniger als von Hand eingetragen
+    // und höchstens 95 % (fertig ist eine Position erst, wenn sie abgeschlossen wird). Geteilte Positionen haben eigene Stunden.
+    const setStamped = db.prepare(
+      "UPDATE orders SET done_hours = MIN(?, ROUND(hours * 0.95, 1)), progress_date = COALESCE(progress_date, date('now')) WHERE odoo_ref = ? AND done = 0 AND is_split = 0 AND hours > 0 AND COALESCE(done_hours, 0) + 0.05 < MIN(?, ROUND(hours * 0.95, 1))"
+    );
     const takeHours = db.prepare("UPDATE orders SET hours = ?, odoo_hours_applied = 1 WHERE odoo_ref = ? AND done = 0 AND is_split = 0 AND odoo_hours_applied = 0 AND (hours IS NULL OR hours = 0)");
     const seen = db.prepare("INSERT OR IGNORE INTO odoo_seen (odoo_id, first_seen) VALUES (?, ?)");
     const seenOld = db.prepare("INSERT OR IGNORE INTO odoo_seen (odoo_id, first_seen) VALUES (?, 'baseline')");
@@ -549,6 +560,8 @@ export default function registerOdooSync(app, db, { isDate, nextPosition }) {
         if (i.odoo_hours === undefined) return;
         hint.run(i.odoo_hours, i.odoo_machine, i.odoo_bom || null, i.odoo_ref);
         if (i.odoo_hours > 0 && i.odoo_hours <= MAX_TAKE_HOURS) takeHours.run(i.odoo_hours, i.odoo_ref);
+        // erst nach den Stunden: ohne Stunden kein Fortschritt
+        if (i.stamped_hours > 0) setStamped.run(i.stamped_hours, i.odoo_ref, i.stamped_hours);
       });
       closeRefs.forEach((ref) => close.run(ref, ref));
       materialAv();

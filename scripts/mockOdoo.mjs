@@ -263,6 +263,7 @@ const nextId = (m) => Math.max(0, ...T[m].map((r) => r.id)) + 1;
 const byId = (m, id) => T[m].find((r) => r.id === id);
 const nameOf = (m, id) => {
   const r = byId(m, id);
+  if (r && m === "product.product" && process.env.MOCK_CODES && r.default_code) return `[${r.default_code}] ${r.name}`; // wie das echte Odoo
   return r ? (m === "mrp.workorder" ? `${byId("mrp.production", r.production_id)?.name} - ${r.name}` : r.name) : "";
 };
 
