@@ -3,7 +3,7 @@ import React, { createContext, useCallback, useContext, useEffect, useRef, useSt
 // Gemeinsame Bausteine: Symbole, Logo, Maschinen- und App-Kacheln, Vorschaubild, Hinweis (Toast)
 
 const RED = "#EE3340";
-const LIGHT = "#F6F6F6";
+const LIGHT = "currentColor"; // Farbe der Leiste: hell auf dunkel, dunkel auf hell
 
 export function BrandMark({ size = 34 }) {
   const inner = Math.round(size * 0.53);

@@ -1833,3 +1833,33 @@ a.btn { text-decoration: none; }
 .ava-form small { grid-column: 2; }
 .ava-done { margin: 0; padding-left: 18px; color: var(--ok); font-size: 12.5px; }
 .card-sub { color: var(--muted); font-size: 12.5px; margin-top: 10px; }
+
+/* ---------- Ruhiger Zeitstrahl: kein roter Rahmen, Verspätung nur als kleines Zeichen ---------- */
+.bar.late, .bar.amp-late, .bar.amp-tight, .bar.amp-ok { box-shadow: inset 4px 0 0 var(--mc), 0 1px 2px rgba(20,24,29,.12); }
+.bar.late:hover, .bar.amp-late:hover, .bar.amp-tight:hover, .bar.amp-ok:hover { box-shadow: inset 4px 0 0 var(--mc), 0 4px 12px rgba(20,24,29,.2); }
+html[data-look="neu"] .track .bar.late, html[data-look="neu"] .track .bar.amp-late, html[data-look="neu"] .track .bar.amp-tight, html[data-look="neu"] .track .bar.amp-ok, html[data-look="neu"] .lane .bar.late { box-shadow: inset 4px 0 0 var(--mc), 0 6px 16px rgba(0,0,0,.28), inset 0 1px 0 rgba(255,255,255,.22); }
+.bar .tag.bad { background: rgba(0,0,0,.34); color: #FFC0C4; font-weight: 600; }
+.bar .tag.warn { background: rgba(0,0,0,.28); color: #F5D998; }
+.brand .wm { color: var(--side-ink, #F6F6F6); }
+html[data-look="neu"]:not([data-theme="dark"]) .brand .wm { color: #14181D; }
+
+/* ---------- Board: Auftrag mit mehreren Positionen als eine Karte ---------- */
+.bd-group { display: grid; gap: 6px; }
+.bd-gcard { position: relative; box-shadow: 4px 4px 0 -1px var(--surface), 4px 4px 0 0 var(--line); }
+.bd-group.open .bd-gcard { box-shadow: none; }
+.bd-tog { margin-left: auto; color: var(--muted); font-size: 13px; }
+.bd-sub { display: grid; gap: 6px; padding-left: 12px; border-left: 2px solid var(--line-strong); }
+.bd-card.nostart { background-image: repeating-linear-gradient(135deg, transparent 0 9px, color-mix(in srgb, var(--warn) 10%, transparent) 9px 12px); }
+
+/* ---------- Board: Spaltenkopf farbig mit Maschinenfoto, Status und Wochenauslastung ---------- */
+.bd-hero { position: relative; height: 112px; border-radius: 14px; overflow: hidden; margin-bottom: 4px; background: linear-gradient(145deg, color-mix(in srgb, var(--mc) 62%, transparent), color-mix(in srgb, var(--mc) 22%, transparent)); box-shadow: inset 0 1px 0 rgba(255,255,255,.18); }
+.bd-photo { position: absolute; right: 2px; bottom: 0; height: 108px; width: 48%; object-fit: contain; object-position: right bottom; filter: drop-shadow(0 8px 14px rgba(0,0,0,.45)); }
+.bd-htop { position: absolute; left: 14px; top: 12px; right: 46%; display: grid; gap: 6px; justify-items: start; }
+.bd-htop b { font: 700 19px/1.05 var(--f-display); color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,.35); }
+.bd-count { position: absolute; right: 8px; top: 8px; min-width: 24px; height: 22px; padding: 0 7px; box-sizing: border-box; border-radius: 11px; background: rgba(0,0,0,.4); color: #fff; font: 600 12px/22px var(--f-mono); text-align: center; }
+.bd-load { position: absolute; left: 14px; bottom: 12px; width: 50%; }
+.bd-load small { display: block; font-size: 11px; color: rgba(255,255,255,.88); }
+.bd-load span { display: block; height: 5px; border-radius: 3px; background: rgba(0,0,0,.32); margin-top: 3px; }
+.bd-load i { display: block; height: 5px; border-radius: 3px; background: rgba(255,255,255,.92); }
+.amp-pill { display: inline-flex; align-items: center; gap: 6px; padding: 2px 9px; border-radius: 99px; background: rgba(0,0,0,.35); color: #fff; font-size: 12px; }
+.amp-pill i { width: 7px; height: 7px; border-radius: 50%; background: var(--c); box-shadow: 0 0 6px var(--c); }

@@ -1,4 +1,4 @@
-import { Ampel } from "./Ampel.jsx";
+import { Ampel, AmpelPill } from "./Ampel.jsx";
 import React, { useState, useEffect, useLayoutEffect, useMemo, useRef, Suspense, lazy } from "react";
 import { isNewPlan, DEFAULT_WEEK_CAPACITY, MACHINES, SHIFT_MODELS, addDays, daysBetween, fmtH, fmtShort, isoWeekOf, mondayOf } from "./lib.js";
 import { parseOdooExport } from "./odooImport.js";
@@ -203,6 +203,24 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
   const [drag, setDrag] = useState(null); // { ids, label, sub, active, x, y, offX, offY, w, h, target }
   const [links, setLinks] = useState([]);
   const [callouts, setCallouts] = useState([]);
+  // Terminlinien und Pfeile: nur für den gewählten Auftrag (Maus darüber oder Details offen), auf Wunsch alle
+  const [boardOpen, setBoardOpen] = useState({}); // aufgeklappte Auftrags-Karten im Board
+  const [allLines, setAllLines] = useState(() => {
+    try {
+      return window.localStorage.getItem("kratos-alle-linien") === "1";
+    } catch {
+      return false;
+    }
+  });
+  const toggleAllLines = () =>
+    setAllLines((v) => {
+      try {
+        window.localStorage.setItem("kratos-alle-linien", v ? "0" : "1");
+      } catch {
+        /* ohne Speicher gilt die Wahl nur in dieser Sitzung */
+      }
+      return !v;
+    });
   const [trackW, setTrackW] = useState(720); // gemessene Breite der Zeitleiste, um die Liefertermin-Texte zu stapeln
   const fileInput = useRef(null);
   const dragInfo = useRef(null);
@@ -2533,7 +2551,9 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
               // Wer an dieser Position arbeitet (Programmierung, Rüsten, Fräsen): kleine Fotos links, der Text rückt nach rechts
               const o0 = orders.find((x) => x.id === part.ids[0]);
               const names = o0 ? [...new Set(["programmierung", "ruesten", "fraesen"].map((a) => whoOf(o0, a)).filter(Boolean))] : [];
-              return names.length ? (
+              // Fotos nur auf breiten Balken, sonst wird der Auftrag abgeschnitten
+              const barPx = ((ce - cs) / total) * trackW;
+              return names.length && barPx >= 130 ? (
                 <span className="bar-who" title={names.join(", ")}>
                   {names.slice(0, 2).map((n) => (
                     <Avatar key={n} name={n} size={22} />
@@ -2559,6 +2579,14 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
         );
       });
     });
+    // Terminlinien nur für den gewählten Auftrag (oder alle, wenn eingeschaltet oder eine Hervorhebung läuft)
+    const aktiv = hoverAuftrag || (detailId != null ? (() => { const o = orders.find((x) => x.id === detailId); return o ? groupKeyOf(o) : null; })() : null);
+    const keyOfIds = (ids) => { const o = orders.find((x) => x.id === ids[0]); return o ? groupKeyOf(o) : null; };
+    if (!allLines) {
+      const keep = strips.filter((s) => (hlSet ? s.ids.some((id) => hlSet.has(id)) : aktiv && keyOfIds(s.ids) === aktiv));
+      strips.length = 0;
+      strips.push(...keep);
+    }
     // Terminlinien so auf Zeilen verteilen, dass sie sich (samt Text) nicht überdecken
     strips.sort((x, y) => x.a - y.a);
     const rowEnds = [];
@@ -2859,6 +2887,9 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
                 Heute
               </button>
             )}
+            <button className={`btn sm${allLines ? " on" : ""}`} type="button" aria-pressed={allLines} onClick={toggleAllLines} title="Terminlinien und Pfeile: aus = nur für den Auftrag unter der Maus oder in den Details, an = für alle">
+              {allLines ? "Alle Terminlinien" : "Terminlinien: Auswahl"}
+            </button>
           </div>
         </div>
         <div className={`tl${dense ? " dense" : ""}${detailId != null ? " has-sel" : ""}${dragActive ? " is-drag" : ""}`} style={{ "--n": total }}>
@@ -2892,7 +2923,12 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
             )}
             {links.length > 0 && (
               <svg className="links" width="100%" height="100%" aria-hidden="true">
-                {links.map((l) => (
+                {links.filter((l) => {
+                  if (allLines) return true;
+                  const o = orders.find((x) => x.id === l.id);
+                  const aktiv = hoverAuftrag || (detailId != null ? (() => { const d = orders.find((x) => x.id === detailId); return d ? groupKeyOf(d) : null; })() : null);
+                  return !!o && !!aktiv && groupKeyOf(o) === aktiv;
+                }).map((l) => (
                   <g key={l.id}>
                     <path d={`M${l.x1} ${l.y1} C${l.x1 + 30} ${l.y1} ${l.x2 - 30} ${l.y2} ${l.x2} ${l.y2}`} />
                     <polygon points={`${l.x2},${l.y2} ${l.x2 - 8},${l.y2 - 4} ${l.x2 - 8},${l.y2 + 4}`} />
@@ -3254,6 +3290,81 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
       </div>
     );
   };
+  // Aufeinanderfolgende Positionen desselben Auftrags in einer Spalte: eine Karte (wie ein Balken im Zeitstrahl). Mit Suche oder Filter einzeln.
+  const boardGroupsOf = (col) => {
+    const out = [];
+    col.cards.forEach((o) => {
+      const k = groupKeyOf(o);
+      const last = out[out.length - 1];
+      if (boardDrag && last && last.key === k) last.items.push(o);
+      else out.push({ key: k, items: [o] });
+    });
+    return out;
+  };
+  const boardGroupCard = (grp, col) => {
+    const first = grp.items[0];
+    const ids = grp.items.map((o) => o.id);
+    const g = groupByKey.get(grp.key);
+    const pill = pillOf(g);
+    const hours = grp.items.reduce((s, o) => s + (o.hours || 0), 0);
+    const its = col.machine ? grp.items.map((o) => itemById.get(o.id)?.it).filter((x) => x && x.scheduled) : [];
+    const when = its.length ? `${fmtShort(dateOf(Math.min(...its.map((i) => i.pastStart ?? i.start))))} bis ${fmtShort(endDateOf(Math.max(...its.map((i) => i.end))))}` : "";
+    const avs = grp.items.map((o) => avPill(o.id));
+    const worst = avs.reduce((a, b) => (b.done / (b.total || 1) < a.done / (a.total || 1) ? b : a), avs[0]);
+    const miss = notReady(ids);
+    const openKey = col.id + "|" + grp.key + "|" + first.id;
+    const isOpen = !!boardOpen[openKey];
+    const dragged = dragActive && ids.some((id) => drag.ids.includes(id));
+    return (
+      <div key={"g" + first.id} className={`bd-group${isOpen ? " open" : ""}`}>
+        <div
+          {...{ "data-card": first.id }}
+          className={`bd-card bd-gcard${boardDrag ? " can" : ""}${dragged ? " dragging" : ""}${miss.length ? " nostart" : ""}`}
+          onPointerDown={boardDrag ? (e) => startDrag(e, { ids, label: g ? g.label : groupLabelOf(first), sub: `${grp.items.length} Positionen`, toggle: null, fromBoard: true }) : undefined}
+          onClick={() => setBoardOpen((prev) => ({ ...prev, [openKey]: !prev[openKey] }))}
+          title={`${grp.items.map((o) => posNo(o)).join(", ")} · Klicken zum ${isOpen ? "Zuklappen" : "Aufklappen"}, ziehen verschiebt alle`}
+        >
+          <div className="bd-top">
+            <Thumb src={partImg(first)} size={36} />
+            <div className="bd-title">
+              <b>{g ? g.label : groupLabelOf(first)}</b>
+              <span className="bd-no">{grp.items.length} Positionen</span>
+            </div>
+            <span className="bd-tog" aria-hidden="true">{isOpen ? "▾" : "▸"}</span>
+          </div>
+          {first.customer && <div className="bd-prod">{first.customer}</div>}
+          <div className="bd-facts">
+            <span>{fmtH(round1(hours))} h</span>
+            {when && <span className="bd-when">{when}</span>}
+          </div>
+          <div className="bd-chips">
+            {pill ? <span className={`pill ${pill.cls}`}>{pill.text}</span> : null}
+            <span className={`av ${worst.s.ready ? "bereit" : ""}`} title="Schlechtester AV-Stand der Positionen">
+              AV {worst.done}/{worst.total}
+            </span>
+            {miss.length > 0 && <span className="pill warn" title={`Nicht startklar: ${miss.join(", ")}`}>nicht startklar</span>}
+          </div>
+        </div>
+        {isOpen && <div className="bd-sub">{grp.items.map((o) => boardCardOf(o, col))}</div>}
+      </div>
+    );
+  };
+  // Stunden dieser Woche (bis Sonntag) je Maschine: Anteil jeder geplanten Position, der in die Woche fällt
+  const weekEndOff = todayOff + (7 - ((new Date(today + "T00:00:00Z").getUTCDay() + 6) % 7));
+  const weekHoursOf = (mid) => {
+    const p = plan.find((x) => x.m.id === mid);
+    if (!p) return { h: 0, rate: 0 };
+    const h = p.items
+      .filter((it) => it.scheduled)
+      .reduce((s, it) => {
+        const st = it.pastStart ?? it.start;
+        const a = Math.max(st, todayOff);
+        const e = Math.min(it.end, weekEndOff);
+        const len = it.end - st;
+        return e > a && len > 0 ? s + remainingOf(it.o) * Math.min(1, (e - a) / len) : s;
+      }, 0);
+    return { h, rate: p.rate || 0 };
+  };
   const boardCard = (
     <div className="card" id="board">
       <div className="sec-head">
@@ -3276,20 +3387,40 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
       <div className="bd-cols">
         {boardColumns.map((col) => (
           <div key={col.id} className="bd-col" style={{ "--c": col.c }}>
-            <div className="bd-head">
-              {col.machine ? <MTile c={col.c} img={col.img} imgZoom={col.imgZoom} size={36} title={col.sub} /> : <i className="bd-dot" />}
-              <div className="bd-name">
-                <b>{col.name}</b>
-                <span>{col.sub}</span>
+            {col.machine ? (
+              (() => {
+                const w = weekHoursOf(col.id);
+                return (
+                  <div className="bd-hero" style={{ "--mc": col.c }}>
+                    {col.img && <img src={col.img} alt="" className="bd-photo" />}
+                    <div className="bd-htop">
+                      <b>{col.sub}</b>
+                      <AmpelPill machine={col.id} />
+                    </div>
+                    <span className="bd-count" title="offene Positionen">{col.all.length}</span>
+                    <div className="bd-load" title="Geplante Stunden dieser Woche (bis Sonntag) von der Wochenleistung">
+                      <small>{fmtH(round1(w.h))} / {fmtH(round1(w.rate))} h diese Woche</small>
+                      <span><i style={{ width: `${Math.min(100, w.rate ? (w.h / w.rate) * 100 : 0)}%` }} /></span>
+                    </div>
+                  </div>
+                );
+              })()
+            ) : (
+              <div className="bd-head">
+                <i className="bd-dot" />
+                <div className="bd-name">
+                  <b>{col.name}</b>
+                  <span>{col.sub}</span>
+                </div>
+                <span className="pill mute">{col.all.length}</span>
               </div>
-              <span className="pill mute">{col.all.length}</span>
-            </div>
+            )}
             <div className="bd-sum">
               {col.machine && <span>{fmtH(round1(col.hours))} h offen</span>}
               {col.late > 0 && <span className="pill bad">{col.late} verspätet</span>}
             </div>
             <div ref={(el) => (boardCols.current[col.id] = el)} className={`bd-body${dragActive && drag.target?.machine === col.id ? " droptarget" : ""}`}>
-              {col.cards.map((o) => boardCardOf(o, col))}
+              {boardGroupsOf(col).map((grp) => (grp.items.length > 1 ? boardGroupCard(grp, col) : boardCardOf(grp.items[0], col)))}
               {col.cards.length === 0 && <div className="bd-empty">{col.all.length === 0 ? "Keine Aufträge" : "Nichts gefunden"}</div>}
             </div>
           </div>
