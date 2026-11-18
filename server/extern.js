@@ -433,6 +433,21 @@ export default function registerExtern(app, db, helpers) {
       res.status(err.status || 500).json({ error: err.message });
     }
   });
+  // Letztes "angefragt" zurücknehmen (z. B. Mail doch nicht abgeschickt)
+  app.post("/api/extern/:po/rueckgaengig", (req, res) => {
+    const po = req.params.po;
+    const cur = statusOf.get(po);
+    if (!cur) return res.status(404).json({ error: "Nichts zurückzunehmen" });
+    const verlauf = JSON.parse(cur.verlauf || "[]");
+    const last = verlauf[verlauf.length - 1];
+    if (!last || !/^angefragt/.test(last.was || "")) return res.status(409).json({ error: "Zuletzt wurde nicht angefragt" });
+    verlauf.pop();
+    const prev = [...verlauf].reverse().find((v) => /^angefragt/.test(v.was || ""));
+    db.prepare("UPDATE extern_status SET angefragt_am = ?, angefragt_von = ?, verlauf = ?, geaendert = ? WHERE po = ?").run(prev ? prev.at : null, prev ? prev.von || null : null, JSON.stringify(verlauf), now(), po);
+    invalidate();
+    res.json({ ok: true });
+  });
+
   app.post("/api/extern/:po/termin", async (req, res) => {
     try {
       res.json(await setTermin(req.params.po, req.body && req.body.termin, { notiz: req.body && req.body.notiz, who: whoOf(req) }));

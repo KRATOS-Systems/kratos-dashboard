@@ -372,15 +372,24 @@ export default function registerFreigaben(app, db, helpers) {
       return o;
     });
     const before = late(inp.orders);
+    const mid = late(work); // nur eingeplant, noch nicht umgestellt
     const after = late(finalOrders);
+    const sum = (gs) => ({ zuSpaet: gs.length, tage: gs.reduce((x, g) => x + (g.lateDays || 0), 0) });
+    // Welche Positionen ändern sich (für die Vorschau im Zeitstrahl)
+    const geaendert = new Set(pv.vorschlaege.map((p) => p.id));
+    if (ro.verbessert) ro.maschinen.forEach((m) => m.items.forEach((x) => (x.vonPlatz !== x.platz || x.vonMaschine) && geaendert.add(x.id)));
     return {
       stamp: stampOf(inp.orders),
       einplanen: pv.vorschlaege.map((p) => ({ id: p.id, ref: p.ref, source: p.source, customer: p.customer, machine: p.machine, machineName: p.machineName, platz: p.platz, start: p.start, ende: p.ende, status: p.status, lateDays: p.lateDays, basis: p.basis })),
       ohneStunden: pv.ohneStunden.length,
       umordnen: ro.verbessert ? ro.auftraege.slice(0, 12) : [],
       umgestellt: ro.verbessert ? ro.maschinen.reduce((s, m) => s + m.items.filter((x) => x.vonPlatz !== x.platz || x.vonMaschine).length, 0) : 0,
-      vorher: { zuSpaet: before.length, tage: before.reduce((s, g) => s + (g.lateDays || 0), 0) },
-      nachher: { zuSpaet: after.length, tage: after.reduce((s, g) => s + (g.lateDays || 0), 0) },
+      vorher: sum(before),
+      nachEinplanen: sum(mid),
+      nachher: sum(after),
+      // neu eingeplante Positionen, deren Auftrag schon jetzt zu spät ist (waren vorher nur nicht sichtbar)
+      schonSpaet: pv.vorschlaege.filter((p) => p.status === "late").map((p) => ({ id: p.id, ref: p.ref, source: p.source, lateDays: p.lateDays })),
+      geaendertIds: [...geaendert],
       reihenfolge: Object.fromEntries(final),
     };
   }
@@ -388,9 +397,16 @@ export default function registerFreigaben(app, db, helpers) {
   // Kurzer Text ohne KI (falls Talos nicht erreichbar ist)
   function ruleText(pr, heute) {
     const lines = [];
-    if (pr.einplanen.length) lines.push(`${pr.einplanen.length} neue ${pr.einplanen.length === 1 ? "Position" : "Positionen"} einplanen, ${pr.einplanen.filter((p) => p.status !== "late").length} davon pünktlich.`);
-    if (pr.umgestellt) lines.push(`${pr.umgestellt} ${pr.umgestellt === 1 ? "Position" : "Positionen"} in der Reihenfolge umstellen.`);
-    lines.push(`Verspätete Aufträge: ${pr.vorher.zuSpaet} → ${pr.nachher.zuSpaet}, Verspätungstage ${pr.vorher.tage} → ${pr.nachher.tage}.`);
+    if (pr.einplanen.length) {
+      const spaet = pr.schonSpaet || [];
+      lines.push(`${pr.einplanen.length} ${pr.einplanen.length === 1 ? "Position" : "Positionen"} neu einplanen, ${pr.einplanen.length - spaet.length} davon pünktlich.`);
+      if (spaet.length) lines.push(`Schon zu spät (waren bisher nur nicht eingeplant): ${[...new Set(spaet.map((x) => x.source || x.ref))].join(", ")}.`);
+    }
+    if (pr.umgestellt) {
+      const a = pr.nachEinplanen || pr.vorher;
+      const gewinn = a.tage - pr.nachher.tage;
+      lines.push(`${pr.umgestellt} ${pr.umgestellt === 1 ? "Position" : "Positionen"} umstellen: ${gewinn > 0 ? `spart ${gewinn} Verspätungstage` : "gleich viele Verspätungstage"}${a.zuSpaet > pr.nachher.zuSpaet ? `, ${a.zuSpaet - pr.nachher.zuSpaet} Aufträge weniger zu spät` : ""}.`);
+    }
     if (pr.ohneStunden) lines.push(`${pr.ohneStunden} ${pr.ohneStunden === 1 ? "Position hat" : "Positionen haben"} noch keine Stunden: AV-Pakete prüfen.`);
     (heute || []).filter((i) => i.tone === "bad").forEach((i) => lines.push(`${i.n} ${i.text.replace(/^\d+\s/, "")}.`));
     return lines.join("\n");
@@ -444,7 +460,8 @@ export default function registerFreigaben(app, db, helpers) {
     }
     const nothing = !pr.einplanen.length && !pr.umgestellt;
     const titel = nothing ? "Morgenbericht: am Plan ist nichts zu ändern" : `Planvorschlag für heute: ${pr.einplanen.length} einplanen, ${pr.umgestellt} umstellen`;
-    pr.kategorie = !nothing && pr.nachher.zuSpaet <= pr.vorher.zuSpaet && pr.nachher.tage <= pr.vorher.tage ? "plan" : null;
+    // Autopilot nur, wenn keine neu eingeplante Position zu spät ist und das Umstellen nichts verschlechtert
+    pr.kategorie = !nothing && !pr.schonSpaet.length && pr.nachher.zuSpaet <= pr.nachEinplanen.zuSpaet && pr.nachher.tage <= pr.nachEinplanen.tage ? "plan" : null;
     const id = upsert({ art: "plan", schluessel: key, bezug: today, titel, text: ruleText(pr, heute), daten: pr });
     if (talos) talosText(pr, id);
     if (pr.kategorie && autoOn(pr.kategorie)) autopilot(id, pr.kategorie).catch((err) => console.error("Autopilot Plan:", err.message));

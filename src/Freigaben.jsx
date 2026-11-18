@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { MACHINES, fmtShort } from "./lib.js";
 
 // KI-Vorschläge zur Freigabe: Die App bereitet vor (AV-Pakete je Fertigungsauftrag, Planvorschlag am Morgen, Hinweise von Talos),
@@ -38,7 +38,7 @@ function loadShared(force) {
     })
     .catch(() => null);
 }
-function useFreigaben(reloadKey) {
+export function useFreigaben(reloadKey) {
   const [d, setD] = useState(shared);
   useEffect(() => {
     listeners.add(setD);
@@ -191,11 +191,13 @@ function KalkKnopf({ f, onDone }) {
   );
 }
 
-function PlanKarte({ f, onDone }) {
+function PlanKarte({ f, onDone, onHighlight }) {
   const p = f.daten;
   const [more, setMore] = useState(false);
-  const better = p.nachher.zuSpaet < p.vorher.zuSpaet || p.nachher.tage < p.vorher.tage;
   const nothing = !p.einplanen.length && !p.umgestellt;
+  const basis = p.nachEinplanen || p.vorher;
+  const spaet = p.schonSpaet || [];
+  const gewinn = basis.tage - p.nachher.tage;
   return (
     <div className="fg-card fg-plan">
       <div className="fg-top">
@@ -207,12 +209,36 @@ function PlanKarte({ f, onDone }) {
       <div className="fg-text">{f.text}</div>
       {!nothing && (
         <>
-          <div className={`fg-effect${better ? " good" : ""}`}>
-            Verspätete Aufträge <b>{p.vorher.zuSpaet}</b> → <b>{p.nachher.zuSpaet}</b> · Verspätungstage <b>{p.vorher.tage}</b> → <b>{p.nachher.tage}</b>
+          <div className="fg-effects">
+            {p.einplanen.length > 0 && (
+              <div className={`fg-effect${spaet.length ? "" : " good"}`}>
+                <b>Einplanen:</b> {p.einplanen.length} {p.einplanen.length === 1 ? "Position" : "Positionen"}, {p.einplanen.length - spaet.length} pünktlich
+                {spaet.length > 0 && (
+                  <span className="fg-faint">
+                    {" "}
+                    · {spaet.length} schon zu spät (waren bisher nur nicht eingeplant: {[...new Set(spaet.map((x) => x.source || x.ref))].join(", ")})
+                  </span>
+                )}
+              </div>
+            )}
+            {p.umgestellt > 0 && (
+              <div className={`fg-effect${gewinn > 0 ? " good" : ""}`}>
+                <b>Umstellen:</b> {p.umgestellt} {p.umgestellt === 1 ? "Position" : "Positionen"} ·{" "}
+                {gewinn > 0 ? <>spart <b>{gewinn}</b> Verspätungstage</> : "ändert an den Verspätungstagen nichts"}
+                {basis.zuSpaet > p.nachher.zuSpaet && <>, {basis.zuSpaet - p.nachher.zuSpaet} Aufträge weniger zu spät</>}
+              </div>
+            )}
           </div>
-          <button type="button" className="fg-more" onClick={() => setMore((v) => !v)}>
-            {more ? "Einzelheiten ausblenden" : "Was genau ändert sich?"}
-          </button>
+          <div className="fg-actions">
+            <button type="button" className="fg-more" onClick={() => setMore((v) => !v)}>
+              {more ? "Einzelheiten ausblenden" : "Was genau ändert sich?"}
+            </button>
+            {onHighlight && (p.geaendertIds || []).length > 0 && (
+              <button type="button" className="fg-more" onClick={() => onHighlight(p.geaendertIds)} title="Die betroffenen Positionen im Zeitstrahl hervorheben">
+                Im Zeitstrahl zeigen
+              </button>
+            )}
+          </div>
           {more && (
             <div className="fg-detail">
               {p.einplanen.length > 0 && (
@@ -295,6 +321,120 @@ function AvKarte({ f, onDone, compact }) {
   );
 }
 
+// Was ein AV-Paket ändern würde, in Kurzform
+export function aenderungen(p) {
+  const out = [];
+  if (p.hours > 0) out.push(`Stunden – → ${h1(p.hours)} h`);
+  for (const [k, v] of Object.entries(p.status || {})) out.push(`${ITEM[k] || k}: offen → ${v}`);
+  for (const k of Object.keys(p.notes || {})) if (!(p.status || {})[k]) out.push(`Hinweis ${ITEM[k] || k}`);
+  if (p.machine && p.machine.id === "m1" && p.machine.why === "laut Kalkulation") out.push("passt auf M1");
+  return out;
+}
+const hatWarnung = (f) => (f.daten.warnungen || []).length > 0;
+export const istSicher = (f) => !hatWarnung(f) && aenderungen(f.daten).length > 0;
+
+function AvListe({ items, onDone, onChanged }) {
+  // Mit Warnung zuerst (brauchen einen Blick), dann nach Liefertermin
+  const list = [...items].sort((a, b) => hatWarnung(b) - hatWarnung(a) || (a.daten.due || "9999").localeCompare(b.daten.due || "9999") || a.id - b.id);
+  const [sel, setSel] = useState(0);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState("");
+  const box = useRef(null);
+  const i = Math.min(sel, Math.max(0, list.length - 1));
+  const sicher = list.filter(istSicher);
+  const decide = async (f, aktion) => {
+    setBusy(true);
+    setMsg("");
+    try {
+      const j = await post(`/api/freigaben/${f.id}`, { aktion });
+      setMsg(j.ergebnis ? `${f.daten.ref}: ${j.ergebnis}` : `${f.daten.ref}: ${aktion === "ablehnen" ? "abgelehnt" : "freigegeben"}`);
+      onDone(null);
+    } catch (e) {
+      setMsg(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const releaseAll = async () => {
+    setBusy(true);
+    setMsg("");
+    let n = 0;
+    try {
+      for (const f of sicher) {
+        await post(`/api/freigaben/${f.id}`, { aktion: "freigeben" });
+        n++;
+      }
+      setMsg(`${n} sichere AV-${n === 1 ? "Paket" : "Pakete"} freigegeben.`);
+    } catch (e) {
+      setMsg(`${n} freigegeben, dann: ${e.message}`);
+    } finally {
+      setBusy(false);
+      onDone(null);
+      onChanged && onChanged();
+    }
+  };
+  const onKey = (e) => {
+    if (e.target.closest("input, textarea, select")) return;
+    const f = list[i];
+    if (e.key === "ArrowDown" || e.key === "j") (e.preventDefault(), setSel(Math.min(list.length - 1, i + 1)));
+    else if (e.key === "ArrowUp" || e.key === "k") (e.preventDefault(), setSel(Math.max(0, i - 1)));
+    else if (!busy && f && (e.key === "f" || e.key === "F")) (e.preventDefault(), decide(f, "freigeben"));
+    else if (!busy && f && (e.key === "a" || e.key === "A")) (e.preventDefault(), decide(f, "ablehnen"));
+  };
+  if (!list.length) return null;
+  return (
+    <div className="fg-sec">
+      <div className="fg-sec-head">
+        <b>AV-Pakete ({list.length})</b>
+        <span className="fg-faint">Tastatur: ↑ ↓ wählen · F freigeben · A ablehnen</span>
+        {sicher.length > 1 && (
+          <button type="button" className="btn sm primary" disabled={busy} onClick={releaseAll} title="Alle Pakete ohne Warnung, die etwas eintragen">
+            {sicher.length} sichere freigeben
+          </button>
+        )}
+      </div>
+      {msg && <div className="fg-msg">{msg}</div>}
+      <div className="fg-list" tabIndex={0} ref={box} onKeyDown={onKey}>
+        {list.map((f, k) => {
+          const p = f.daten;
+          const ch = aenderungen(p);
+          const warn = (p.warnungen || []).length;
+          const on = k === i;
+          return (
+            <div key={f.id} className={`fg-row${on ? " sel" : ""}${warn ? " warnung" : ""}`}>
+              <button type="button" className="fg-row-head" onClick={() => (setSel(k), box.current && box.current.focus())} aria-expanded={on}>
+                <b>{p.ref}</b>
+                <span className="fg-faint fg-row-sub">
+                  {p.source || ""}
+                  {p.due ? ` · Termin ${day(p.due)}` : ""}
+                </span>
+                <span className="fg-chips">
+                  {warn > 0 && <span className="fg-chip bad">⚠ {warn === 1 ? "Warnung" : `${warn} Warnungen`}</span>}
+                  {ch.map((c) => (
+                    <span key={c} className="fg-chip">
+                      {c}
+                    </span>
+                  ))}
+                  {!ch.length && !warn && <span className="fg-chip mute">nur Hinweise</span>}
+                </span>
+              </button>
+              {on && (
+                <div className="fg-row-detail">
+                  <div className="fg-faint fg-prod">
+                    {p.product} {p.quantity ? `· ${p.quantity} Stk` : ""}
+                  </div>
+                  <PaketInhalt p={p} />
+                  <Entscheiden f={f} onDone={onDone} extra={<><KalkKnopf f={f} onDone={() => onDone && onDone(null)} /><ZeichnungKnopf f={f} onDone={() => onDone && onDone(null)} /></>} />
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function HinweisKarte({ f, onDone }) {
   return (
     <div className="fg-card fg-hin">
@@ -341,12 +481,12 @@ function Verlauf() {
   );
 }
 
-export default function Freigaben({ reloadKey, open, onToggle, onChanged }) {
+export default function Freigaben({ reloadKey, open: openProp, onToggle, onChanged, embedded = false, onHighlight }) {
+  const open = embedded || openProp;
   const [d, reload] = useFreigaben(reloadKey);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
   const [log, setLog] = useState(false);
-  const [all, setAll] = useState(false); // alle AV-Pakete zeigen (sonst die ersten 8)
   const items = (d && d.items) || [];
   const plan = items.filter((f) => f.art === "plan");
   const av = items.filter((f) => f.art === "av");
@@ -369,29 +509,9 @@ export default function Freigaben({ reloadKey, open, onToggle, onChanged }) {
       setBusy(false);
     }
   };
-  // Alle AV-Pakete ohne Warnung auf einmal freigeben (nur die, die Stunden oder Hinweise bringen)
-  const plain = av.filter((f) => !(f.daten.warnungen || []).length && (f.daten.hours > 0 || Object.keys(f.daten.notes || {}).length));
-  const releaseAll = async () => {
-    setBusy(true);
-    setMsg("");
-    let okN = 0;
-    try {
-      for (const f of plain) {
-        await post(`/api/freigaben/${f.id}`, { aktion: "freigeben" });
-        okN++;
-      }
-      setMsg(`${okN} AV-${okN === 1 ? "Paket" : "Pakete"} freigegeben.`);
-    } catch (e) {
-      setMsg(`${okN} freigegeben, dann: ${e.message}`);
-    } finally {
-      setBusy(false);
-      reload();
-      onChanged && onChanged();
-    }
-  };
-
   return (
-    <div id="freigaben" className="freigaben note rise" style={{ "--i": 1 }}>
+    <div id="freigaben" className={embedded ? "freigaben fg-embedded" : "freigaben note rise"} style={embedded ? undefined : { "--i": 1 }}>
+      {!embedded && (
       <div className="fg-head">
         <button type="button" className="fg-title" onClick={onToggle} aria-expanded={open}>
           <b>KI-Vorschläge zur Freigabe</b>
@@ -414,6 +534,7 @@ export default function Freigaben({ reloadKey, open, onToggle, onChanged }) {
           </span>
         )}
       </div>
+      )}
       {open && (
         <div className="fg-body">
           {msg && <div className="fg-msg">{msg}</div>}
@@ -423,36 +544,24 @@ export default function Freigaben({ reloadKey, open, onToggle, onChanged }) {
           ) : (
             <>
               {plan.map((f) => (
-                <PlanKarte key={f.id} f={f} onDone={done} />
+                <PlanKarte key={f.id} f={f} onDone={done} onHighlight={onHighlight} />
               ))}
               {hin.map((f) => (
                 <HinweisKarte key={f.id} f={f} onDone={done} />
               ))}
-              {av.length > 0 && (
-                <div className="fg-sec">
-                  <div className="fg-sec-head">
-                    <b>AV-Pakete</b>
-                    <span className="fg-faint">Stunden, Maschine und AV-Hinweise je Fertigungsauftrag, aus früheren Aufträgen und der Kalkulation</span>
-                    {plain.length > 1 && (
-                      <button type="button" className="btn sm" disabled={busy} onClick={releaseAll} title="Nur Pakete ohne Warnung">
-                        Alle {plain.length} ohne Warnung freigeben
-                      </button>
-                    )}
-                  </div>
-                  <div className="fg-grid">
-                    {(all ? av : av.slice(0, 8)).map((f) => (
-                      <AvKarte key={f.id} f={f} onDone={done} />
-                    ))}
-                  </div>
-                  {av.length > 8 && (
-                    <button type="button" className="fg-more" onClick={() => setAll((v) => !v)}>
-                      {all ? "Weniger zeigen" : `Alle ${av.length} zeigen`}
-                    </button>
-                  )}
-                </div>
-              )}
+              <AvListe items={av} onDone={done} onChanged={onChanged} />
               {!items.length && <div className="fg-faint">Gerade ist nichts freizugeben.</div>}
             </>
+          )}
+          {embedded && (
+            <div className="fg-actions fg-foot">
+              <button type="button" className="btn sm" disabled={busy} onClick={prepare} title="AV-Pakete und Planvorschlag jetzt neu rechnen">
+                {busy ? "Rechne …" : "Neu vorbereiten"}
+              </button>
+              <button type="button" className="btn sm" onClick={() => setLog((v) => !v)}>
+                {log ? "Offene zeigen" : "Verlauf"}
+              </button>
+            </div>
           )}
         </div>
       )}

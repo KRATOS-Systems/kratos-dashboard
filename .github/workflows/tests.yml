@@ -67,6 +67,8 @@ jobs:
         run: node scripts/testLernen.mjs
       - name: Zeichnung lesen im AV-Paket (Abgleich mit Arbeitsplan und Kalkulation)
         run: node scripts/testZeichnung.mjs
+      - name: Bedienung (Planvorschlag getrennt, Datenqualität, Extern rückgängig)
+        run: node scripts/testBedienung.mjs
       - name: Aufgaben (Von mir vergeben)
         run: node scripts/testAufgaben.mjs
       - name: Verbindung zu QS (Prüfplan, EMPB)

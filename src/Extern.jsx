@@ -21,8 +21,9 @@ async function post(url, body) {
   return j;
 }
 
-function MailBox({ x, onClose }) {
+function MailBox({ x, onClose, onChanged }) {
   const [m, setM] = useState(null);
+  const [marked, setMarked] = useState(false); // beim Öffnen automatisch "angefragt per Mail" abgehakt
   const [lang, setLang] = useState(x.lang);
   const [copied, setCopied] = useState(false);
   useEffect(() => {
@@ -56,7 +57,16 @@ function MailBox({ x, onClose }) {
       <pre className="ex-body">{m.body}</pre>
       <div className="fg-actions">
         {m.to && (
-          <a className="btn sm primary" href={m.mailto}>
+          <a
+            className="btn sm primary"
+            href={m.mailto}
+            onClick={() => {
+              // Öffnen zählt als angefragt; falls die Mail doch nicht rausgeht: Rückgängig
+              post(`/api/extern/${encodeURIComponent(x.po)}/angefragt`, { weg: "mail" })
+                .then(() => (setMarked(true), onChanged && onChanged()))
+                .catch(() => {});
+            }}
+          >
             Im Mailprogramm öffnen
           </a>
         )}
@@ -67,7 +77,20 @@ function MailBox({ x, onClose }) {
           Schließen
         </button>
       </div>
-      <div className="fg-faint">Die App sendet nichts. Erst wenn du die Mail im Mailprogramm abschickst, geht sie raus. Danach unten „angefragt“ abhaken.</div>
+      {marked ? (
+        <div className="fg-msg">
+          Als „angefragt per Mail“ abgehakt.{" "}
+          <button
+            type="button"
+            className="fg-more"
+            onClick={() => post(`/api/extern/${encodeURIComponent(x.po)}/rueckgaengig`, {}).then(() => (setMarked(false), onChanged && onChanged())).catch(() => {})}
+          >
+            Rückgängig (Mail nicht abgeschickt)
+          </button>
+        </div>
+      ) : (
+        <div className="fg-faint">Die App sendet nichts. Die Mail öffnet sich im Mailprogramm; beim Öffnen wird „angefragt per Mail“ abgehakt.</div>
+      )}
     </div>
   );
 }
@@ -135,7 +158,7 @@ function Karte({ x, onChanged }) {
       </div>
       {x.aktion && <div className={`ex-todo ${x.aktion}`}>{AKTION[x.aktion]}</div>}
       {mail ? (
-        <MailBox x={x} onClose={() => setMail(false)} />
+        <MailBox x={x} onClose={() => setMail(false)} onChanged={onChanged} />
       ) : (
         <div className="fg-actions">
           <button type="button" className={`btn sm${x.aktion && x.aktion !== "warten" ? " primary" : ""}`} onClick={() => setMail(true)}>
@@ -154,6 +177,13 @@ function Karte({ x, onChanged }) {
           Neuer Termin vom Lieferanten
           <input type="date" value={termin} onChange={(e) => setTermin(e.target.value)} />
         </label>
+        <span className="ex-quick">
+          {[["+3 Tage", 3], ["+1 Woche", 7], ["+2 Wochen", 14]].map(([l, n]) => (
+            <button key={l} type="button" onClick={() => setTermin(new Date(Date.now() + n * 86400000).toLocaleDateString("sv-SE"))} title="ab heute">
+              {l}
+            </button>
+          ))}
+        </span>
         <input className="ex-notiz" value={notiz} onChange={(e) => setNotiz(e.target.value)} placeholder="Notiz (freiwillig)" maxLength={300} />
         <button type="button" className="btn sm" disabled={busy || !termin} onClick={() => run(() => post(`/api/extern/${encodeURIComponent(x.po)}/termin`, { termin, notiz }).then(() => setTermin("")))}>
           Termin übernehmen
