@@ -111,6 +111,8 @@ try {
   assert.equal(f.schritt, "Strahlen extern");
   assert.equal(f.anfrage, null);
   assert.equal(f.dringend, false, "nicht eingeplant = noch nicht dringend");
+  // Material als da melden (sonst wartet die Position auf die nur angefragte Bestellung, frühestens in 7 Tagen)
+  await api("PUT", "/api/av", { order_id: orders.find((o) => o.odoo_ref === "FA01122").id, item: "material", status: "bereit" });
   await api("PUT", `/api/orders/${orders.find((o) => o.odoo_ref === "FA01122").id}`, { machine: "dmu40", hours: 4 });
   d = await api("GET", "/api/extern?neu=1");
   f = d.fehlt.find((x) => x.fa === "FA01122");
