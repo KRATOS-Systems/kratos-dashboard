@@ -7,7 +7,7 @@ import BomHinweis from "./BomHinweis.jsx";
 import Vollstaendig from "./Vollstaendig.jsx";
 import Terminverlauf from "./Terminverlauf.jsx";
 import FehlerMelden from "./FehlerMelden.jsx";
-import { AvPaket } from "./Freigaben.jsx";
+import { AvPaket, useFreigaben, aenderungen } from "./Freigaben.jsx";
 import { ArbeitsplanKette, ArbeitsplanPanel } from "./Arbeitsplan.jsx";
 import { deviation, fixInOdoo, useArbeitsplaene } from "./arbeitsplan.js";
 
@@ -212,6 +212,9 @@ export default function AvView({ avStdOf = () => null, orders, checks, planStart
     toast(`${ok} Arbeitspläne in Odoo umgestellt${problems.length ? `, nicht möglich bei ${problems.join(", ")}` : ""}`);
   }
   const [query, setQuery] = useState("");
+  // Vorschläge der KI je Position (AV-Pakete), für das Zeichen in der Zeile
+  const [fgData] = useFreigaben("av");
+  const vorschlag = new Map(((fgData && fgData.items) || []).filter((x) => x.art === "av").map((x) => [x.daten.orderId, x]));
   const [popKey, setPopKey] = useState(null);
   const [hoverOrder, setHoverOrder] = useState(null); // Auftrag, über dessen Zeile die Maus steht
   const [pinOrder, setPinOrder] = useState(null); // Auftrag der zuletzt aufgeklappten Zeile (bleibt umrandet)
@@ -383,6 +386,15 @@ export default function AvView({ avStdOf = () => null, orders, checks, planStart
           <div className={showOrder ? "fano" : "fano plain"}>
             {posNo(o)}
             {isNewAv(o, checks) && <span className="newpill" title="Neu aus Odoo übernommen">NEU</span>}
+            {vorschlag.get(o.id) && (() => {
+              const v = vorschlag.get(o.id).daten;
+              const warn = (v.warnungen || []).length;
+              return (
+                <span className={`kipill${warn ? " bad" : ""}`} title={(warn ? "Warnung: " + v.warnungen.join(" ") + " · " : "") + (aenderungen(v).join(", ") || "Hinweise") + " – aufklappen zum Freigeben"}>
+                  {warn ? "⚠ Vorschlag" : "✦ Vorschlag"}
+                </span>
+              );
+            })()}
             {o.odoo_draft && (
               <span className="draftpill" title="Der Fertigungsauftrag ist in Odoo noch im Entwurf. Der Kundenauftrag ist bestätigt, freigegeben wird der Fertigungsauftrag in Odoo.">
                 nicht freigegeben

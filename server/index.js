@@ -31,6 +31,7 @@ import registerMorgenbericht from "./morgenbericht.js";
 import registerProgramme from "./programme.js";
 import registerSollIst from "./sollIst.js";
 import registerZeichnung from "./zeichnung.js";
+import registerDatenqualitaet from "./datenqualitaet.js";
 import { registerMaschinenEingang, registerMaschinenLive } from "./maschinenLive.js";
 
 // Lokal dürfen Umgebungsvariablen in einer Datei .env stehen (nicht im Repository). Bei Hostinger gibt es sie nicht.
@@ -1244,6 +1245,7 @@ registerAbwesenheit(app, db);
 registerMorgenbericht(app, db);
 registerSollIst(app, db);
 registerZeichnung(app, db);
+registerDatenqualitaet(app, db);
 registerFeedback(app, db);
 registerTalosChat(app);
 qsBridge.start();

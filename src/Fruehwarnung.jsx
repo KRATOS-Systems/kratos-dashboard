@@ -239,7 +239,7 @@ function GroupHead({ name, items, onDone }) {
   );
 }
 
-export default function Fruehwarnung({ reloadKey, onChanged, open = true, onToggle }) {
+export default function Fruehwarnung({ reloadKey, onChanged, open = true, onToggle, embedded = false }) {
   const [data, setData] = useState(null);
   const [openFor, setOpenFor] = useState(null); // { source, tab }
   const [showAll, setShowAll] = useState(false);
@@ -358,6 +358,39 @@ export default function Fruehwarnung({ reloadKey, onChanged, open = true, onTogg
       </React.Fragment>
     );
   };
+
+  const liste = shown.length > 0 && (
+    <div className="fw-list">
+      {groups(shown).map((g) => (
+        <React.Fragment key={g.name}>
+          {g.items.length > 1 && (
+            <GroupHead
+              name={g.name}
+              items={g.items}
+              onDone={(j) => {
+                if (j) setData(j);
+                if (onChanged) onChanged();
+              }}
+            />
+          )}
+          {g.items.map(row)}
+        </React.Fragment>
+      ))}
+    </div>
+  );
+  // Im Arbeitskorb: nur die Liste, der Kopf steht dort schon
+  if (embedded)
+    return (
+      <div className="fruehwarn fw-embedded">
+        {err && <div className="fw-err">{err}</div>}
+        {rest.length > 0 && (
+          <button type="button" className="btn sm quiet" onClick={() => setShowAll((v) => !v)}>
+            {showAll ? "Nur Offene zeigen" : `Alle ${data.items.length} zeigen`}
+          </button>
+        )}
+        {liste}
+      </div>
+    );
 
   return (
     <div id="fruehwarnung" className={`fruehwarn note${c.nichtInformiert ? " bad" : ""} rise`} style={{ "--i": 1 }}>

@@ -4,14 +4,13 @@ import { isNewPlan, DEFAULT_WEEK_CAPACITY, MACHINES, SHIFT_MODELS, addDays, days
 import { parseOdooExport } from "./odooImport.js";
 import { holidaysBavaria } from "./holidays.js";
 import AvView, { avUrgentCount } from "./Av.jsx";
-import Fruehwarnung from "./Fruehwarnung.jsx";
 import Terminverlauf from "./Terminverlauf.jsx";
 import Auslastung from "./Auslastung.jsx";
 import PlanVerbessern from "./PlanVerbessern.jsx";
-import Heute from "./Heute.jsx";
-import Freigaben from "./Freigaben.jsx";
+import Arbeitskorb from "./Arbeitskorb.jsx";
 const Kennzahlen = lazy(() => import("./Kennzahlen.jsx"));
 const Extern = lazy(() => import("./Extern.jsx"));
+const Datenqualitaet = lazy(() => import("./Datenqualitaet.jsx"));
 const LieferterminAnfrage = lazy(() => import("./LieferterminAnfrage.jsx"));
 const Abwesend = lazy(() => import("./Abwesend.jsx"));
 import FehlerMelden from "./FehlerMelden.jsx";
@@ -145,7 +144,15 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
   const [fwOpen, setFwOpen] = useState(false); // Liste der Frühwarnung aufgeklappt
   const [docsFor, setDocsFor] = useState(null); // Position, deren Zeichnung und 3D-Modell gerade offen sind
   const [pvOpen, setPvOpen] = useState(false); // "Plan verbessern" aufgeklappt
-  const [fgOpen, setFgOpen] = useState(false); // KI-Vorschläge zur Freigabe aufgeklappt
+  const [korb, setKorb] = useState([]); // Zeilen aus "Heute" (für die Zähler an den Reitern)
+  const [dqN, setDqN] = useState(null); // offene Punkte der Datenqualität
+  const [vorschlagIds, setVorschlagIds] = useState([]); // Positionen, die der Planvorschlag ändert (Vorschau im Zeitstrahl)
+  useEffect(() => {
+    fetch("/api/datenqualitaet")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => j && setDqN(j.gesamt))
+      .catch(() => {});
+  }, [fwKey]); // eslint-disable-line react-hooks/exhaustive-deps
   // Sprung aus "Heute zu tun" an die Stelle, wo man es erledigt
   const scrollTo = (id) => setTimeout(() => document.getElementById(id)?.scrollIntoView({ block: "start", behavior: "smooth" }), 80);
   const jump = (ziel) => {
@@ -153,12 +160,8 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
     if (ziel === "sync") return openSync();
     setTab("zeit");
     if (ziel === "extern") return setTab("extern");
-    if (ziel === "freigaben") {
-      setFgOpen(true);
-      scrollTo("freigaben");
-    } else if (ziel === "fruehwarnung") {
-      setFwOpen(true);
-      scrollTo("fruehwarnung");
+    if (ziel === "freigaben" || ziel === "fruehwarnung") {
+      scrollTo("arbeitskorb");
     } else if (ziel === "planverbessern") {
       setPvOpen(true);
       scrollTo("planverbessern");
@@ -2623,6 +2626,12 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
 
   // Liste hinter der angeklickten Kennzahl: jede Zeile öffnet die Position
   const hlRows = () => {
+    if (hl === "vorschlag") {
+      return [
+        ...positions.filter((x) => vorschlagIds.includes(x.id)).map((x) => ({ id: x.id, ids: [x.id], o: x.o, title: x.no, text: x.source + " · wird umgestellt", where: x.place, color: "var(--warn)" })),
+        ...poolOrders.filter((o) => vorschlagIds.includes(o.id)).map((o) => ({ id: o.id, ids: [o.id], o, title: posNo(o), text: groupLabelOf(o) + " · wird neu eingeplant", where: "noch keine Maschine", color: "var(--faint)" })),
+      ];
+    }
     if (hl === "late") {
       const seen = new Set();
       return positions
@@ -2663,7 +2672,7 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
     if (!hl) return null;
     const rows = hlRows();
     const n = rows.length;
-    const lab = hl === "late" ? "Liefertermin gefährdet" : hl === "soon" ? "Starten bald, nicht bereit" : "Noch keine Maschine";
+    const lab = hl === "late" ? "Liefertermin gefährdet" : hl === "soon" ? "Starten bald, nicht bereit" : hl === "vorschlag" ? "Planvorschlag: betroffene Positionen" : "Noch keine Maschine";
     const unit = hl === "late" ? (n === 1 ? "Auftrag" : "Aufträge") : n === 1 ? "Position" : "Positionen";
     return (
       <>
@@ -3597,9 +3606,19 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
         </div>
       </div>
 
-      <Heute reloadKey={fwKey} onJump={jump} />
-      <Freigaben reloadKey={fwKey} open={fgOpen} onToggle={() => setFgOpen((v) => !v)} onChanged={() => fetch("/api/orders").then((r) => r.json()).then((d) => setOrders(d.orders)).catch(() => {})} />
-      <Fruehwarnung reloadKey={fwKey} open={fwOpen} onToggle={() => setFwOpen((v) => !v)} onChanged={() => fetch("/api/orders").then((r) => r.json()).then((d) => setOrders(d.orders)).catch(() => {})} />
+      <Arbeitskorb
+        reloadKey={fwKey}
+        onJump={jump}
+        onCounts={setKorb}
+        onChanged={() => fetch("/api/orders").then((r) => r.json()).then((d) => setOrders(d.orders)).catch(() => {})}
+        onHighlight={(ids) => {
+          setVorschlagIds(ids);
+          setHl("vorschlag");
+          setHlSel(ids.length ? { ids, anchor: ids[0] } : null);
+          setTab("zeit");
+          scrollTo("planverbessern");
+        }}
+      />
 
       {preview && (
         <div className="note warn rise" style={{ "--i": 1 }}>
@@ -3653,6 +3672,14 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
         </button>
         <button type="button" className={tab === "extern" ? "on" : ""} onClick={() => setTab("extern")} title="Bestellt, aber noch nicht da: Lieferanten, Wareneingänge, Bestellung fehlt">
           Extern
+          {(() => {
+            const ex = korb.filter((i) => ["lieferant", "bestellungFehlt", "lieferantVorab"].includes(i.id));
+            const n = ex.reduce((a, i) => a + i.n, 0);
+            return n > 0 ? <span className={`cnt ${ex.some((i) => i.tone === "bad") ? "bad" : "warn"}`}>{n}</span> : null;
+          })()}
+        </button>
+        <button type="button" className={tab === "dq" ? "on" : ""} onClick={() => setTab("dq")} title="Was in Odoo, Kalkulation oder App fehlt und die KI ausbremst">
+          Datenqualität{dqN ? <span className="cnt">{dqN}</span> : null}
         </button>
         <button type="button" className={tab === "kz" ? "on" : ""} onClick={() => setTab("kz")} title="Liefertreue, Stunden für AV und Planung, Übernahme der KI-Vorschläge">
           Kennzahlen
@@ -3685,6 +3712,13 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
         <div className="rise" style={{ "--i": 3 }}>
           <Suspense fallback={<div className="card fg-faint">Extern wird geladen …</div>}>
             <Extern reloadKey={fwKey} onChanged={() => fetch("/api/orders").then((r) => r.json()).then((d) => setOrders(d.orders)).catch(() => {})} />
+          </Suspense>
+        </div>
+      )}
+      {tab === "dq" && (
+        <div className="rise" style={{ "--i": 3 }}>
+          <Suspense fallback={<div className="card fg-faint">Datenqualität wird geladen …</div>}>
+            <Datenqualitaet reloadKey={fwKey} onCount={setDqN} />
           </Suspense>
         </div>
       )}
