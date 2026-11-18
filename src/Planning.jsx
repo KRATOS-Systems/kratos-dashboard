@@ -17,7 +17,7 @@ const Abwesend = lazy(() => import("./Abwesend.jsx"));
 import FehlerMelden from "./FehlerMelden.jsx";
 // Zeichnung und 3D erst laden, wenn jemand sie öffnet (three.js ist groß)
 const DocsDialog = lazy(() => import("./PartDocs.jsx").then((m) => ({ default: m.DocsDialog })));
-import { AV_ITEMS, AV_STATUS, AV_TEAM, isNewAv, avKey, avState, avSummary } from "./avLib.js";
+import { AV_ITEMS, AV_STATUS, AV_TEAM, isNewAv, avKey, avState, avSummary, startklar } from "./avLib.js";
 import { STAFF, ACTIVITIES, STAFF_DEFAULTS, responsible, avResponsible, sharedMachine } from "./staffLib.js";
 import Avatar from "./Avatar.jsx";
 import { AppTile, Ico, LaneTile, MTile, Thumb, useToast, partImg } from "./ui.jsx";
@@ -419,6 +419,15 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
     });
     return m;
   }, [prioKeys, groupByKey]);
+  // Nicht startklar: was einer eingeplanten Position noch fehlt (für Streifen auf der Karte und den Hinweis)
+  const notReady = (ids) => {
+    const miss = new Set();
+    ids.forEach((id) => {
+      const o = orders.find((x) => x.id === id);
+      (startklar(o, checks) || []).forEach((m) => miss.add(m));
+    });
+    return [...miss];
+  };
   const isPrio = (ids) => prioKeys.size > 0 && ids.some((id) => { const o = orders.find((x) => x.id === id); return o && prioKeys.has(groupKeyOf(o)); });
   const togglePrio = async (o) => {
     const key = groupKeyOf(o);
@@ -1619,6 +1628,11 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
             <MaterialBadge o={o} />
             {o.odoo_draft && <span className="pill warn" title="Der Fertigungsauftrag ist in Odoo noch im Entwurf. Freigegeben wird er in Odoo.">nicht freigegeben</span>}
             {o.due_shifts > 0 && o.due_original && <span className="pill warn" title={`Ursprünglicher Liefertermin: ${fmtShort(o.due_original)}${o.due_original.slice(0, 4)}`}>Termin {o.due_shifts}× verschoben</span>}
+            {(startklar(o, checks) || []).length > 0 && (
+              <span className="pill bad" title="Eingeplant heißt noch nicht startklar: Das fehlt, bevor die Position auf der Maschine anfangen kann">
+                nicht startklar: {startklar(o, checks).join(", ")}
+              </span>
+            )}
             {o.odoo_bom === "muster" && <span className="pill warn" title="Die Stückliste in Odoo hat nur Musterwerte (Referenz MUSTER oder jeder Arbeitsgang genau 60 Minuten). Maschine und Zeit sind nicht geprüft: Zeiten aus der Kalkulation oder Erfahrung in Odoo eintragen.">Zeit ungeprüft (Muster)</span>}
             {o.odoo_bom === "none" && <span className="pill warn" title="In Odoo hat der Fertigungsauftrag keine Stückliste, damit auch keine Arbeitsgänge.">keine Stückliste</span>}
             {o.odoo_bom === "leer" && <span className="pill warn" title="Die Stückliste in Odoo hat keine Arbeitsgänge.">keine Arbeitsgänge</span>}
@@ -2480,11 +2494,12 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
         const isSel = part.select != null && part.select === detailId;
         const isFresh = fresh != null && part.ids.includes(fresh);
         const tag = status === "late" ? <em className="tag bad" style={{ fontStyle: "normal" }}>+{g.lateDays} T</em> : status === "tight" && g && g.diff != null ? <em className="tag warn" style={{ fontStyle: "normal" }}>Puffer {Math.max(1, Math.floor(-g.diff))} T</em> : null;
-        const tipHtml = tipFor(part.tipTitle, part.tip, partImg(orders.find((x) => x.id === part.ids[0])));
+        const miss = notReady(part.ids);
+        const tipHtml = tipFor(part.tipTitle, miss.length ? [...part.tip, `Nicht startklar: ${miss.join(", ")}`] : part.tip, partImg(orders.find((x) => x.id === part.ids[0])));
         bars.push(
           <div
             key={`${block.key}-${part.ids[0]}`}
-            className={`bar amp-${ampel(g)}${status === "late" ? " late" : ""}${hlCls}${dim2}${grpCls}${isSel ? " sel" : ""}${linked ? " linked" : ""}${isFresh ? " fresh" : ""}${isDragged ? " dragged" : ""}${isPrio(part.ids) ? " prio" : ""}`}
+            className={`bar amp-${ampel(g)}${status === "late" ? " late" : ""}${hlCls}${dim2}${grpCls}${isSel ? " sel" : ""}${linked ? " linked" : ""}${isFresh ? " fresh" : ""}${isDragged ? " dragged" : ""}${isPrio(part.ids) ? " prio" : ""}${miss.length ? " nostart" : ""}`}
             data-bar="1"
             data-ids={part.ids.map((id) => `i${id}`).join(" ")}
             role="button"

@@ -7,6 +7,7 @@ import BomHinweis from "./BomHinweis.jsx";
 import Vollstaendig from "./Vollstaendig.jsx";
 import Terminverlauf from "./Terminverlauf.jsx";
 import FehlerMelden from "./FehlerMelden.jsx";
+import AvAktionen from "./AvAktionen.jsx";
 import { AvPaket, useFreigaben, aenderungen } from "./Freigaben.jsx";
 import { ArbeitsplanKette, ArbeitsplanPanel } from "./Arbeitsplan.jsx";
 import { deviation, fixInOdoo, useArbeitsplaene } from "./arbeitsplan.js";
@@ -105,6 +106,7 @@ function AvPanel({ avStdOf = () => null, r, checks, orders, onSet, onBulk, peopl
           </div>
         </div>
         <AvPaket orderId={o.id} onChanged={onReload} />
+        {o.odoo_id && <AvAktionen orderId={o.id} onChanged={onReload} />}
         {repeatSrc && (
           <div className="note" style={{ margin: "10px 0 0" }}>
             <b>Wiederholteil:</b> Das gleiche Teil wurde schon als {posNo(repeatSrc)} vorbereitet. Programm, Werkzeuge, Spannmittel, Prüfplan und EMPB samt Zuständigem können übernommen werden.

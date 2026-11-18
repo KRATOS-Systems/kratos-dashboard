@@ -1807,3 +1807,29 @@ a.btn { text-decoration: none; }
 .pool-muster { margin-top: 3px; color: var(--warn); font-size: 12px; font-weight: 600; }
 
 .fg-av .fg-top { align-items: center; }
+
+/* Nicht startklar: schräge Streifen auf der Karte (Material, Programm, FA im Entwurf, Musterwerte …) */
+.bar.nostart::before { content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; background: repeating-linear-gradient(135deg, transparent 0 7px, color-mix(in srgb, var(--warn) 38%, transparent) 7px 10px); }
+
+/* AV-Aktionen: in Odoo erledigen (Zeiten, Material nach AV001, FA bestätigen, bestellen) */
+.ava { margin-top: 12px; border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; background: var(--surface); display: grid; gap: 8px; min-width: 0; }
+.ava-head { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
+.ava-head b { font: 600 15px var(--f-display); }
+.ava-head small { color: var(--muted); font-size: 12px; }
+.ava-list { display: grid; gap: 6px; }
+.ava-row { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; gap: 10px; align-items: start; padding: 8px; border-radius: 8px; background: var(--sunken); }
+.ava-row.ok { opacity: .75; }
+.ava-n { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; background: var(--line); font: 700 12px var(--f-mono); }
+.ava-row.ok .ava-n { background: var(--ok-soft); color: var(--ok); }
+.ava-t { display: grid; gap: 3px; min-width: 0; }
+.ava-t small { color: var(--muted); font-size: 12.5px; line-height: 1.35; }
+.ava-ok { color: var(--ok); font-weight: 600; font-size: 13px; align-self: center; }
+.ava-err { color: var(--bad); font-size: 13px; font-weight: 600; }
+.ava-forms { display: grid; gap: 4px; margin-top: 4px; }
+.ava-form { display: grid; grid-template-columns: 18px minmax(0, 1fr); column-gap: 6px; align-items: center; padding: 5px 8px; border: 1px solid var(--line); border-radius: 7px; cursor: pointer; background: var(--surface); }
+.ava-form.on { border-color: var(--ink); }
+.ava-form input { grid-row: span 2; margin: 0; }
+.ava-form b { font: 600 13px var(--f-mono); }
+.ava-form small { grid-column: 2; }
+.ava-done { margin: 0; padding-left: 18px; color: var(--ok); font-size: 12.5px; }
+.card-sub { color: var(--muted); font-size: 12.5px; margin-top: 10px; }

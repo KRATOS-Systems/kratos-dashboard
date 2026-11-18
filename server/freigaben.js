@@ -121,6 +121,14 @@ export default function registerFreigaben(app, db, helpers) {
     }
     return prev.length ? { from: prev[0].odoo_ref || prev[0].order_no, notes: {} } : null;
   }
+  // Wiederholteil: Waren Werkzeuge/Spannmittel beim letzten erledigten Auftrag desselben Teils bereit, ist es diesmal vermutlich dasselbe
+  function repeatReady(o) {
+    if (!o.product) return null;
+    const prev = db.prepare("SELECT id, order_no, odoo_ref FROM orders WHERE done = 1 AND product = ? AND id != ? ORDER BY COALESCE(done_date, '') DESC, id DESC LIMIT 1").get(o.product, o.id);
+    if (!prev) return null;
+    const rows = db.prepare("SELECT item, status FROM av_checks WHERE order_id = ? AND item IN ('werkzeuge', 'spannmittel') AND status = 'bereit'").all(prev.id);
+    return rows.length ? { from: prev.odoo_ref || prev.order_no, items: rows.map((r) => r.item) } : null;
+  }
 
   // Oberflächen-/Fremdarbeitsgänge laut Odoo-Arbeitsplan (für die Plausibilität)
   const woCache = new Map(); // Odoo-Fertigungsauftrag -> { at, names }
@@ -213,6 +221,11 @@ export default function registerFreigaben(app, db, helpers) {
     if (prog) {
       notes.programm = prog.text;
       if (prog.status) status.programm = prog.status;
+    }
+    const rr = repeatReady(o);
+    if (rr) for (const it of rr.items) {
+      status[it] = "bereit";
+      if (!notes[it]) notes[it] = `wie bei ${rr.from} (Wiederholteil)`;
     }
     // nur vorschlagen, wo die AV noch nichts notiert hat und der Punkt nicht schon erledigt ist
     for (const it of Object.keys(notes)) {

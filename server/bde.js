@@ -147,6 +147,7 @@ export function isPhone(req) {
 
 export default function registerBde(app, db, staff) {
   const odoo = createOdooClient();
+  app.locals.odooBde = odoo; // AV-Aktionen (server/avAktionen.js) nutzen denselben, eng freigegebenen Zugang
   const overhead = createOverhead({ odoo, m2o, parseOdoo, berlinDate });
   const SECRET = process.env.BDE_SECRET || randomBytes(32).toString("hex");
   if (!process.env.BDE_SECRET) console.warn("BDE: BDE_SECRET fehlt, Anmeldungen gelten nur bis zum nächsten Neustart");

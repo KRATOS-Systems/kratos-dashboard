@@ -35,6 +35,7 @@ import registerSollIst from "./sollIst.js";
 import registerZeichnung from "./zeichnung.js";
 import registerDatenqualitaet from "./datenqualitaet.js";
 import registerPrio from "./prio.js";
+import registerAvAktionen from "./avAktionen.js";
 import { registerMaschinenEingang, registerMaschinenLive } from "./maschinenLive.js";
 
 // Lokal dürfen Umgebungsvariablen in einer Datei .env stehen (nicht im Repository). Bei Hostinger gibt es sie nicht.
@@ -489,7 +490,8 @@ async function odooMachineMoves(rows, to) {
     if (!r.odoo_id || r.done || r.machine === to || seen.has(r.odoo_id)) continue;
     if (r.machine !== "" && !MACHINES.includes(r.machine)) continue; // aus QS oder Extern zurück: kein Maschinenwechsel
     seen.add(r.odoo_id);
-    const res = await hook(r.odoo_id, r.machine, to);
+    const meta = db.prepare("SELECT part_label, is_split, parent_ref FROM orders WHERE id = ?").get(r.id) || {};
+    const res = await hook(r.odoo_id, r.machine, to, { ganz: !meta.part_label && !meta.is_split && !meta.parent_ref });
     if (res && res.status !== "nichts") out.push({ id: r.id, ref: r.odoo_ref, ...res });
   }
   return out;
@@ -812,7 +814,7 @@ app.post("/api/orders/reorder", wrap(async (req, res) => {
   if (!MACHINES.includes(machine) || !Array.isArray(ids) || !ids.every(Number.isInteger)) {
     return res.status(400).json({ error: "invalid payload" });
   }
-  const before = ids.length ? db.prepare(`SELECT id, machine, odoo_id, odoo_ref, done FROM orders WHERE id IN (${ids.map(() => "?").join(",")})`).all(...ids) : [];
+  const before = ids.length ? db.prepare(`SELECT id, machine, odoo_id, odoo_ref, done, part_label, is_split, parent_ref FROM orders WHERE id IN (${ids.map(() => "?").join(",")})`).all(...ids) : [];
   // Setzt Reihenfolge und Maschine, so lassen sich Aufträge auch zwischen Maschinen verschieben
   const update = db.prepare("UPDATE orders SET machine = ?, position = ? WHERE id = ?");
   db.exec("BEGIN");
@@ -1250,6 +1252,7 @@ registerSollIst(app, db);
 registerZeichnung(app, db);
 registerDatenqualitaet(app, db);
 registerPrio(app, db, { staffName });
+registerAvAktionen(app, db);
 
 // Platz-Vorschlag für eine noch nicht eingeplante Position (Zeile im Pool der Planung): dieselbe Rechnung wie „plan_platz_finden“
 // im Chat, mit der Maschinenregel des Planvorschlags (eingeschränkte M1 nur, wenn klar ist, dass das Teil dort geht). Speichert nichts.
