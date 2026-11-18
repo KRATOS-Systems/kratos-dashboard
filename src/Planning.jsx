@@ -20,7 +20,7 @@ const DocsDialog = lazy(() => import("./PartDocs.jsx").then((m) => ({ default: m
 import { AV_ITEMS, AV_STATUS, AV_TEAM, isNewAv, avKey, avState, avSummary, startklar } from "./avLib.js";
 import { STAFF, ACTIVITIES, STAFF_DEFAULTS, responsible, avResponsible, sharedMachine } from "./staffLib.js";
 import Avatar from "./Avatar.jsx";
-import { AppTile, Ico, LaneTile, MTile, Thumb, useToast, partImg } from "./ui.jsx";
+import { AppTile, Ico, LaneIcon, LaneTile, MTile, Thumb, useToast, partImg } from "./ui.jsx";
 import { pollEvery } from "./poll.js";
 import {
   DEFAULT_TIGHT_DAYS,
@@ -2382,6 +2382,22 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
     return { markers, lanes: laneEnds.length };
   };
 
+  // Stunden dieser Woche (bis Sonntag) je Maschine: Anteil jeder geplanten Position, der in die Woche fällt
+  const weekEndOff = todayOff + (7 - ((new Date(today + "T00:00:00Z").getUTCDay() + 6) % 7));
+  const weekHoursOf = (mid) => {
+    const p = plan.find((x) => x.m.id === mid);
+    if (!p) return { h: 0, rate: 0 };
+    const h = p.items
+      .filter((it) => it.scheduled)
+      .reduce((s, it) => {
+        const st = it.pastStart ?? it.start;
+        const a = Math.max(st, todayOff);
+        const e = Math.min(it.end, weekEndOff);
+        const len = it.end - st;
+        return e > a && len > 0 ? s + remainingOf(it.o) * Math.min(1, (e - a) / len) : s;
+      }, 0);
+    return { h, rate: p.rate || 0 };
+  };
   const machineLane = (p, bi) => {
     const blocks = buildBlocks(p.items);
     const strips = [];
@@ -2602,18 +2618,25 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
     const trackH = Math.max(66, 60 + Math.max(1, rowEnds.length) * 16 + 6);
     return (
       <div className="lane" key={p.m.id}>
-        <div className="lab">
-          <Ampel machine={p.m.id} />
-          <MTile c={p.m.c} img={p.m.img} imgZoom={p.m.imgZoom} title={p.m.name} />
-          <div className="lt">
-            <b>{p.m.name}</b>
-            <small>{p.rate ? `${fmtH(p.rate)} h/Woche` : "keine Wochenleistung"}</small>
-
-          </div>
-          <button type="button" className="btn icon quiet addb" title="Auftrag von Hand hinzufügen" aria-label={`Auftrag zu ${p.m.short} hinzufügen`} onClick={() => addOrder(p.m.id)}>
-            <Ico n="plus" s={15} />
-          </button>
-        </div>
+        {(() => {
+          const w = weekHoursOf(p.m.id);
+          return (
+            <div className="lab lab-hero" style={{ "--mc": p.m.c }}>
+              {p.m.img && <img src={p.m.img} alt="" className="lab-photo" />}
+              <div className="lab-txt">
+                <b>{p.m.name}</b>
+                <AmpelPill machine={p.m.id} interactive />
+              </div>
+              <div className="lab-load" title="Geplante Stunden dieser Woche (bis Sonntag) von der Wochenleistung">
+                <small>{fmtH(round1(w.h))} / {p.rate ? fmtH(p.rate) : "–"} h Woche</small>
+                <span><i style={{ width: `${Math.min(100, p.rate ? (w.h / p.rate) * 100 : 0)}%` }} /></span>
+              </div>
+              <button type="button" className="lab-add" title="Auftrag von Hand hinzufügen" aria-label={`Auftrag zu ${p.m.short} hinzufügen`} onClick={() => addOrder(p.m.id)}>
+                <Ico n="plus" s={14} />
+              </button>
+            </div>
+          );
+        })()}
         <div
           className={`track${dragActive && drag.target?.machine === p.m.id ? " droptarget" : ""}`}
           ref={(el) => {
@@ -2671,19 +2694,25 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
 
   const minorLane = ({ lane, blocks, rows }) => (
     <div className="lane minor" key={lane.id}>
-      <div className="lab">
-        <LaneTile id={lane.id} c={lane.c} />
-        <div className="lt">
-          <b>{lane.name}</b>
-          <small>{lane.cap}</small>
-
-        </div>
-        {lane.id !== "qs" && (
-          <button type="button" className="btn icon quiet addb" title="Auftrag von Hand hinzufügen" aria-label={`Auftrag zu ${lane.name} hinzufügen`} onClick={() => addLaneOrder(lane)}>
-            <Ico n="plus" s={15} />
-          </button>
-        )}
-      </div>
+      {(() => {
+        const list = orders.filter((o) => !o.done && o.machine === lane.id);
+        const over = list.filter((o) => o.extern_start && addDays(o.extern_start, daysIn(o)) < today).length;
+        return (
+          <div className="lab lab-hero lane-hero" style={{ "--mc": lane.c }}>
+            <span className="lane-big"><LaneIcon id={lane.id} s={58} /></span>
+            <div className="lab-txt">
+              <b>{lane.name}</b>
+              <span className="amp-pill"><i style={{ "--c": over ? "var(--bad)" : list.length ? "var(--ok)" : "var(--faint)" }} />{list.length} {list.length === 1 ? "Position" : "Positionen"}{over ? ` · ${over} überfällig` : ""}</span>
+            </div>
+            <div className="lab-load"><small>{lane.cap}</small></div>
+            {lane.id !== "qs" && (
+              <button type="button" className="lab-add" title="Auftrag von Hand hinzufügen" aria-label={`Auftrag zu ${lane.name} hinzufügen`} onClick={() => addLaneOrder(lane)}>
+                <Ico n="plus" s={14} />
+              </button>
+            )}
+          </div>
+        );
+      })()}
       <div
         className={`track${dragActive && drag.target?.machine === lane.id ? " droptarget" : ""}`}
         ref={(el) => {
@@ -3348,22 +3377,6 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
         {isOpen && <div className="bd-sub">{grp.items.map((o) => boardCardOf(o, col))}</div>}
       </div>
     );
-  };
-  // Stunden dieser Woche (bis Sonntag) je Maschine: Anteil jeder geplanten Position, der in die Woche fällt
-  const weekEndOff = todayOff + (7 - ((new Date(today + "T00:00:00Z").getUTCDay() + 6) % 7));
-  const weekHoursOf = (mid) => {
-    const p = plan.find((x) => x.m.id === mid);
-    if (!p) return { h: 0, rate: 0 };
-    const h = p.items
-      .filter((it) => it.scheduled)
-      .reduce((s, it) => {
-        const st = it.pastStart ?? it.start;
-        const a = Math.max(st, todayOff);
-        const e = Math.min(it.end, weekEndOff);
-        const len = it.end - st;
-        return e > a && len > 0 ? s + remainingOf(it.o) * Math.min(1, (e - a) / len) : s;
-      }, 0);
-    return { h, rate: p.rate || 0 };
   };
   const boardCard = (
     <div className="card" id="board">

@@ -90,15 +90,25 @@ const stateLine = (m) => {
 // Kleine Ampel im Maschinenkopf der Planung
 // Kleine Status-Pille (läuft, rüsten, steht …) für Kopfzeilen, gleiche Live-Daten wie die Ampel
 const PILL = { lauf: ["läuft", "var(--ok)"], ruesten: ["rüsten", "var(--warn)"], pause: ["Pause", "var(--warn)"], stoerung: ["Störung", "var(--bad)"], steht: ["steht", "var(--bad)"], frei: ["frei", "var(--faint)"] };
-export function AmpelPill({ machine }) {
+export function AmpelPill({ machine, interactive = false }) {
   const d = useAmpel();
+  const [open, setOpen] = useState(false);
   const m = d && d.machines && d.machines[machine];
   const [t, c] = PILL[(m && m.state) || "frei"] || PILL.frei;
-  return (
-    <span className="amp-pill" title={m ? stateLine(m) : "keine Live-Daten"}>
+  const inner = (
+    <>
       <i style={{ "--c": c }} />
       {m ? t : "keine Daten"}
-    </span>
+    </>
+  );
+  if (!interactive || !m) return <span className="amp-pill" title={m ? stateLine(m) : "keine Live-Daten"}>{inner}</span>;
+  return (
+    <>
+      <button type="button" className="amp-pill btn-pill" title={`${stateLine(m)} · Klicken: Details, Lauf beenden`} onClick={(e) => { e.stopPropagation(); setOpen(true); }}>
+        {inner}
+      </button>
+      {open && <AmpelDialog machine={machine} onClose={() => setOpen(false)} />}
+    </>
   );
 }
 

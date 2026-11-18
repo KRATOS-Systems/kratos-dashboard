@@ -147,6 +147,11 @@ const LANE_ICON = {
   extern: '<path d="M16 5l11.5 6.2L16 17.4 4.5 11.2z"/><path d="M4.5 16.4L16 22.6l11.5-6.2"/><path d="M4.5 21.4L16 27.6l11.5-6.2"/>',
 };
 
+// Großes Symbol einer Station (QS, Extern) für ausgefüllte Köpfe
+export function LaneIcon({ id, s = 64 }) {
+  return <svg className="lane-icon" width={s} height={s} viewBox="0 0 32 32" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" dangerouslySetInnerHTML={{ __html: LANE_ICON[id] || "" }} />;
+}
+
 export function LaneTile({ id, c }) {
   return (
     <span className="mtile" style={{ "--mc": c }}>
