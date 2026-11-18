@@ -24,6 +24,10 @@ import registerLogin from "./login.js";
 import registerQsBridge from "./qsBridge.js";
 import registerFreigaben from "./freigaben.js";
 import registerKennzahlen from "./kennzahlen.js";
+import registerExtern from "./extern.js";
+import registerLiefertermin from "./liefertermin.js";
+import registerAbwesenheit from "./abwesenheit.js";
+import registerMorgenbericht from "./morgenbericht.js";
 
 // Lokal dürfen Umgebungsvariablen in einer Datei .env stehen (nicht im Repository). Bei Hostinger gibt es sie nicht.
 try {
@@ -230,7 +234,7 @@ const isTotal = (v) => v === null || (typeof v === "number" && Number.isFinite(v
 const app = express();
 
 // Planung für Talos als MCP-Server (nur lesen); vor dem Passwortschutz, eigener Schutz über TALOS_PLAN_SECRET
-registerTalosPlan(app, db, { orderOut: (r) => orderOut(r), planSettingsOut: () => planSettingsOut() });
+registerTalosPlan(app, db, { orderOut: (r) => orderOut(r), planSettingsOut: () => planSettingsOut(), odooMachineMoves: (rows, to) => odooMachineMoves(rows, to), dueChange: (id, due, o) => dueHistory.change(id, due, o) });
 
 // Verbindung zu QS (Prüfplan/EMPB der Arbeitsvorbereitung); vor dem Passwortschutz, eigener Schutz über den Schlüssel (server/qsBridge.js)
 const qsBridge = registerQsBridge(app, db, { orderOut: (r) => orderOut(r), planSettingsOut: () => planSettingsOut() });
@@ -427,6 +431,7 @@ const orderOut = (r) => ({
   extern_start: r.extern_start,
   supplier: r.supplier,
   po_id: r.po_id,
+  parent_ref: r.parent_ref || null,
   new_since: r.new_since && /^\d{4}-/.test(r.new_since) ? r.new_since : null,
 });
 
@@ -1215,6 +1220,10 @@ const staff = registerStaff(app, db);
 registerBde(app, db, staff);
 registerFreigaben(app, db, { orderOut: (r) => orderOut(r), planSettingsOut: () => planSettingsOut(), odooMachineMoves: (rows, to) => odooMachineMoves(rows, to) });
 registerKennzahlen(app, db);
+registerExtern(app, db, { orderOut: (r) => orderOut(r), planSettingsOut: () => planSettingsOut(), staffName });
+registerLiefertermin(app, db, { orderOut: (r) => orderOut(r), planSettingsOut: () => planSettingsOut() });
+registerAbwesenheit(app, db);
+registerMorgenbericht(app, db);
 registerFeedback(app, db);
 registerTalosChat(app);
 qsBridge.start();

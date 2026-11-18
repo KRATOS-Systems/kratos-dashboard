@@ -57,6 +57,12 @@ jobs:
         run: node scripts/testAurel.mjs
       - name: KI-Planer (AV-Pakete, Freigaben, Morgenvorschlag, Fortschritt, Kennzahlen, Talos)
         run: node scripts/testKiPlaner.mjs
+      - name: Extern & Wareneingang (überfällig, Lieferant anfragen, Bestellung fehlt, Termintreue)
+        run: node scripts/testExtern.mjs
+      - name: Planen im Chat (Schreib-Werkzeuge nur mit Chat-Schlüssel, erst Vorschau, dann Bestätigung)
+        run: node scripts/testChatPlan.mjs
+      - name: Planungshilfen (Liefertermin für Anfragen, Abwesenheit, Morgenbericht)
+        run: node scripts/testPlanHilfen.mjs
       - name: Aufgaben (Von mir vergeben)
         run: node scripts/testAufgaben.mjs
       - name: Verbindung zu QS (Prüfplan, EMPB)

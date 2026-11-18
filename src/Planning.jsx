@@ -11,6 +11,9 @@ import PlanVerbessern from "./PlanVerbessern.jsx";
 import Heute from "./Heute.jsx";
 import Freigaben from "./Freigaben.jsx";
 const Kennzahlen = lazy(() => import("./Kennzahlen.jsx"));
+const Extern = lazy(() => import("./Extern.jsx"));
+const LieferterminAnfrage = lazy(() => import("./LieferterminAnfrage.jsx"));
+const Abwesend = lazy(() => import("./Abwesend.jsx"));
 import FehlerMelden from "./FehlerMelden.jsx";
 // Zeichnung und 3D erst laden, wenn jemand sie öffnet (three.js ist groß)
 const DocsDialog = lazy(() => import("./PartDocs.jsx").then((m) => ({ default: m.DocsDialog })));
@@ -149,6 +152,7 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
     if (ziel === "av") return goTo && goTo("av");
     if (ziel === "sync") return openSync();
     setTab("zeit");
+    if (ziel === "extern") return setTab("extern");
     if (ziel === "freigaben") {
       setFgOpen(true);
       scrollTo("freigaben");
@@ -3647,6 +3651,9 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
         <button type="button" className={tab === "ausl" ? "on" : ""} onClick={() => setTab("ausl")} title="Wie voll sind die Maschinen in den nächsten Wochen?">
           Auslastung
         </button>
+        <button type="button" className={tab === "extern" ? "on" : ""} onClick={() => setTab("extern")} title="Bestellt, aber noch nicht da: Lieferanten, Wareneingänge, Bestellung fehlt">
+          Extern
+        </button>
         <button type="button" className={tab === "kz" ? "on" : ""} onClick={() => setTab("kz")} title="Liefertreue, Stunden für AV und Planung, Übernahme der KI-Vorschläge">
           Kennzahlen
         </button>
@@ -3674,6 +3681,13 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
         </>
       )}
       {tab === "auf" && <div className="rise" style={{ "--i": 3 }}>{ordersCard}</div>}
+      {tab === "extern" && (
+        <div className="rise" style={{ "--i": 3 }}>
+          <Suspense fallback={<div className="card fg-faint">Extern wird geladen …</div>}>
+            <Extern reloadKey={fwKey} onChanged={() => fetch("/api/orders").then((r) => r.json()).then((d) => setOrders(d.orders)).catch(() => {})} />
+          </Suspense>
+        </div>
+      )}
       {tab === "kz" && (
         <div className="rise" style={{ "--i": 3 }}>
           <Suspense fallback={<div className="card fg-faint">Kennzahlen werden geladen …</div>}>
@@ -3683,6 +3697,10 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
       )}
       {tab === "ausl" && (
         <div className="rise" style={{ "--i": 3 }}>
+          <Suspense fallback={null}>
+            <LieferterminAnfrage />
+            <Abwesend reloadKey={fwKey} />
+          </Suspense>
           <Auslastung reloadKey={fwKey} />
         </div>
       )}

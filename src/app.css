@@ -1636,3 +1636,54 @@ a.btn { text-decoration: none; }
 .fg-card { overflow: hidden; }
 .fg-card .fg-actions .btn { white-space: nowrap; }
 .freigaben .fg-card { white-space: normal; }
+
+/* Extern & Wareneingang (src/Extern.jsx) */
+.ex { padding: 14px 16px; font-size: 13px; display: grid; gap: 14px; white-space: normal; }
+.ex-chips { display: flex; gap: 8px; flex-wrap: wrap; }
+.ex-chips span { padding: 4px 10px; border-radius: 99px; background: var(--sunken); color: var(--muted); }
+.ex-chips span b { font: 700 14px var(--f-mono); color: var(--ink); margin-right: 3px; }
+.ex-chips span.bad { background: var(--bad-soft); color: var(--bad); }
+.ex-chips span.bad b { color: var(--bad); }
+.ex-chips span.warn { background: var(--warn-soft); color: var(--warn); }
+.ex-chips span.warn b { color: var(--warn); }
+.ex-sec { display: grid; gap: 8px; min-width: 0; }
+.ex-sec h4 { margin: 0; font: 600 14px var(--f-display); }
+.ex-sec p { margin: 0; font-size: 12px; }
+.ex-art { font-size: 11.5px; padding: 1px 7px; border-radius: 99px; background: var(--sunken); color: var(--muted); }
+.ex-st { font-size: 12px; font-weight: 600; margin-left: auto; }
+.ex-st.ueberfaellig { color: var(--bad); }
+.ex-st.heute, .ex-st.bald { color: var(--warn); }
+.ex-betr { font-size: 12.5px; display: flex; gap: 4px 10px; flex-wrap: wrap; }
+.ex-betr .bad, .ex .bad { color: var(--bad); }
+.ex .warn { color: var(--warn); }
+.ex .ok { color: var(--ok); }
+.ex-todo { font-weight: 600; font-size: 12.5px; }
+.ex-todo.anfragen, .ex-todo.erneut { color: var(--bad); }
+.ex-todo.vorab { color: var(--warn); }
+.ex-todo.warten { color: var(--muted); }
+.ex-new { display: inline-flex; gap: 6px; align-items: center; font-size: 12.5px; }
+.ex-new input, .ex-notiz { font: inherit; font-size: 12.5px; padding: 3px 8px; border: 1px solid var(--line-strong); border-radius: 7px; background: var(--surface); color: var(--ink); }
+.ex-notiz { width: 170px; }
+.ex-log { font-size: 11.5px; color: var(--muted); border-top: 1px dashed var(--line); padding-top: 4px; }
+.ex-mail { display: grid; gap: 6px; padding: 8px 10px; border: 1px solid var(--line-strong); border-radius: 9px; background: var(--sunken); }
+.ex-mail-top { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; font-size: 12.5px; }
+.ex-lang { display: inline-flex; gap: 4px; }
+.ex-lang button { font: inherit; font-size: 12px; padding: 2px 8px; border: 1px solid var(--line-strong); border-radius: 99px; background: none; color: var(--muted); cursor: pointer; }
+.ex-lang button.on { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.ex-subj { font-weight: 600; }
+.ex-body { margin: 0; white-space: pre-wrap; font: 12.5px/1.45 var(--f-body, inherit); max-height: 260px; overflow: auto; }
+
+/* Liefertermin für eine Anfrage (src/LieferterminAnfrage.jsx) */
+.lt { padding: 10px 14px; margin-bottom: 12px; font-size: 13px; display: grid; gap: 10px; }
+.lt .fg-title { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; background: none; border: 0; padding: 0; color: var(--ink); font: inherit; text-align: left; cursor: pointer; }
+.lt .fg-title b { font: 600 15px var(--f-display); }
+.lt-form { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; }
+.lt-form label { display: grid; gap: 2px; font-size: 11.5px; color: var(--muted); }
+.lt-form input, .lt-form select { font: inherit; font-size: 13px; padding: 4px 8px; border: 1px solid var(--line-strong); border-radius: 7px; background: var(--surface); color: var(--ink); width: 120px; }
+.lt-form .lt-check { display: flex; align-items: center; gap: 4px; }
+.lt-form .lt-check input { width: auto; }
+.lt-out { display: grid; gap: 8px; }
+.lt-best { font-size: 14px; }
+.lt-best b { font-weight: 700; }
+.abw { padding: 10px 14px; margin-bottom: 12px; font-size: 13px; }
+.abw ul { margin: 6px 0 0; padding: 0; list-style: none; display: flex; flex-wrap: wrap; gap: 4px 16px; }

@@ -440,34 +440,37 @@ export default function registerFreigaben(app, db, helpers) {
   });
 
   // Entscheiden: freigeben oder ablehnen (angemeldet mit PIN)
+  // Entscheiden (Browser mit PIN oder Chat-Planung): freigeben führt aus, ablehnen merkt sich die Begründung
+  const fail = (status, message) => Object.assign(new Error(message), { status });
+  async function decide(id, aktion, notiz, who) {
+    const f = db.prepare("SELECT * FROM freigaben WHERE id = ?").get(Number(id));
+    if (!f) throw fail(404, "Nicht gefunden");
+    if (f.status !== "offen") throw fail(409, "Darüber ist schon entschieden.");
+    notiz = String(notiz || "").slice(0, 300);
+    if (aktion === "ablehnen") {
+      setStatus.run("abgelehnt", now(), who, notiz || null, f.id);
+      return { ok: true, status: "abgelehnt" };
+    }
+    if (aktion !== "freigeben") throw fail(400, "aktion: freigeben oder ablehnen");
+    const fr = rowOut(f);
+    let result = "gesehen";
+    let odoo;
+    if (f.art === "av") result = applyAv(fr);
+    else if (f.art === "plan") {
+      const moved = applyPlan(fr);
+      odoo = [];
+      if (helpers.odooMachineMoves) for (const [mid, rows] of moved) odoo.push(...(await helpers.odooMachineMoves(rows, mid)));
+      result = `Plan übernommen${moved.size ? `, ${[...moved.values()].reduce((a, r) => a + r.length, 0)} Positionen auf eine Maschine gelegt` : ""}`;
+    }
+    setStatus.run("freigegeben", now(), who, [result, notiz].filter(Boolean).join(" · "), f.id);
+    return { ok: true, status: "freigegeben", ergebnis: result, ...(odoo ? { odoo } : {}) };
+  }
+
   app.post("/api/freigaben/:id", async (req, res) => {
     const s = sessionOf(req);
     if (!s) return res.status(401).json({ error: "Bitte zuerst unter „Mein Arbeitsplatz“ mit PIN anmelden." });
-    const f = db.prepare("SELECT * FROM freigaben WHERE id = ?").get(Number(req.params.id));
-    if (!f) return res.status(404).json({ error: "Nicht gefunden" });
-    if (f.status !== "offen") return res.status(409).json({ error: "Darüber ist schon entschieden." });
-    const aktion = req.body && req.body.aktion;
-    const notiz = String((req.body && req.body.notiz) || "").slice(0, 300);
-    const who = staffName(s.e) || `Mitarbeiter ${s.e}`;
-    if (aktion === "ablehnen") {
-      setStatus.run("abgelehnt", now(), who, notiz || null, f.id);
-      return res.json({ ok: true, status: "abgelehnt" });
-    }
-    if (aktion !== "freigeben") return res.status(400).json({ error: "aktion: freigeben oder ablehnen" });
     try {
-      const fr = rowOut(f);
-      let result = "gesehen";
-      if (f.art === "av") result = applyAv(fr);
-      else if (f.art === "plan") {
-        const moved = applyPlan(fr);
-        const odoo = [];
-        if (helpers.odooMachineMoves) for (const [mid, rows] of moved) odoo.push(...(await helpers.odooMachineMoves(rows, mid)));
-        result = `Plan übernommen${moved.size ? `, ${[...moved.values()].reduce((a, r) => a + r.length, 0)} Positionen auf eine Maschine gelegt` : ""}`;
-        setStatus.run("freigegeben", now(), who, [result, notiz].filter(Boolean).join(" · "), f.id);
-        return res.json({ ok: true, status: "freigegeben", ergebnis: result, odoo });
-      }
-      setStatus.run("freigegeben", now(), who, [result, notiz].filter(Boolean).join(" · "), f.id);
-      res.json({ ok: true, status: "freigegeben", ergebnis: result });
+      res.json(await decide(req.params.id, req.body && req.body.aktion, req.body && req.body.notiz, staffName(s.e) || `Mitarbeiter ${s.e}`));
     } catch (err) {
       res.status(err.status || 500).json({ error: err.message });
     }
@@ -514,6 +517,8 @@ export default function registerFreigaben(app, db, helpers) {
     hinweis: ({ titel, text, bezug }) =>
       upsert({ art: "hinweis", schluessel: "hinweis:" + Date.now() + ":" + Math.random().toString(36).slice(2, 7), bezug: bezug || null, titel: String(titel).slice(0, 140), text: String(text || "").slice(0, 2000), quelle: "Talos" }),
     vorschau: () => planPreview(inputs()),
+    entscheiden: (id, aktion, notiz, who) => decide(id, aktion, notiz, who),
+    vorbereiten: async () => ({ av: await prepareAv(), plan: preparePlan({ force: true, talos: false }) }),
   };
 
   // ---------- Hintergrund ----------

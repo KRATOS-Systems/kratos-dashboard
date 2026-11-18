@@ -9,6 +9,7 @@ import { timingSafeEqual } from "node:crypto";
 import { MACHINES, addDays, mondayOf, daysBetween, todayStr, DEFAULT_WEEK_CAPACITY } from "../src/lib.js";
 import { buildPlanDeps, buildGroups, applyMove, byPosition, groupKeyOf, groupLabelOf } from "../src/planLogic.js";
 import { avKey, avSummary, AV_STATUS } from "../src/avLib.js";
+import { chatTools } from "./chatPlan.js";
 
 const MAX_TEXT = 60000;
 const round1 = (x) => (x == null ? null : Math.round(x * 10) / 10);
@@ -122,7 +123,7 @@ const machineOf = (key) => {
 };
 
 // Positionen per FA-Nummer, Auftragsnummer (Quelle) oder id finden
-function findPositions(orders, ref) {
+export function findPositions(orders, ref) {
   const r = String(ref || "").trim().toLowerCase();
   if (!r) return [];
   const open = orders.filter((o) => !o.done);
@@ -452,6 +453,70 @@ export function kiTools(locals) {
       },
     },
     {
+      name: "liefertermin_schaetzen",
+      description:
+        "Liefertermin für eine Anfrage oder ein Angebot: Wann könnten wir liefern, wenn der Auftrag heute käme? Rechnet mit der echten Planung je Maschine zwei Varianten: hinten anstellen (niemand verschiebt sich) und vorziehen (frühester Platz, ohne andere Aufträge zu verspäten). Liefertermin = Maschine fertig + extern + QS + 2 Werktage Puffer. Stunden angeben oder Zeichnungsnummer + Menge (dann aus der Kalkulation). Speichert nichts.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          stunden: { type: "number", exclusiveMinimum: 0, description: "Maschinenstunden gesamt" },
+          code: { type: "string", description: "Zeichnungsnummer, wenn die Stunden aus der Kalkulation kommen sollen" },
+          menge: { type: "integer", minimum: 1 },
+          extern_tage: { type: "integer", minimum: 0, maximum: 60, description: "Kalendertage extern (z. B. Eloxieren 7)" },
+          material_tage: { type: "integer", minimum: 0, maximum: 60, description: "Werktage, bis das Material da ist" },
+          qs: { type: "boolean", description: "Prüfung in der QS (Standard ja)" },
+        },
+        additionalProperties: false,
+      },
+      run: (args = {}) => need("liefertermin")(args),
+    },
+    {
+      name: "extern_offen",
+      description:
+        "Extern & Wareneingang: offene Einkaufsbestellungen (Fremdfertigung, Lohnarbeit, Material), deren Wareneingang noch nicht validiert ist – mit Lieferant, zugesagtem und neuem Termin, überfällig seit, ob schon angefragt, welche Kundenaufträge daran hängen; dazu externe Arbeitsgänge (Strahlen, Schleifen, Härten …) ohne Bestellung und die Termintreue je Lieferant. Erste Wahl für „Was ist bei Lieferant X offen?“, „Welche Lieferungen sind überfällig?“, „Wo fehlt eine Bestellung?“.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          lieferant: { type: "string", description: "nur dieser Lieferant (Teil des Namens)" },
+          nur_handlungsbedarf: { type: "boolean", description: "nur überfällige, bald fällige und fehlende Bestellungen" },
+        },
+        additionalProperties: false,
+      },
+      run: async ({ lieferant, nur_handlungsbedarf } = {}) => {
+        const d = await need("extern").get(false);
+        if (!d.enabled) return { hinweis: "Odoo ist im Dashboard nicht angebunden." };
+        const l = String(lieferant || "").toLowerCase();
+        const offen = d.offen
+          .filter((x) => !l || x.partner.toLowerCase().includes(l))
+          .filter((x) => !nur_handlungsbedarf || x.aktion)
+          .map((x) => ({
+            bestellung: x.po,
+            lieferant: x.lieferant,
+            art: x.art,
+            deren_referenz: x.partnerRef || undefined,
+            wareneingang: x.wareneingang.join(", ") || undefined,
+            zugesagt: x.zugesagt,
+            termin_jetzt: x.termin,
+            neuer_termin_vom_lieferanten: x.neuerTermin || undefined,
+            status: x.status === "ueberfaellig" ? `${x.tage} Tage überfällig` : x.status,
+            zu_tun: x.aktion || undefined,
+            angefragt: x.angefragt ? `${x.angefragt}${x.angefragtVon ? " von " + x.angefragtVon : ""}` : undefined,
+            positionen: x.lines.filter((p) => p.offen > 0).map((p) => `${p.offen} x ${p.name}`),
+            kundenauftraege: x.betroffen.map((b) => `${b.source || b.ref}${b.customer ? " (" + b.customer + ")" : ""}${b.due ? ", Liefertermin " + b.due : ""}`),
+            kunde_in_gefahr: x.kundeGefahr || undefined,
+            kontakt: [x.email, x.phone].filter(Boolean).join(", ") || undefined,
+          }));
+        return {
+          stand: d.stand,
+          zahlen: d.zahlen,
+          offen,
+          bestellung_fehlt: d.fehlt.filter((x) => !nur_handlungsbedarf || x.dringend).slice(0, 30).map((x) => ({ fa: x.fa, auftrag: x.source, schritt: x.schritt, arbeitsplatz: x.arbeitsplatz, maschine_fertig: x.maschineFertig || undefined, dringend: x.dringend })),
+          termintreue: l ? d.bewertung.filter((b) => b.lieferant.toLowerCase().includes(l)) : d.bewertung.slice(0, 10),
+          hinweis: "Nur lesen. Nachfragen schickt ein Mensch (Knopf „Lieferant anfragen“ im Reiter Extern).",
+        };
+      },
+    },
+    {
       name: "freigabe_vorschlagen",
       description:
         "Legt einen Vorschlag oder Hinweis in die Freigabe-Liste der Planung (z. B. „FA01350 vor FA01347 ziehen, weil …“, „Kunde X wegen Verzug anrufen“). Ändert sonst nichts: Ein Mensch liest ihn, entscheidet und setzt ihn selbst um. Nur nutzen, wenn der Nutzer darum bittet oder etwas Wichtiges auffällt.",
@@ -476,12 +541,16 @@ export function kiTools(locals) {
 
 // Minimaler MCP-Server (JSON-RPC über HTTP POST, zustandslos)
 export default function registerTalosPlan(app, db, helpers) {
+  // Zwei Schlüssel: TALOS_PLAN_SECRET (Talos: lesen, durchrechnen, Vorschläge ablegen) und PLAN_CHAT_SECRET (Planen im Chat:
+  // zusätzlich ändern, jede Änderung erst nach Vorschau und ausdrücklichem Ja, server/chatPlan.js). Je mind. 24 Zeichen.
   const SECRET = process.env.TALOS_PLAN_SECRET || "";
-  if (SECRET.length < 24) {
-    console.log("Talos-Planung (MCP) aus: TALOS_PLAN_SECRET fehlt");
+  const CHAT = process.env.PLAN_CHAT_SECRET || "";
+  if (SECRET.length < 24 && CHAT.length < 24) {
+    console.log("Planungs-MCP aus: TALOS_PLAN_SECRET und PLAN_CHAT_SECRET fehlen");
     return;
   }
-  const tools = [...planTools(() => loadPlanInputs(db, helpers)), ...kiTools(app.locals)];
+  const base = [...planTools(() => loadPlanInputs(db, helpers)), ...kiTools(app.locals)];
+  const chat = [...base, ...chatTools(app, db, helpers)];
   const same = (a, b) => {
     const x = Buffer.from(String(a)), y = Buffer.from(String(b));
     return x.length === y.length && timingSafeEqual(x, y);
@@ -490,8 +559,10 @@ export default function registerTalosPlan(app, db, helpers) {
   const error = (res, id, code, message) => res.json({ jsonrpc: "2.0", id, error: { code, message } });
 
   // Eigener Body-Parser: Die Route wird vor dem Passwortschutz der App angemeldet (Schutz hier über das Geheimnis)
-  app.all("/mcp/:secret", express.json({ limit: "1mb" }), (req, res) => {
-    if (!same(req.params.secret, SECRET)) return res.status(404).end();
+  app.all("/mcp/:secret", express.json({ limit: "1mb" }), async (req, res) => {
+    const isChat = CHAT.length >= 24 && same(req.params.secret, CHAT);
+    if (!isChat && !(SECRET.length >= 24 && same(req.params.secret, SECRET))) return res.status(404).end();
+    const tools = isChat ? chat : base;
     if (req.method !== "POST") return res.status(405).set("Allow", "POST").end();
     const { id = null, method, params = {} } = req.body || {};
     if (id === null || id === undefined) return res.status(202).end(); // Benachrichtigung (z. B. initialized)
@@ -500,8 +571,9 @@ export default function registerTalosPlan(app, db, helpers) {
         protocolVersion: params.protocolVersion || "2025-06-18",
         capabilities: { tools: {} },
         serverInfo: { name: "kratos-planung", version: "1.0.0" },
-        instructions:
-          "Maschinenplanung der KRATOS Precision (Produktionsdashboard). Lesen und durchrechnen; einzig freigabe_vorschlagen legt einen Vorschlag für einen Menschen ab, sonst wird nichts gespeichert. Quelle in Antworten: „Planung Produktionsdashboard, Stand <Zeit>“.",
+        instructions: isChat
+          ? "Maschinenplanung der KRATOS Precision (Produktionsdashboard), Planen im Chat. Lesen und durchrechnen jederzeit. Werkzeuge, die etwas ändern (position_verschieben, stunden_setzen, liefertermin_setzen, position_fixieren, freigabe_entscheiden, lieferant_status_setzen), immer zuerst ohne bestaetigt aufrufen, dem Nutzer die Folgen nennen und erst nach seinem ausdrücklichen Ja mit bestaetigt: true ausführen. Mails an Lieferanten oder Kunden sendet die App nie."
+          : "Maschinenplanung der KRATOS Precision (Produktionsdashboard). Lesen und durchrechnen; einzig freigabe_vorschlagen legt einen Vorschlag für einen Menschen ab, sonst wird nichts gespeichert. Quelle in Antworten: „Planung Produktionsdashboard, Stand <Zeit>“.",
       });
     }
     if (method === "ping") return reply(res, id, {});
@@ -512,7 +584,7 @@ export default function registerTalosPlan(app, db, helpers) {
       const tool = tools.find((t) => t.name === params.name);
       if (!tool) return error(res, id, -32602, `Werkzeug ${params.name} unbekannt`);
       try {
-        let text = JSON.stringify(tool.run(params.arguments || {}));
+        let text = JSON.stringify(await tool.run(params.arguments || {}));
         if (text.length > MAX_TEXT) text = text.slice(0, MAX_TEXT) + "…[gekürzt – Maschine angeben oder nur_auftraege nutzen]";
         return reply(res, id, { content: [{ type: "text", text }] });
       } catch (e) {
@@ -521,5 +593,5 @@ export default function registerTalosPlan(app, db, helpers) {
     }
     return error(res, id, -32601, `Methode ${method} nicht unterstützt`);
   });
-  console.log("Talos-Planung (MCP) an");
+  console.log(`Planungs-MCP an (${[SECRET.length >= 24 ? "Talos" : null, CHAT.length >= 24 ? "Chat" : null].filter(Boolean).join(", ")})`);
 }

@@ -9,7 +9,7 @@ import { LANE_IDS } from "../src/planLogic.js";
 
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 
-export function heuteListe(inp, { fw, vollst, closing = 0, muster = 0, freigaben = null } = {}) {
+export function heuteListe(inp, { fw, vollst, closing = 0, muster = 0, freigaben = null, extern = null } = {}) {
   const today = inp.today;
   const open = inp.orders.filter((o) => !o.done);
   const pool = open.filter((o) => o.machine === "");
@@ -47,6 +47,11 @@ export function heuteListe(inp, { fw, vollst, closing = 0, muster = 0, freigaben
     const kunden = new Set(late.map((i) => i.customer || i.label)).size;
     add("kunden", late.length, `${plural(late.length, "Auftrag", "Aufträge")} im Verzug, Kunde weiß noch nichts`, "bad", "fruehwarnung", `${plural(kunden, "Kunde", "Kunden")} anrufen oder anschreiben`);
   }
+  if (extern) {
+    add("lieferant", extern.anfragen, `${plural(extern.anfragen, "Lieferung ist", "Lieferungen sind")} überfällig, Lieferant anfragen`, "bad", "extern", extern.kundeGefahr ? `davon ${extern.kundeGefahr} mit Kundentermin in Gefahr` : "Wareneingang noch nicht validiert");
+    add("bestellungFehlt", extern.fehltDringend, `${plural(extern.fehltDringend, "externer Arbeitsgang", "externe Arbeitsgänge")} ohne Bestellung`, "warn", "extern", "Maschine ist in 7 Tagen fertig, Lohnarbeit bestellen");
+    add("lieferantVorab", extern.vorab, `${plural(extern.vorab, "Lieferung", "Lieferungen")} in 2 Werktagen fällig`, "warn", "extern", "beim Lieferanten vorab nachfragen");
+  }
   if (vollst) add("fehlt", vollst.fehlt.length, `${plural(vollst.fehlt.length, "Kundenauftrag fehlt", "Kundenaufträge fehlen")} in der App`, "bad", "av", "In der Arbeitsvorbereitung übernehmen");
   add("avLate", avLate, `${plural(avLate, "Position ist", "Positionen sind")} in der AV überfällig`, "bad", "av", "„Muss bis“ ist überschritten, die Maschine wartet sonst");
   add("ohneStunden", noHours.length, `${plural(noHours.length, "Position hat", "Positionen haben")} noch keine Stunden`, "warn", "pool", withSuggest.length ? `für ${withSuggest.length} gibt es einen Vorschlag aus früheren Aufträgen` : "ohne Stunden kann nichts eingeplant werden");
@@ -80,7 +85,13 @@ export default function registerHeute(app, db, helpers) {
     } catch {
       freigaben = null;
     }
-    return heuteListe(inp, { fw, vollst: odoo.vollst || null, closing: odoo.closing || 0, muster: odoo.muster || 0, freigaben });
+    let extern = null;
+    try {
+      extern = app.locals.extern ? app.locals.extern.zahlen() : null;
+    } catch {
+      extern = null;
+    }
+    return heuteListe(inp, { fw, vollst: odoo.vollst || null, closing: odoo.closing || 0, muster: odoo.muster || 0, freigaben, extern });
   };
   app.locals.heuteListe = liste;
   app.get("/api/heute", (req, res) => res.json(liste()));
