@@ -1765,3 +1765,45 @@ a.btn { text-decoration: none; }
 .dq-group.ok .dq-n { color: var(--ok); }
 .dq-items { margin: 0; padding: 4px 14px 10px 64px; display: grid; gap: 3px; font-size: 12.5px; }
 .dq-items li { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* Prio-Aufträge: Leiste oben auf der Planung / Mein Arbeitsplatz, Zeichen auf den Karten */
+.prio-leiste { border-color: color-mix(in srgb, var(--bad) 45%, var(--line)); }
+.pr-top { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.pr-top > b { font: 600 16px var(--f-display); }
+.pr-top small { color: var(--muted); font-size: 12px; }
+.pr-n { background: var(--bad); color: #fff; border-radius: 99px; padding: 0 8px; font: 700 12px/18px var(--f-mono); }
+.pr-viele { margin-top: 8px; padding: 6px 10px; border-radius: 8px; background: var(--warn-soft); color: var(--warn); font-size: 13px; }
+.pr-list { margin-top: 8px; display: grid; gap: 6px; }
+.pr-row { border: 1px solid var(--line); border-left: 4px solid var(--bad); border-radius: 9px; padding: 8px 10px; background: var(--surface); display: grid; gap: 6px; min-width: 0; }
+.pr-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }
+.pr-auf { font: 600 14px var(--f-mono); }
+.pr-kunde { color: var(--ink); }
+.pr-termin { color: var(--muted); font-size: 12.5px; }
+.pr-grund { color: var(--muted); font-size: 12.5px; font-style: italic; }
+.pr-aus { margin-left: auto; background: none; border: 0; color: var(--muted); font: inherit; font-size: 12px; cursor: pointer; text-decoration: underline; }
+.pr-pos { display: flex; gap: 6px; flex-wrap: wrap; }
+.pr-chip { border: 1px solid var(--line); background: var(--sunken); color: var(--ink); border-radius: 99px; padding: 2px 10px; font: 12px var(--f-mono); cursor: pointer; }
+.pr-chip:hover:not(:disabled) { border-color: var(--line-strong); }
+.pr-chip:disabled { cursor: default; }
+.pr-chip.pool { border-style: dashed; color: var(--muted); }
+.pr-chip.mine { border-color: var(--ink); font-weight: 700; }
+.pr-hint { color: var(--muted); font-size: 12px; }
+.pr-av { color: var(--bad); font-size: 12.5px; font-weight: 600; }
+.pr-frage { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 13px; color: var(--warn); }
+.prio-badge, .tag.ok { font-size: 11px; font-weight: 700; padding: 0 6px; border-radius: 5px; line-height: 16px; }
+.prio-badge { background: var(--bad); color: #fff; text-transform: uppercase; letter-spacing: .04em; }
+.tag.ok { background: var(--ok-soft); color: var(--ok); font-style: normal; }
+.pr-head .tag { font-style: normal; }
+.bar.prio::after { content: "PRIO"; position: absolute; top: 3px; right: 4px; background: var(--bad); color: #fff; font: 700 9px/13px var(--f-body); letter-spacing: .04em; padding: 0 4px; border-radius: 4px; pointer-events: none; }
+.btn.prio-btn.on { background: var(--bad); border-color: var(--bad); color: #fff; }
+
+/* Pool: Maschine laut Odoo, frei ab, Platz-Vorschlag, Musterwerte */
+.pool-row .seg button { display: inline-flex; flex-direction: column; align-items: center; line-height: 1.15; }
+.pool-row .seg button small { font-size: 10.5px; color: var(--faint); font-weight: 400; }
+.pool-row .seg button.odoo { color: var(--ink); box-shadow: inset 0 -2px 0 var(--accent, var(--ink)); }
+.pool-row .seg button.odoo::before { content: "Odoo"; font-size: 9px; letter-spacing: .04em; color: var(--muted); text-transform: uppercase; }
+.sugg.plz { border-color: color-mix(in srgb, var(--ok) 50%, var(--line)); }
+.sugg.plz.bad { border-color: color-mix(in srgb, var(--bad) 50%, var(--line)); }
+.pool-muster { margin-top: 3px; color: var(--warn); font-size: 12px; font-weight: 600; }
+
+.fg-av .fg-top { align-items: center; }

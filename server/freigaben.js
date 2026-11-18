@@ -232,6 +232,7 @@ export default function registerFreigaben(app, db, helpers) {
     if (!(o.hours > 0) && !hours) hinweise.push(code && kalk.enabled && !(k && k.known) ? "Noch nicht kalkuliert: „In der Kalkulation berechnen“ liefert Zeiten" : "Keine Zeiten ermittelbar: Stunden bitte schätzen");
     return {
       orderId: o.id,
+      odooId: o.odoo_id || null,
       ref: o.odoo_ref || o.order_no,
       source: o.source || null,
       product: o.product || null,

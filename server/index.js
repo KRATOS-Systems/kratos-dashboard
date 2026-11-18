@@ -18,7 +18,9 @@ import { staffName } from "../src/staffLib.js";
 import registerOdooFiles from "./odooFiles.js";
 import registerBde from "./bde.js";
 import registerStaff from "./staff.js";
-import registerTalosPlan from "./talosPlan.js";
+import registerTalosPlan, { planTools, loadPlanInputs } from "./talosPlan.js";
+import { makeAllowed } from "./maschinenRegel.js";
+import { MACHINES as MACHINE_LIST } from "../src/lib.js";
 import registerTalosChat from "./talosChat.js";
 import registerLogin from "./login.js";
 import registerQsBridge from "./qsBridge.js";
@@ -32,6 +34,7 @@ import registerProgramme from "./programme.js";
 import registerSollIst from "./sollIst.js";
 import registerZeichnung from "./zeichnung.js";
 import registerDatenqualitaet from "./datenqualitaet.js";
+import registerPrio from "./prio.js";
 import { registerMaschinenEingang, registerMaschinenLive } from "./maschinenLive.js";
 
 // Lokal dürfen Umgebungsvariablen in einer Datei .env stehen (nicht im Repository). Bei Hostinger gibt es sie nicht.
@@ -1246,6 +1249,41 @@ registerMorgenbericht(app, db);
 registerSollIst(app, db);
 registerZeichnung(app, db);
 registerDatenqualitaet(app, db);
+registerPrio(app, db, { staffName });
+
+// Platz-Vorschlag für eine noch nicht eingeplante Position (Zeile im Pool der Planung): dieselbe Rechnung wie „plan_platz_finden“
+// im Chat, mit der Maschinenregel des Planvorschlags (eingeschränkte M1 nur, wenn klar ist, dass das Teil dort geht). Speichert nichts.
+const platzTool = planTools(() => loadPlanInputs(db, { orderOut: (r) => orderOut(r), planSettingsOut: () => planSettingsOut() })).find((t) => t.name === "plan_platz_finden");
+app.get("/api/plan/platz/:id", (req, res) => {
+  const id = Number(req.params.id);
+  const row = db.prepare("SELECT * FROM orders WHERE id = ? AND done = 0").get(id);
+  if (!row) return res.status(404).json({ error: "Position nicht offen" });
+  if (!(row.hours > 0)) return res.json({ varianten: [], hinweis: "Erst Stunden eintragen" });
+  try {
+    const all = db.prepare("SELECT * FROM orders").all().map((r) => orderOut(r));
+    const allowed = makeAllowed(all);
+    const o = all.find((x) => x.id === id);
+    const r = platzTool.run({ position: String(id), varianten: 5 });
+    const idOf = (short) => (MACHINE_LIST.find((m) => m.short === short) || {}).id || null;
+    const varianten = r.beste
+      .map((v) => ({ ...v, machine: idOf(v.maschine) }))
+      .filter((v) => v.machine && allowed(o, v.machine))
+      .slice(0, 3)
+      .map((v) => ({
+        machine: v.machine,
+        maschine: v.maschine,
+        platz: v.platz,
+        vor: v.vor,
+        fertig: v.eigener_auftrag ? v.eigener_auftrag.voraussichtlich_fertig || null : null,
+        status: v.eigener_auftrag ? v.eigener_auftrag.status : null,
+        andereNeuZuSpaet: v.andere_neu_zu_spaet,
+        verschoben: v.am_staerksten_verschoben,
+      }));
+    res.json({ varianten });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
 registerFeedback(app, db);
 registerTalosChat(app);
 qsBridge.start();

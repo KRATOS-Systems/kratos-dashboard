@@ -8,6 +8,7 @@ import Terminverlauf from "./Terminverlauf.jsx";
 import Auslastung from "./Auslastung.jsx";
 import PlanVerbessern from "./PlanVerbessern.jsx";
 import Arbeitskorb from "./Arbeitskorb.jsx";
+import PrioLeiste, { usePrio, prioSetzen } from "./PrioLeiste.jsx";
 const Kennzahlen = lazy(() => import("./Kennzahlen.jsx"));
 const Extern = lazy(() => import("./Extern.jsx"));
 const Datenqualitaet = lazy(() => import("./Datenqualitaet.jsx"));
@@ -407,6 +408,30 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
   }, [orders, checks, planStart]);
 
   const groupByKey = useMemo(() => new Map(groups.map((g) => [g.key, g])), [groups]);
+  // Prio-Aufträge (Leiste oben, rotes Zeichen auf den Karten, Knopf in den Details)
+  const [prio, setPrio] = usePrio(fwKey);
+  const prioKeys = useMemo(() => new Set(((prio && prio.items) || []).map((p) => p.auftrag)), [prio]);
+  const prioSpaet = useMemo(() => {
+    const m = {};
+    prioKeys.forEach((k) => {
+      const g = groupByKey.get(k);
+      if (g && g.scheduledIds && g.scheduledIds.size) m[k] = g.status === "late" ? g.lateDays : 0;
+    });
+    return m;
+  }, [prioKeys, groupByKey]);
+  const isPrio = (ids) => prioKeys.size > 0 && ids.some((id) => { const o = orders.find((x) => x.id === id); return o && prioKeys.has(groupKeyOf(o)); });
+  const togglePrio = async (o) => {
+    const key = groupKeyOf(o);
+    const an = !prioKeys.has(key);
+    let grund = "";
+    try {
+      const j = await prioSetzen(key, an, grund);
+      setPrio((prev) => ({ ...(prev || {}), ...j }));
+      toast(an ? `Auftrag ${groupLabelOf(o)} ist jetzt Prio. Der Plan bleibt, wie er ist; schieben musst du selbst.` : `Prio für ${groupLabelOf(o)} weggenommen`);
+    } catch (e) {
+      toast(e.message);
+    }
+  };
   const warnings = groups.filter((g) => g.status === "late");
   const previewStats = useMemo(() => {
     if (!preview) return null;
@@ -1093,6 +1118,53 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
     g.items.push(o);
     if (o.due && (!g.due || o.due < g.due)) g.due = o.due;
   });
+  // Je Maschine: wann ist sie wieder frei (Ende der letzten eingeplanten Position)
+  const freeFrom = {};
+  plan.forEach((p) => {
+    const end = p.scheduled.reduce((mx, i) => Math.max(mx, i.end), -Infinity);
+    freeFrom[p.m.id] = Number.isFinite(end) && end > todayOff ? endDateOf(end) : today;
+  });
+  // Platz-Vorschlag je Position im Pool (Server rechnet wie „Platz finden“ im Chat, mit der M1-Regel). Nur Positionen mit Stunden.
+  const [platz, setPlatz] = useState({});
+  const poolKey = poolOrders.filter((o) => o.hours > 0).map((o) => o.id).join(",");
+  useEffect(() => {
+    let stop = false;
+    const ids = poolKey ? poolKey.split(",").map(Number).slice(0, 40) : [];
+    (async () => {
+      for (const id of ids) {
+        if (stop) return;
+        try {
+          const r = await fetch(`/api/plan/platz/${id}`);
+          const j = r.ok ? await r.json() : null;
+          if (!stop && j) setPlatz((prev) => ({ ...prev, [id]: j.varianten || [] }));
+        } catch {
+          /* ohne Vorschlag weiter */
+        }
+      }
+    })();
+    return () => {
+      stop = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [poolKey, fwKey]);
+  // Vorschlag übernehmen: Position an genau diese Stelle der Maschine legen
+  async function placeAt(o, machine, platzNr) {
+    const m = MACHINES.find((x) => x.id === machine);
+    const q = orders.filter((x) => x.machine === machine && !x.done && x.id !== o.id).sort(byPosition).map((x) => x.id);
+    q.splice(Math.max(0, Math.min(q.length, platzNr - 1)), 0, o.id);
+    setLeaving({ [o.id]: true });
+    await new Promise((r) => setTimeout(r, 300));
+    setLeaving({});
+    setOrders((prev) => prev.map((x) => (q.includes(x.id) ? { ...x, machine, position: q.indexOf(x.id) } : x)));
+    setFresh(o.id);
+    setTimeout(() => setFresh(null), 1800);
+    toast(`${posNo(o)} → ${m ? m.short : machine}, Platz ${platzNr} eingeplant`, () => {
+      setOrders((prev) => prev.map((x) => (x.id === o.id ? { ...x, machine: "" } : x)));
+      send(`/api/orders/${o.id}`, "PUT", { machine: "" });
+    });
+    const r = await send("/api/orders/reorder", "POST", { machine, ids: q });
+    odooHint(r, true);
+  }
   const selectedOrders = poolOrders.filter((o) => selected[o.id]);
   const assignable = selectedOrders.filter((o) => o.hours > 0);
   const draggedBar = dragActive ? drag : null;
@@ -1547,7 +1619,7 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
             <MaterialBadge o={o} />
             {o.odoo_draft && <span className="pill warn" title="Der Fertigungsauftrag ist in Odoo noch im Entwurf. Freigegeben wird er in Odoo.">nicht freigegeben</span>}
             {o.due_shifts > 0 && o.due_original && <span className="pill warn" title={`Ursprünglicher Liefertermin: ${fmtShort(o.due_original)}${o.due_original.slice(0, 4)}`}>Termin {o.due_shifts}× verschoben</span>}
-            {o.odoo_bom === "muster" && <span className="pill warn" title="Die Stückliste in Odoo hat nur Musterwerte (Referenz MUSTER). Maschine und Zeit sind nicht geprüft.">Zeit ungeprüft (Muster)</span>}
+            {o.odoo_bom === "muster" && <span className="pill warn" title="Die Stückliste in Odoo hat nur Musterwerte (Referenz MUSTER oder jeder Arbeitsgang genau 60 Minuten). Maschine und Zeit sind nicht geprüft: Zeiten aus der Kalkulation oder Erfahrung in Odoo eintragen.">Zeit ungeprüft (Muster)</span>}
             {o.odoo_bom === "none" && <span className="pill warn" title="In Odoo hat der Fertigungsauftrag keine Stückliste, damit auch keine Arbeitsgänge.">keine Stückliste</span>}
             {o.odoo_bom === "leer" && <span className="pill warn" title="Die Stückliste in Odoo hat keine Arbeitsgänge.">keine Arbeitsgänge</span>}
           </div>
@@ -1782,6 +1854,17 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
                 title={o.pinned ? "Fixierung lösen: Plan neu ordnen darf die Position wieder verschieben" : "Fixieren: Plan neu ordnen und der Planvorschlag verschieben die Position nicht, sie bleibt auf dieser Maschine an diesem Platz"}
               >
                 {o.pinned ? "Fixiert" : "Fixieren"}
+              </button>
+            )}
+            {prio && prio.darf && !o.done && (
+              <button
+                type="button"
+                className={`btn prio-btn${prioKeys.has(groupKeyOf(o)) ? " on" : ""}`}
+                aria-pressed={prioKeys.has(groupKeyOf(o))}
+                onClick={() => togglePrio(o)}
+                title="Prio gilt für den ganzen Auftrag: steht oben in der Planung und bei „Mein Arbeitsplatz“, rotes Zeichen auf den Karten. Den Plan schiebt der Schalter nicht um."
+              >
+                {prioKeys.has(groupKeyOf(o)) ? "Prio ✓" : "Prio"}
               </button>
             )}
             {o.machine !== "m1" && (
@@ -2401,7 +2484,7 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
         bars.push(
           <div
             key={`${block.key}-${part.ids[0]}`}
-            className={`bar amp-${ampel(g)}${status === "late" ? " late" : ""}${hlCls}${dim2}${grpCls}${isSel ? " sel" : ""}${linked ? " linked" : ""}${isFresh ? " fresh" : ""}${isDragged ? " dragged" : ""}`}
+            className={`bar amp-${ampel(g)}${status === "late" ? " late" : ""}${hlCls}${dim2}${grpCls}${isSel ? " sel" : ""}${linked ? " linked" : ""}${isFresh ? " fresh" : ""}${isDragged ? " dragged" : ""}${isPrio(part.ids) ? " prio" : ""}`}
             data-bar="1"
             data-ids={part.ids.map((id) => `i${id}`).join(" ")}
             role="button"
@@ -2590,7 +2673,7 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
           return (
             <div
               key={b.key}
-              className={`bar amp-${overdue ? "late" : ampel(g)}${lane.tags || lane.id === "extern_fert" ? " ext" : ""}${overdue ? " late" : ""}${hlSet ? " dim" : ""}${isDragged ? " dragged" : ""}`}
+              className={`bar amp-${overdue ? "late" : ampel(g)}${lane.tags || lane.id === "extern_fert" ? " ext" : ""}${overdue ? " late" : ""}${hlSet ? " dim" : ""}${isDragged ? " dragged" : ""}${prioKeys.has(b.groupKey) ? " prio" : ""}`}
               data-bar="1"
               data-ids={b.ids.map((id) => `i${id}`).join(" ")}
               role="button"
@@ -2978,6 +3061,30 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
                       <div>
                         <b onClick={() => openDetail(o.id)}>{o.order_no || "ohne Nummer"}</b> <OdooLink o={o} />{isNewPlan(o) && <span className="newpill" title="Neu aus Odoo übernommen">NEU</span>}{o.odoo_draft && <span className="draftpill" title="Fertigungsauftrag in Odoo noch im Entwurf">nicht freigegeben</span>}
                         <div title={metaLine(o, false)}>{metaLine(o, false)}</div>
+                        {o.odoo_bom === "muster" && (
+                          <div className="pool-muster" title="Die Stückliste in Odoo hat nur Musterwerte (jeder Arbeitsgang 60 Minuten). Stunden und Maschine sind Platzhalter.">
+                            Musterwerte: Stunden und Maschine ungeprüft. Erst Zeiten festlegen (Kalkulation/AV), dann einplanen.
+                          </div>
+                        )}
+                        {(platz[o.id] || []).length > 0 && (() => {
+                          const v = platz[o.id][0];
+                          return (
+                            <button
+                              type="button"
+                              className={`sugg plz${v.status === "zu spät" ? " bad" : ""}`}
+                              title={[
+                                `Bester Platz laut Planung: ${v.maschine}, Platz ${v.platz} (vor ${v.vor}).`,
+                                v.andereNeuZuSpaet && v.andereNeuZuSpaet.length ? `Macht andere zu spät: ${v.andereNeuZuSpaet.join(", ")}` : "Kein anderer Auftrag wird dadurch zu spät.",
+                                platz[o.id].length > 1 ? "Weitere: " + platz[o.id].slice(1).map((x) => `${x.maschine} Platz ${x.platz}${x.fertig ? " (fertig " + fmtShort(x.fertig) + ")" : ""}`).join(", ") : "",
+                                o.odoo_bom === "muster" ? "Achtung: gerechnet mit Musterwerten." : "",
+                                "Klick legt die Position an diese Stelle.",
+                              ].filter(Boolean).join("\n")}
+                              onClick={() => placeAt(o, v.machine, v.platz)}
+                            >
+                              Vorschlag: {v.maschine}{v.platz > 1 ? `, Platz ${v.platz}` : ", vorne"}{v.fertig ? ` · fertig ca. ${fmtShort(v.fertig)}` : ""}{v.status === "zu spät" ? " · trotzdem zu spät" : ""} übernehmen
+                            </button>
+                          );
+                        })()}
                         {!(o.hours > 0) && o.hours_suggest > 0 && (
                           <button
                             type="button"
@@ -3012,8 +3119,20 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
                     <div className="segwrap">
                       <div className="seg" role="group" aria-label="Maschine wählen">
                         {MACHINES.map((m) => (
-                          <button key={m.id} type="button" disabled={!(o.hours > 0)} title={o.hours > 0 ? `Auf ${m.name} einplanen` : "Erst Stunden eintragen"} onClick={() => assignMany([o], m.id)}>
+                          <button
+                            key={m.id}
+                            type="button"
+                            className={o.odoo_machine === m.id ? "odoo" : undefined}
+                            disabled={!(o.hours > 0)}
+                            title={
+                              (o.hours > 0 ? `Auf ${m.name} einplanen (ans Ende)` : "Erst Stunden eintragen") +
+                              (freeFrom[m.id] ? ` · frei ab ${fmtShort(freeFrom[m.id])}` : "") +
+                              (o.odoo_machine === m.id ? ` · laut Odoo-Arbeitsplan${o.odoo_bom === "muster" ? " (Musterwert)" : ""}` : "")
+                            }
+                            onClick={() => assignMany([o], m.id)}
+                          >
                             {m.short}
+                            {freeFrom[m.id] && <small>{freeFrom[m.id] <= today ? "frei" : "ab " + fmtShort(freeFrom[m.id])}</small>}
                           </button>
                         ))}
                       </div>
@@ -3605,6 +3724,8 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
           </button>
         </div>
       </div>
+
+      <PrioLeiste data={prio} setData={setPrio} spaet={prioSpaet} onOpen={(id) => { setTab("zeit"); openDetail(id); }} toast={toast} />
 
       <Arbeitskorb
         reloadKey={fwKey}
