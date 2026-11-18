@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { MACHINES, fmtShort } from "./lib.js";
+import { Thumb } from "./ui.jsx";
 
 // KI-Vorschläge zur Freigabe: Die App bereitet vor (AV-Pakete je Fertigungsauftrag, Planvorschlag am Morgen, Hinweise von Talos),
 // ein Mensch prüft und gibt frei. Erst mit der Freigabe ändert sich etwas. Freigeben dürfen alle, die mit PIN angemeldet sind.
@@ -308,6 +309,7 @@ function AvKarte({ f, onDone, compact }) {
     <div className={`fg-card fg-av${p.warnungen?.length ? " warnung" : ""}`}>
       {!compact && (
         <div className="fg-top">
+          {p.odooId && <Thumb src={"/api/part-image/" + p.odooId} size={44} />}
           <b>{p.ref}</b>
           <span>{p.source}</span>
           <span className="fg-faint fg-prod">

@@ -61,6 +61,13 @@ function bomState(p, musterIds) {
   if (!bomId) return "ok";
   return musterIds.has(bomId) ? "muster" : "ok";
 }
+// Musterwerte auch ohne Referenz MUSTER erkennen: Jeder Arbeitsgang steht auf genau 60 Minuten (bzw. 60 Minuten je Stück, z. B. Fräsen
+// 16 Stk = 960 min). So legt die Vorlage neue Stücklisten an; echte Zeiten sind praktisch nie überall genau eine Stunde.
+export function looksMuster(mill, qty) {
+  const ops = mill && Array.isArray(mill.ops) ? mill.ops : [];
+  if (ops.length < 3) return false;
+  return ops.every((m) => m != null && (Math.abs(m - 60) < 0.01 || Math.abs(m - 60 * qty) < 0.01));
+}
 const EVERY = 10 * 60 * 1000;
 const EXT_OFFSET = 1000000000; // Einkaufspositionen liegen in odoo_seen oberhalb dieser Zahl, getrennt von den Fertigungsaufträgen
 const FRESH_DAYS = 3; // beim ersten Abgleich gelten Aufträge, die in den letzten Tagen angelegt wurden, als neu
@@ -159,8 +166,9 @@ export default function registerOdooSync(app, db, { isDate, nextPosition }) {
         wos.forEach((w) => {
           const pid = Array.isArray(w.production_id) ? w.production_id[0] : null;
           if (!pid) return;
-          const cur = milling.get(pid) || { minutes: 0, machine: null, stamped: 0, open: 0 };
+          const cur = milling.get(pid) || { minutes: 0, machine: null, stamped: 0, open: 0, ops: [] };
           cur.stamped += typeof w.duration === "number" && w.duration > 0 ? w.duration : 0;
+          cur.ops.push(typeof w.duration_expected === "number" ? w.duration_expected : null);
           if (w.state !== "done") cur.open++;
           if (/fräs/i.test(w.name || "")) {
             cur.minutes += typeof w.duration_expected === "number" ? w.duration_expected : 0;
@@ -207,7 +215,7 @@ export default function registerOdooSync(app, db, { isDate, nextPosition }) {
         odoo_hours: mill && mill.minutes > 0 ? Math.round((mill.minutes / 60) * 100) / 100 : null,
         odoo_machine: mill ? mill.machine : null,
         stamped_hours: mill && mill.stamped > 0 ? Math.round((mill.stamped / 60) * 100) / 100 : null,
-        odoo_bom: bomState(p, musterIds),
+        odoo_bom: bomState(p, musterIds) === "ok" && looksMuster(mill, qty) ? "muster" : bomState(p, musterIds),
         draft: p.state === "draft",
         created: typeof p.create_date === "string" ? p.create_date.replace(" ", "T") + "Z" : null,
         delivered: !!sale && sale.delivery_status === "full",

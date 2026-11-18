@@ -10,6 +10,13 @@ import { useMini, notifyChanged, BDE_CHANGED, BDE_OPEN_PICKER } from "./MiniWind
 import { todayStr } from "./lib.js";
 import { useNow, clock, since, fmtTime, hm, splitProduct, act, isPhoneView, bookingRef, bookingKey } from "./bdeLib.js";
 import Avatar from "./Avatar.jsx";
+import PrioLeiste, { usePrio } from "./PrioLeiste.jsx";
+
+// Prio-Aufträge der Woche: dieselbe Leiste wie oben in der Planung, für alle sichtbar
+function PrioBlock() {
+  const [d, setD] = usePrio(0);
+  return <PrioLeiste data={d} setData={setD} />;
+}
 import { afterStop, LaufzeitOffen, LaufzeitNachtragen } from "./Laufzeit.jsx";
 import RechnungBereit from "./Rechnung.jsx";
 import { AmpelLeiste } from "./Ampel.jsx";
@@ -258,6 +265,7 @@ function ArbeitsplatzInner({ onGreet, goTo }) {
       {(error || data.notice || data.stale) && <div className="bnote">{error || data.notice || "Odoo ist gerade nicht erreichbar, es werden die letzten Daten gezeigt."}</div>}
       {own && data.write === false && data.me.leitung && <div className="bnote quiet">Bedienen ist noch nicht freigeschaltet. Die Seite zeigt nur an.</div>}
       {own && <AmpelLeiste />}
+      <PrioBlock />
 
       <section className={`bhero card st-${!b && own ? "idle-warn" : data.card ? data.card.state : "away"}`}>
         {data.card && data.card.double && <div className="bflag">Doppelt gestempelt</div>}
