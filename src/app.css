@@ -1885,3 +1885,6 @@ html .lane .lab.lab-hero .lab-load small, html[data-look="neu"] .lane .lab.lab-h
 
 .lane.minor .lab.lane-hero .lab-txt { max-width: 82%; }
 .lane.minor .lab.lab-hero .lab-txt b { font-size: 13px; }
+
+.bd-hero.lane-hero .bd-htop { right: 30%; }
+.bd-lane-big { right: 14px; bottom: 10px; }

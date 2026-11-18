@@ -3419,14 +3419,20 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
                 );
               })()
             ) : (
-              <div className="bd-head">
-                <i className="bd-dot" />
-                <div className="bd-name">
-                  <b>{col.name}</b>
-                  <span>{col.sub}</span>
-                </div>
-                <span className="pill mute">{col.all.length}</span>
-              </div>
+              (() => {
+                const over = col.all.filter((o) => o.extern_start && addDays(o.extern_start, daysIn(o)) < today).length;
+                return (
+                  <div className="bd-hero lane-hero" style={{ "--mc": col.c }}>
+                    <span className="lane-big bd-lane-big"><LaneIcon id={col.id} s={64} /></span>
+                    <div className="bd-htop">
+                      <b>{col.name}</b>
+                      <span className="amp-pill"><i style={{ "--c": over ? "var(--bad)" : col.all.length ? "var(--ok)" : "var(--faint)" }} />{over ? `${over} überfällig` : col.all.length ? `${col.all.length} ${col.all.length === 1 ? "Position" : "Positionen"}` : "leer"}</span>
+                    </div>
+                    <span className="bd-count" title="offene Positionen">{col.all.length}</span>
+                    <div className="bd-load"><small>{col.sub}</small></div>
+                  </div>
+                );
+              })()
             )}
             <div className="bd-sum">
               {col.machine && <span>{fmtH(round1(col.hours))} h offen</span>}
