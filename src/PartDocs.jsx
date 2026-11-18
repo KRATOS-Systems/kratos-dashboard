@@ -400,6 +400,44 @@ export function FileThumbs({ o }) {
   );
 }
 
+// Drucken der ganzen Zeichnung: Das PDF wird unsichtbar geladen und mit dem Druckfenster des Browsers gedruckt (ganze Seite, nicht nur der
+// sichtbare Ausschnitt des Fensters). Geht das nicht, öffnet es im eigenen Tab, dort druckt der PDF-Betrachter des Browsers.
+function printPdf(file) {
+  const url = "/api/product-file/" + file.id;
+  const f = document.createElement("iframe");
+  f.style.cssText = "position:fixed;right:0;bottom:0;width:1px;height:1px;border:0;opacity:0";
+  f.src = url;
+  f.onload = () => {
+    try {
+      f.contentWindow.focus();
+      f.contentWindow.print();
+    } catch {
+      window.open(url, "_blank", "noopener");
+    }
+    setTimeout(() => f.remove(), 60000);
+  };
+  document.body.appendChild(f);
+}
+
+// Zeichnung und 3D-Modell als eigenes Fenster, ohne den Umweg über die Arbeitsvorbereitung (z. B. aus QS oder Extern in der Planung)
+export function DocsDialog({ o, onClose }) {
+  const { loading, files, error } = useFiles(o.odoo_id);
+  if (loading || error || !files.length)
+    return (
+      <div className="modal fdlg-bg" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+        <div className="dialog" role="dialog" aria-modal="true" aria-label="Dateien">
+          <p>{loading ? "Dateien aus Odoo werden geladen …" : error ? "Dateien konnten nicht geladen werden: " + error : "Zu diesem Teil gibt es in Odoo keine Zeichnung und kein 3D-Modell."}</p>
+          <div className="actions">
+            <button type="button" className="btn" onClick={onClose}>
+              Schließen
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  return <FilesDialog o={o} files={files} start="pdf" onClose={onClose} />;
+}
+
 // Großes Fenster: Zeichnung oder 3D-Modell, Herunterladen, alle herunterladen
 export function FilesDialog({ o, files, start, onClose }) {
   const pdfs = files.filter((f) => f.kind === "pdf");
@@ -454,6 +492,16 @@ export function FilesDialog({ o, files, start, onClose }) {
                 3D
               </button>
             </div>
+            {tab === "pdf" && cur && (
+              <>
+                <a className="btn" href={"/api/product-file/" + cur.id} target="_blank" rel="noopener" title="Zeichnung im eigenen Tab: ganze Seite, drucken mit der ganzen Ansicht">
+                  In neuem Tab
+                </a>
+                <button type="button" className="btn" onClick={() => printPdf(cur)} title="Ganze Zeichnung drucken">
+                  Drucken
+                </button>
+              </>
+            )}
             {cur && (
               <a className="btn" href={"/api/product-file/" + cur.id} download={cur.name}>
                 <Ico n="down" s={15} />
@@ -469,7 +517,7 @@ export function FilesDialog({ o, files, start, onClose }) {
           </div>
         </div>
         <div className="fdlg-body">
-          {tab === "pdf" && pdf && <iframe title={"Zeichnung " + pdf.name} src={"/api/product-file/" + pdf.id} />}
+          {tab === "pdf" && pdf && <iframe title={"Zeichnung " + pdf.name} src={"/api/product-file/" + pdf.id + "#view=FitH"} />}
           {tab === "step" && step && <Viewer3D file={step} big />}
         </div>
       </div>

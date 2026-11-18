@@ -10,7 +10,7 @@ import { useMini, notifyChanged, BDE_CHANGED, BDE_OPEN_PICKER } from "./MiniWind
 import { todayStr } from "./lib.js";
 import { useNow, clock, since, fmtTime, hm, splitProduct, act, isPhoneView, bookingRef, bookingKey } from "./bdeLib.js";
 import Avatar from "./Avatar.jsx";
-import { afterStop, LaufzeitOffen } from "./Laufzeit.jsx";
+import { afterStop, LaufzeitOffen, LaufzeitNachtragen } from "./Laufzeit.jsx";
 import RechnungBereit from "./Rechnung.jsx";
 import { AmpelLeiste } from "./Ampel.jsx";
 import { pollEvery } from "./poll.js";
@@ -293,6 +293,7 @@ function ArbeitsplatzInner({ onGreet, goTo }) {
       <Aufgaben viewId={viewId} canStamp={operate} onStamp={(fa) => setPicker({ tab: "suchen", q: fa })} />
 
       {operate && <LaufzeitOffen />}
+      {operate && own && <LaufzeitNachtragen />}
 
       <Teile viewId={viewId} today={todayStr()} goTo={goTo} canStart={operate} onStart={(st) => run({ action: "start", workorderId: st.workorderId }, `${st.label} gestartet`)} />
 

@@ -741,7 +741,7 @@ a.btn { text-decoration: none; }
 .fthumb-msg { color: #64748b; font-size: 12px; padding: 8px; text-align: center; }
 .fthumb-tag { position: absolute; right: 8px; bottom: 6px; font: 700 11px var(--f-body); font-style: normal; color: #64748b; letter-spacing: .04em; }
 .fdlg-bg { z-index: 65; }
-.fdlg { width: min(1200px, 100%); height: min(88vh, 900px); background: var(--surface); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow); display: flex; flex-direction: column; overflow: hidden; animation: rise .25s cubic-bezier(.2,.7,.2,1); }
+.fdlg { width: min(1680px, 98vw); height: 94vh; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow); display: flex; flex-direction: column; overflow: hidden; animation: rise .25s cubic-bezier(.2,.7,.2,1); }
 .fdlg-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 14px 18px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
 .fdlg-head h3 { margin: 0; font: 600 18px var(--f-display); }
 .fdlg-head small { color: var(--muted); font-size: 12.5px; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 46ch; }
@@ -751,7 +751,7 @@ a.btn { text-decoration: none; }
 .fdlg-body .v3d { height: 100%; }
 
 /* Aufgeklapptes Fenster in der Arbeitsvorbereitung: Vorschau links, Checkliste rechts */
-.avp { display: grid; grid-template-columns: 250px minmax(0, 1fr); gap: 20px; padding: 16px 18px 20px; }
+.avp { display: grid; grid-template-columns: 360px minmax(0, 1fr); gap: 20px; padding: 16px 18px 20px; }
 .avp-files { min-width: 0; }
 .avp-main { min-width: 0; }
 .avp-top { display: flex; justify-content: space-between; gap: 12px 20px; flex-wrap: wrap; align-items: center; }
@@ -1559,3 +1559,13 @@ a.btn { text-decoration: none; }
 .av-scroll .avtbl thead th { position: sticky; top: 0; z-index: 4; background: var(--surface); box-shadow: inset 0 -1px 0 var(--line); }
 .avcell .av .aic { --s: 16px; border-radius: 5px; animation: none !important; }
 .avcell .av .aic svg { width: 11px; height: 11px; }
+
+/* Fehler melden (Aufgabe in Odoo) */
+.fm { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.fm-ok { color: var(--ok); font-size: 12.5px; font-weight: 500; }
+.fm-form { display: grid; gap: 6px; padding: 10px 12px; border: 1px solid var(--line-strong); border-radius: 10px; background: var(--surface); max-width: 520px; font-size: 13px; }
+.fm-form textarea { width: 100%; font: inherit; padding: 6px 8px; resize: vertical; }
+.fm-form .fm-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.fm-form label { display: inline-flex; gap: 6px; align-items: center; color: var(--muted); }
+.fm-form small, .fm-faint { color: var(--muted); }
+.fm-err { color: var(--bad); }

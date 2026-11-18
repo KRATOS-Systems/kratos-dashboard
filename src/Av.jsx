@@ -6,6 +6,7 @@ import { ODOO_URL } from "./planLogic.js";
 import BomHinweis from "./BomHinweis.jsx";
 import Vollstaendig from "./Vollstaendig.jsx";
 import Terminverlauf from "./Terminverlauf.jsx";
+import FehlerMelden from "./FehlerMelden.jsx";
 import { ArbeitsplanKette, ArbeitsplanPanel } from "./Arbeitsplan.jsx";
 import { deviation, fixInOdoo, useArbeitsplaene } from "./arbeitsplan.js";
 
@@ -23,7 +24,6 @@ const FILTERS = [
 // Geplante Funktionen der Arbeitsvorbereitung, im Feld schon sichtbar, aber noch nicht verfügbar
 const SOON = [
   ["In Mastercam öffnen", "Das 3D-Modell (STEP) direkt in Mastercam starten"],
-  ["Material aus Einkauf", "Bestellt, Ankunft und geliefert aus den Odoo-Einkäufen übernehmen"],
   ["Werkzeugliste", "Werkzeuge aus dem NC-Programm auslesen und mit dem Lager abgleichen"],
   ["NC-Programm ablegen", "Programm zur Position speichern und Stand nachverfolgen"],
   ["Laufkarte drucken", "Laufkarte mit Zeichnung, Arbeitsgängen und QR-Code"],
@@ -76,6 +76,7 @@ function AvPanel({ avStdOf = () => null, r, checks, orders, onSet, onBulk, peopl
             <button type="button" className="btn" onClick={() => openPlanning(o.id)} title="Stunden, Liefertermin und Start frühestens bearbeitest du in der Planung">
               In der Planung öffnen
             </button>
+            <FehlerMelden o={o} small={false} />
           </div>
         </div>
         <div className="avp-facts">

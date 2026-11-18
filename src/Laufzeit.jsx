@@ -145,7 +145,7 @@ function LaufzeitDialog({ req, onClose }) {
 
   const saveAnzahl = (n) =>
     run(async () => {
-      const d = await call("POST", "/api/bde/laufzeit/anzahl", { ...ref, anzahl: n });
+      const d = await call("POST", "/api/bde/laufzeit/anzahl", { ...ref, anzahl: n, nachtragen: !!req.nachtragen });
       setSt(d);
       notifyChanged();
       if (req.mode === "prog") {
@@ -157,7 +157,7 @@ function LaufzeitDialog({ req, onClose }) {
 
   const save = (payload, confirm = false) =>
     run(async () => {
-      const d = await call("POST", "/api/bde/laufzeit/save", { ...ref, ...payload, confirm });
+      const d = await call("POST", "/api/bde/laufzeit/save", { ...ref, ...payload, confirm, nachtragen: !!req.nachtragen });
       if (d.needsConfirm) {
         setPending(payload);
         setErr(d.warning);
@@ -639,6 +639,21 @@ function LaufzeitDialog({ req, onClose }) {
                   </p>
                 )}
                 {errBox}
+                {edit && st.state === "done" && req.nachtragen && (
+                  <>
+                    <p className="lzhint">Das Fräsen ist schon abgeschlossen. Die Laufzeit wird als Notiz im Fertigungsauftrag nachgetragen, am Arbeitsgang ändert sich nichts.</p>
+                    <div className="lzbtns">
+                      {st.anzahl > 0 && st.open.length > 0 && (
+                        <button type="button" className="bbtn primary" onClick={() => (st.open.length === 1 ? openInput(st, st.open[0]) : setView("wahl"))}>
+                          Laufzeit nachtragen
+                        </button>
+                      )}
+                      <button type="button" className="bbtn" onClick={() => setView("anzahl")}>
+                        {st.anzahl ? "Anzahl ändern" : "Anzahl festhalten"}
+                      </button>
+                    </div>
+                  </>
+                )}
                 {edit && st.state !== "done" && (
                   <div className="lzbtns">
                     {st.anzahl > 0 && (
@@ -711,6 +726,50 @@ export function LaufzeitOffen({ refreshKey }) {
             </span>
             <button type="button" className="btn sm" onClick={() => open(i)}>
               {i.step === "Fräsen" && !(i.anzahl && i.erfasst >= i.anzahl) ? "Eintragen" : "Fertig melden"}
+            </button>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+// Liste auf Mein Arbeitsplatz: abgeschlossenes Fräsen der letzten 30 Tage, bei dem Laufzeiten fehlen (Auftrag wurde beendet, bevor sie
+// eingetragen waren). Eigene Arbeitsgänge, für die Leitung alle. Ohne Lücken erscheint nichts.
+export function LaufzeitNachtragen({ refreshKey }) {
+  const [items, setItems] = useState([]);
+  const load = useCallback(() => {
+    call("GET", "/api/bde/nachtragen")
+      .then((d) => setItems(d.items || []))
+      .catch(() => setItems([]));
+  }, []);
+  useEffect(() => {
+    load();
+    window.addEventListener("bde-changed", load);
+    return () => window.removeEventListener("bde-changed", load);
+  }, [load, refreshKey]);
+  if (!items.length) return null;
+  return (
+    <section className="bsec lzoffen">
+      <h2>
+        Laufzeit fehlt bei abgeschlossenen Aufträgen <span className="cntb">{items.length}</span>
+      </h2>
+      <div className="brecent">
+        {items.map((i) => (
+          <div className="card brow" key={i.workorderId}>
+            <span className="bact">Fräsen</span>
+            <b className="mono">{i.fa}</b>
+            <span className="t">{i.product}</span>
+            <span className="when">
+              {i.anzahl ? `${i.erfasst} von ${i.anzahl} Aufspannungen erfasst` : "Anzahl der Aufspannungen fehlt"}
+              {i.machine ? ` · ${i.machine}` : ""}
+            </span>
+            <button
+              type="button"
+              className="btn sm"
+              onClick={() => askLaufzeit({ workorderId: i.workorderId, productionId: i.productionId, fa: i.fa, product: i.product, step: "Fräsen", mode: "status", nachtragen: true })}
+            >
+              Nachtragen
             </button>
           </div>
         ))}

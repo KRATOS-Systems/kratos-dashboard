@@ -251,8 +251,10 @@ if (process.env.MOCK_ENTWURF) {
   T["mrp.production"].push({ id: 1050, name: "FA01050", product_id: 2902, state: "done", origin: "A01050", product_qty: 4, qty_producing: 4 });
   T["mrp.workorder"].push(
     { id: 5050, name: "Rüsten", sequence: 1, production_id: 1050, workcenter_id: 16, product_id: 2902, state: "done", duration_expected: 60, duration: 60, qty_production: 4 },
-    { id: 5051, name: "Fräsen", sequence: 2, production_id: 1050, workcenter_id: 14, product_id: 2902, state: "done", duration_expected: 200, duration: 240, qty_production: 4 }
+    { id: 5051, name: "Fräsen", sequence: 2, production_id: 1050, workcenter_id: 14, product_id: 2902, state: "done", duration_expected: 200, duration: 240, qty_production: 4, date_finished: ago(47) }
   );
+  // Aurel hat auf dem Fräsen von FA01050 gestempelt; der Auftrag wurde beendet, bevor die Laufzeit eingetragen war (zum Nachtragen)
+  T["mrp.workcenter.productivity"].push({ id: 4300, employee_id: 2, user_id: 30, workorder_id: 5051, workcenter_id: 14, production_id: 1050, date_start: ago(52), date_end: ago(48), description: false });
   M2O["purchase.order"] = { partner_id: "res.partner" };
   M2O["purchase.order.line"] = { order_id: "purchase.order", product_id: "product.product" };
 }
