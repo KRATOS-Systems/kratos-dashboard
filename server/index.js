@@ -30,6 +30,7 @@ import registerAbwesenheit from "./abwesenheit.js";
 import registerMorgenbericht from "./morgenbericht.js";
 import registerProgramme from "./programme.js";
 import registerSollIst from "./sollIst.js";
+import registerZeichnung from "./zeichnung.js";
 import { registerMaschinenEingang, registerMaschinenLive } from "./maschinenLive.js";
 
 // Lokal dürfen Umgebungsvariablen in einer Datei .env stehen (nicht im Repository). Bei Hostinger gibt es sie nicht.
@@ -1242,6 +1243,7 @@ registerLiefertermin(app, db, { orderOut: (r) => orderOut(r), planSettingsOut: (
 registerAbwesenheit(app, db);
 registerMorgenbericht(app, db);
 registerSollIst(app, db);
+registerZeichnung(app, db);
 registerFeedback(app, db);
 registerTalosChat(app);
 qsBridge.start();

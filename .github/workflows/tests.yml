@@ -65,6 +65,8 @@ jobs:
         run: node scripts/testPlanHilfen.mjs
       - name: Lernen (Programme im AV-Paket, Soll/Ist, Autopilot)
         run: node scripts/testLernen.mjs
+      - name: Zeichnung lesen im AV-Paket (Abgleich mit Arbeitsplan und Kalkulation)
+        run: node scripts/testZeichnung.mjs
       - name: Aufgaben (Von mir vergeben)
         run: node scripts/testAufgaben.mjs
       - name: Verbindung zu QS (Prüfplan, EMPB)

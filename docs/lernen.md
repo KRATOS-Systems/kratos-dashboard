@@ -23,3 +23,16 @@ am Morgen (nur ohne zusätzliche Verspätung). Einschalten kann nur die Leitung 
 10-mal entschieden und mindestens 90 % unverändert freigegeben haben. Mit Warnung gibt der Autopilot nie frei. Im Verlauf steht „Autopilot“.
 
 Code: `server/programme.js`, `server/sollIst.js`, Autopilot in `server/freigaben.js`, Test `scripts/testLernen.mjs`.
+
+## Zeichnung lesen
+Für jede Position mit AV-Paket holt Talos (odoo-mcp, `POST /talos/zeichnung`) die Zeichnung (PDF) des Artikels aus Odoo und lässt sie von Claude lesen:
+Werkstoff, Oberfläche, Wärmebehandlung, Allgemeintoleranz, engste Toleranz, Passungen, Gewinde, Rauheit, Abmessungen, Besonderheiten (z. B. Werkstoffzeugnis 3.1).
+Das AV-Paket gleicht ab und warnt:
+- Oberfläche/Härte laut Zeichnung, aber der Schritt fehlt im Arbeitsplan (steht dort nur „Oberflächenbehandlung“ allgemein: Hinweis)
+- Werkstoff laut Zeichnung passt nicht zur Kalkulation
+- Oberfläche passt nicht zum Werkstoff (z. B. Eloxieren bei Edelstahl)
+
+Toleranzen, Passungen, Rauheit und Besonderheiten stehen als Hinweis im Paket. Je Lauf (15 min) werden höchstens 3 neue Zeichnungen gelesen;
+das Ergebnis wird gespeichert, neu gelesen nur auf „Zeichnung neu lesen“ (PIN). Kosten: je Zeichnung einige Cent.
+Voraussetzung: `TALOS_KEY_DASHBOARD` (gibt es schon) und odoo-mcp mit `/talos/zeichnung` (KRATOS-Systems/odoo-mcp#2). Abschalten: `ZEICHNUNG_AUTO=0`
+(nur noch auf Knopfdruck) oder `ZEICHNUNG_AUS=1` (ganz aus). In Odoo ändert sich nichts.

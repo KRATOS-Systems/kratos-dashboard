@@ -17,6 +17,7 @@ import { reorderPlan, stampOf } from "./neuordnen.js";
 import { kalkFromEnv, codeOf } from "./kalkClient.js";
 import { programmHinweis } from "./programme.js";
 import { basisOf } from "./sollIst.js";
+import { zeichnungAbgleich } from "./zeichnung.js";
 import { avKey, avSummary, AV_DEFAULT, AV_ITEMS } from "../src/avLib.js";
 import { MACHINES, todayStr } from "../src/lib.js";
 import { applyMove, byPosition, LANE_IDS } from "../src/planLogic.js";
@@ -26,6 +27,7 @@ const MACHINE_IDS = MACHINES.map((m) => m.id);
 const short = (id) => (MACHINES.find((m) => m.id === id) || {}).short || id;
 const AV_EVERY = 15 * 60 * 1000;
 const KALK_PER_RUN = 12;
+const ZEICHNUNG_PER_RUN = 3; // Zeichnungen, die je Lauf (alle 15 min) neu gelesen werden (kostet je Zeichnung einige Cent)
 const MORNING_HOUR = 6;
 const NOTE_ITEMS = ["programm", "werkzeuge", "spannmittel"];
 const h1 = (x) => String(Math.round(x * 10) / 10).replace(".", ",");
@@ -138,10 +140,10 @@ export default function registerFreigaben(app, db, helpers) {
           /* ohne Arbeitsplan weiter */
         }
     }
-    return [...new Set(out.filter((s) => /elox|brünier|bruenier|härt|haert|pulver|beschicht|vernick|verzink|oberfläche/i.test(s)))];
+    return [...new Set(out.filter((s) => /elox|brünier|bruenier|härt|haert|pulver|beschicht|vernick|verzink|oberfläche|strahl|schleif/i.test(s)))];
   }
 
-  async function buildPaket(o, kalkLeft, checks) {
+  async function buildPaket(o, kalkLeft, checks, zLeft = { n: 0 }) {
     const qty = Number(o.quantity) || 1;
     const code = codeOf(o.product);
     let k = null;
@@ -156,8 +158,28 @@ export default function registerFreigaben(app, db, helpers) {
     const rep = repeatNotes(o);
     const surfaces = await surfacesOf(o);
     // Werkstoff aus der Kalkulation, sonst aus dem Produktnamen (wenn dort einer steht)
-    const werkstoff = k && k.material ? k.material : werkstoffArt(o.product) ? o.product : "";
-    const warnungen = plausibility({ werkstoff, oberflaechen: surfaces });
+    // Zeichnung (PDF aus Odoo, von Talos gelesen): gespeichert oder, wenn noch nie gelesen, im Hintergrund (wenige je Lauf)
+    const fa = o.odoo_ref || o.parent_ref || "";
+    const zs = app.locals.zeichnung;
+    let z = null;
+    if (zs && zs.enabled && /^FA\d/.test(fa)) {
+      z = zs.gespeichert(fa);
+      if (!z && zLeft.n > 0) {
+        zLeft.n--;
+        try {
+          z = await zs.lesen(fa);
+        } catch (err) {
+          z = { grund: err.message, daten: null };
+        }
+      }
+    }
+    const zd = z && z.daten ? z.daten : null;
+    // Werkstoff: Zeichnung vor Kalkulation vor Produktname
+    const werkstoff = zd && zd.werkstoff ? zd.werkstoff : k && k.material ? k.material : werkstoffArt(o.product) ? o.product : "";
+    const verlangt = zd ? [...(zd.oberflaeche || []), zd.waermebehandlung || ""].filter(Boolean) : [];
+    const warnungen = plausibility({ werkstoff, oberflaechen: [...surfaces, ...verlangt] });
+    const abgleich = zeichnungAbgleich(zd, { oberflaechenArbeitsplan: surfaces, kalkWerkstoff: (k && k.material) || "", werkstoffArtOf: werkstoffArt });
+    warnungen.push(...abgleich.warnungen);
     // Stunden: vorhandene bleiben; sonst frühere Aufträge (echte Zeiten), sonst Kalkulation
     let hours = null;
     let hoursSrc = null;
@@ -183,6 +205,7 @@ export default function registerFreigaben(app, db, helpers) {
     const notes = {};
     if (rep && rep.notes) for (const it of NOTE_ITEMS) if (rep.notes[it]) notes[it] = `${rep.notes[it]} (wie ${rep.from})`;
     if (!notes.programm && k && k.reference && k.reference.type === "repeat") notes.programm = `Wiederholteil laut Kalkulation (${k.reference.part}${k.reference.order ? ", " + k.reference.order : ""}): Programm vermutlich vorhanden`;
+    if (zd && zd.werkstoff) notes.material = `Werkstoff ${zd.werkstoff} (Zeichnung${zd.index ? ", Index " + zd.index : ""})${k && k.rawPart ? ", Rohteil " + k.rawPart + " (Kalkulation)" : ""}`;
     if (!notes.material && k && (k.material || k.rawPart)) notes.material = materialNote(k);
     // Mastercam-Programm im Auftragsordner (gemeldet von auftragsordner/programme_melden.py) geht vor allen anderen Hinweisen
     const status = {};
@@ -201,6 +224,8 @@ export default function registerFreigaben(app, db, helpers) {
       if (c && (c.status === "bereit" || c.status === "entfaellt")) delete status[it];
     }
     const hinweise = [];
+    hinweise.push(...abgleich.hinweise);
+    if (zd && zd.werkstoff && !notes.material) hinweise.push(`Werkstoff laut Zeichnung: ${zd.werkstoff}${zd.index ? " (Index " + zd.index + ")" : ""}`);
     if (o.odoo_draft) hinweise.push("Fertigungsauftrag in Odoo noch im Entwurf: nach der AV dort bestätigen");
     if (o.odoo_bom === "muster") hinweise.push("Stückliste läuft auf Musterwerten: Maschine und Zeit in Odoo prüfen");
     if (/noch nicht bestellt/.test(o.material_info || "")) hinweise.push("Material nur angefragt, noch nicht bestellt");
@@ -216,7 +241,8 @@ export default function registerFreigaben(app, db, helpers) {
       hoursSrc,
       machine,
       material: o.material_info || null,
-      werkstoff: (k && k.material) || null,
+      werkstoff: (zd && zd.werkstoff) || (k && k.material) || null,
+      zeichnung: z ? { anhang: z.anhang || null, nummer: zd ? zd.zeichnungsnummer || null : null, index: zd ? zd.index || null : null, sicherheit: zd ? zd.sicherheit : null, grund: z.grund || null, abmessungen: zd ? zd.abmessungen || null : null } : null,
       rohteil: (k && k.rawPart) || null,
       programmingMin: (k && k.programmingMin) || null,
       kalkLink: (k && k.link) || null,
@@ -244,6 +270,7 @@ export default function registerFreigaben(app, db, helpers) {
       .filter((o) => !o.done && !LANE_IDS.includes(o.machine) && !o.is_split)
       .sort((a, b) => (a.hours > 0) - (b.hours > 0) || (a.due || "9999").localeCompare(b.due || "9999") || a.id - b.id);
     const kalkLeft = { n: KALK_PER_RUN };
+    const zLeft = { n: process.env.ZEICHNUNG_AUTO === "0" ? 0 : ZEICHNUNG_PER_RUN };
     let made = 0;
     for (const o of open) {
       const key = "av:" + o.id;
@@ -255,7 +282,7 @@ export default function registerFreigaben(app, db, helpers) {
         if (cur) setStatus.run("hinfaellig", now(), "App", "AV inzwischen fertig", cur.id);
         continue;
       }
-      const p = await buildPaket(o, kalkLeft, inp.checks);
+      const p = await buildPaket(o, kalkLeft, inp.checks, zLeft);
       if (!isPaketWorth(p, o)) {
         if (cur) setStatus.run("hinfaellig", now(), "App", "nichts mehr vorzuschlagen", cur.id);
         continue;
@@ -579,6 +606,29 @@ export default function registerFreigaben(app, db, helpers) {
       res.json(await decide(req.params.id, req.body && req.body.aktion, req.body && req.body.notiz, staffName(s.e) || `Mitarbeiter ${s.e}`));
     } catch (err) {
       res.status(err.status || 500).json({ error: err.message });
+    }
+  });
+
+  // AV-Paket: Zeichnung (neu) lesen und das Paket damit neu aufbauen
+  app.post("/api/freigaben/:id/zeichnung", async (req, res) => {
+    const s = sessionOf(req);
+    if (!s) return res.status(401).json({ error: "Bitte zuerst unter „Mein Arbeitsplatz“ mit PIN anmelden." });
+    const f = db.prepare("SELECT * FROM freigaben WHERE id = ? AND art = 'av' AND status = 'offen'").get(Number(req.params.id));
+    if (!f) return res.status(404).json({ error: "Kein offenes AV-Paket" });
+    const zs = app.locals.zeichnung;
+    if (!zs || !zs.enabled) return res.status(400).json({ error: "Zeichnung lesen ist nicht eingerichtet (TALOS_KEY_DASHBOARD)." });
+    const p = JSON.parse(f.daten);
+    const inp = inputs();
+    const o = inp.orders.find((x) => x.id === p.orderId);
+    if (!o) return res.status(404).json({ error: "Position nicht mehr offen" });
+    try {
+      await zs.lesen(o.odoo_ref || o.parent_ref, { neu: true });
+      const next = await buildPaket(o, { n: 1 }, inp.checks, { n: 0 });
+      next.kategorie = kategorieOf(next);
+      db.prepare("UPDATE freigaben SET daten = ?, geaendert = ? WHERE id = ?").run(JSON.stringify(next), now(), f.id);
+      res.json({ ok: true, paket: next });
+    } catch (err) {
+      res.status(502).json({ error: err.message });
     }
   });
 
