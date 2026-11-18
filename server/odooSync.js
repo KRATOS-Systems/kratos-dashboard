@@ -30,6 +30,7 @@
 // Odoo wird nur gelesen, und nur wenn ODOO_URL und ODOO_API_KEY gesetzt sind.
 
 import { staffName } from "../src/staffLib.js";
+import { addDays, todayStr } from "../src/lib.js";
 
 const OPEN_STATES = ["confirmed", "progress", "to_close"];
 // Stichtag für das laufende Geschäft: Kundenaufträge mit Auftragsdatum ab diesem Tag. Ältere offene Aufträge sind Altlasten und bleiben draußen.
@@ -69,6 +70,7 @@ export function looksMuster(mill, qty) {
   return ops.every((m) => m != null && (Math.abs(m - 60) < 0.01 || Math.abs(m - 60 * qty) < 0.01));
 }
 const EVERY = 10 * 60 * 1000;
+const MATERIAL_ANFRAGE_TAGE = Math.max(1, Number(process.env.MATERIAL_ANFRAGE_TAGE) || 7);
 const EXT_OFFSET = 1000000000; // Einkaufspositionen liegen in odoo_seen oberhalb dieser Zahl, getrennt von den Fertigungsaufträgen
 const FRESH_DAYS = 3; // beim ersten Abgleich gelten Aufträge, die in den letzten Tagen angelegt wurden, als neu
 
@@ -290,7 +292,12 @@ export default function registerOdooSync(app, db, { isDate, nextPosition }) {
         const d = neu || dayPart(last.date_planned);
         out.set(fa, { date: d, info: `${who(last)}, Wareneingang offen, ${neu ? "neuer Termin" : "geplant"} ${fmtDay(d)}${neu ? " (vom Lieferanten)" : ""}` });
       } else if (ordered.length) out.set(fa, { date: null, info: `${who(ordered[0])}, Material eingegangen` });
-      else out.set(fa, { date: null, info: `${who(list[0])}, Material noch nicht bestellt (Anfrage)` });
+      else {
+        // Nur angefragt: das Material ist nicht unterwegs. Die Planung rechnet mit einer Lieferung frühestens MATERIAL_ANFRAGE_TAGE nach heute
+        // (Standard 7), solange niemand bestellt – sonst sähe der Plan einen Start, der nicht gehen kann.
+        const d = addDays(todayStr(), MATERIAL_ANFRAGE_TAGE);
+        out.set(fa, { date: d, info: `${who(list[0])}, Material noch nicht bestellt (Anfrage), frühestens ${fmtDay(d)}` });
+      }
     });
     return out;
   }
@@ -722,7 +729,7 @@ export default function registerOdooSync(app, db, { isDate, nextPosition }) {
   //   nur angefragt                 -> offen, mit Hinweis
   function materialAv() {
     if (!db.prepare("PRAGMA table_info(av_checks)").all().some((c) => c.name === "auto")) return;
-    const rows = db.prepare("SELECT id, material_date, material_info FROM orders WHERE done = 0 AND material_info IS NOT NULL").all();
+    const rows = db.prepare("SELECT id, material_date, material_info, component_status FROM orders WHERE done = 0 AND (material_info IS NOT NULL OR component_status IS NOT NULL)").all();
     const cur = db.prepare("SELECT status, due, note, auto FROM av_checks WHERE order_id = ? AND item = 'material'");
     const put = db.prepare(
       `INSERT INTO av_checks (order_id, item, status, due, note, assignee, updated_at, auto) VALUES (?, 'material', ?, ?, ?, NULL, datetime('now'), 1)
@@ -731,12 +738,26 @@ export default function registerOdooSync(app, db, { isDate, nextPosition }) {
     rows.forEach((r) => {
       const c = cur.get(r.id);
       if (c && c.auto !== 1) return; // von Hand gesetzt: nie anfassen
+      // ohne Bestellung zum Auftrag: Odoo meldet die Komponenten als verfügbar (Lager) -> bereit; sonst nichts setzen
+      if (!r.material_info) {
+        if (!/^(verfügbar|available)$/i.test(String(r.component_status || "").trim())) return;
+        if (c && c.status === "bereit" && c.note === "Lager: Material laut Odoo verfügbar") return;
+        put.run(r.id, "bereit", null, "Lager: Material laut Odoo verfügbar");
+        return;
+      }
       const received = /eingegangen/.test(r.material_info);
-      const want = received ? ["bereit", null] : r.material_date ? ["in_arbeit", r.material_date] : ["offen", null];
+      const nurAnfrage = /noch nicht bestellt/.test(r.material_info);
+      const want = received ? ["bereit", null] : nurAnfrage ? ["offen", null] : r.material_date ? ["in_arbeit", r.material_date] : ["offen", null];
       const note = "Einkauf: " + r.material_info;
       if (c && c.status === want[0] && (c.due || null) === want[1] && c.note === note) return;
       put.run(r.id, want[0], want[1], note);
     });
+  }
+
+  // Neue Fertigungsaufträge bekommen ihr AV-Paket gleich (im Hintergrund, der Abgleich wartet nicht darauf), nicht erst beim nächsten Lauf
+  function avPaketeBald() {
+    if (!app.locals.freigaben || !app.locals.freigaben.vorbereiten || process.env.FREIGABEN_AUTO === "0") return;
+    setTimeout(() => app.locals.freigaben.vorbereiten().catch((err) => console.error("AV-Pakete für neue Aufträge:", err.message)), 2000);
   }
 
   let running = false;
@@ -794,6 +815,7 @@ export default function registerOdooSync(app, db, { isDate, nextPosition }) {
           setState("last_error", null);
           setState("pending_closing", "[]");
           if (fresh.length || (extX && extX.created.length)) setState("last_change", new Date().toISOString());
+          if (fresh.length) avPaketeBald();
           await storeCompleteness().catch((err) => console.error("Odoo-Abgleich: Vollständigkeit nicht prüfbar", err.message));
         }
         return {
@@ -815,6 +837,7 @@ export default function registerOdooSync(app, db, { isDate, nextPosition }) {
         setState("last_sync", new Date().toISOString());
         setState("last_error", null);
         if (plan.created.length || closeRefs.length || (extX && extX.created.length)) setState("last_change", new Date().toISOString());
+        if (plan.created.length) avPaketeBald();
         const remaining = [...computePlan(items).closing, ...(extX ? computeExternal(ext).closing : [])];
         setState("pending_closing", JSON.stringify(remaining));
         // Nach dem Übernehmen prüfen, ob jeder laufende Kundenauftrag sichtbar ist (ein Fehler hier hält den Abgleich nicht auf)

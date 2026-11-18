@@ -1,4 +1,4 @@
-import { Ampel } from "./Ampel.jsx";
+import { Ampel, AmpelPill } from "./Ampel.jsx";
 import React, { useState, useEffect, useLayoutEffect, useMemo, useRef, Suspense, lazy } from "react";
 import { isNewPlan, DEFAULT_WEEK_CAPACITY, MACHINES, SHIFT_MODELS, addDays, daysBetween, fmtH, fmtShort, isoWeekOf, mondayOf } from "./lib.js";
 import { parseOdooExport } from "./odooImport.js";
@@ -9,6 +9,8 @@ import Auslastung from "./Auslastung.jsx";
 import PlanVerbessern from "./PlanVerbessern.jsx";
 import Arbeitskorb from "./Arbeitskorb.jsx";
 import PrioLeiste, { usePrio, prioSetzen } from "./PrioLeiste.jsx";
+import Laufkarte, { AblaufBar } from "./Laufkarte.jsx";
+import { ablaufOf, ABLAUF_SCHRITTE } from "./ablauf.js";
 const Kennzahlen = lazy(() => import("./Kennzahlen.jsx"));
 const Extern = lazy(() => import("./Extern.jsx"));
 const Datenqualitaet = lazy(() => import("./Datenqualitaet.jsx"));
@@ -17,10 +19,10 @@ const Abwesend = lazy(() => import("./Abwesend.jsx"));
 import FehlerMelden from "./FehlerMelden.jsx";
 // Zeichnung und 3D erst laden, wenn jemand sie öffnet (three.js ist groß)
 const DocsDialog = lazy(() => import("./PartDocs.jsx").then((m) => ({ default: m.DocsDialog })));
-import { AV_ITEMS, AV_STATUS, AV_TEAM, isNewAv, avKey, avState, avSummary } from "./avLib.js";
+import { AV_ITEMS, AV_STATUS, AV_TEAM, isNewAv, avKey, avState, avSummary, startklar } from "./avLib.js";
 import { STAFF, ACTIVITIES, STAFF_DEFAULTS, responsible, avResponsible, sharedMachine } from "./staffLib.js";
 import Avatar from "./Avatar.jsx";
-import { AppTile, Ico, LaneTile, MTile, Thumb, useToast, partImg } from "./ui.jsx";
+import { AppTile, Ico, LaneIcon, LaneTile, MTile, Thumb, useToast, partImg } from "./ui.jsx";
 import { pollEvery } from "./poll.js";
 import {
   DEFAULT_TIGHT_DAYS,
@@ -203,6 +205,25 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
   const [drag, setDrag] = useState(null); // { ids, label, sub, active, x, y, offX, offY, w, h, target }
   const [links, setLinks] = useState([]);
   const [callouts, setCallouts] = useState([]);
+  // Terminlinien und Pfeile: nur für den gewählten Auftrag (Maus darüber oder Details offen), auf Wunsch alle
+  const [ablaufFilter, setAblaufFilter] = useState(null); // Auftragsliste: nur Aufträge mit diesem nächsten Schritt
+  const [boardOpen, setBoardOpen] = useState({}); // aufgeklappte Auftrags-Karten im Board
+  const [allLines, setAllLines] = useState(() => {
+    try {
+      return window.localStorage.getItem("kratos-alle-linien") === "1";
+    } catch {
+      return false;
+    }
+  });
+  const toggleAllLines = () =>
+    setAllLines((v) => {
+      try {
+        window.localStorage.setItem("kratos-alle-linien", v ? "0" : "1");
+      } catch {
+        /* ohne Speicher gilt die Wahl nur in dieser Sitzung */
+      }
+      return !v;
+    });
   const [trackW, setTrackW] = useState(720); // gemessene Breite der Zeitleiste, um die Liefertermin-Texte zu stapeln
   const fileInput = useRef(null);
   const dragInfo = useRef(null);
@@ -419,6 +440,15 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
     });
     return m;
   }, [prioKeys, groupByKey]);
+  // Nicht startklar: was einer eingeplanten Position noch fehlt (für Streifen auf der Karte und den Hinweis)
+  const notReady = (ids) => {
+    const miss = new Set();
+    ids.forEach((id) => {
+      const o = orders.find((x) => x.id === id);
+      (startklar(o, checks) || []).forEach((m) => miss.add(m));
+    });
+    return [...miss];
+  };
   const isPrio = (ids) => prioKeys.size > 0 && ids.some((id) => { const o = orders.find((x) => x.id === id); return o && prioKeys.has(groupKeyOf(o)); });
   const togglePrio = async (o) => {
     const key = groupKeyOf(o);
@@ -1619,6 +1649,11 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
             <MaterialBadge o={o} />
             {o.odoo_draft && <span className="pill warn" title="Der Fertigungsauftrag ist in Odoo noch im Entwurf. Freigegeben wird er in Odoo.">nicht freigegeben</span>}
             {o.due_shifts > 0 && o.due_original && <span className="pill warn" title={`Ursprünglicher Liefertermin: ${fmtShort(o.due_original)}${o.due_original.slice(0, 4)}`}>Termin {o.due_shifts}× verschoben</span>}
+            {(startklar(o, checks) || []).length > 0 && (
+              <span className="pill bad" title="Eingeplant heißt noch nicht startklar: Das fehlt, bevor die Position auf der Maschine anfangen kann">
+                nicht startklar: {startklar(o, checks).join(", ")}
+              </span>
+            )}
             {o.odoo_bom === "muster" && <span className="pill warn" title="Die Stückliste in Odoo hat nur Musterwerte (Referenz MUSTER oder jeder Arbeitsgang genau 60 Minuten). Maschine und Zeit sind nicht geprüft: Zeiten aus der Kalkulation oder Erfahrung in Odoo eintragen.">Zeit ungeprüft (Muster)</span>}
             {o.odoo_bom === "none" && <span className="pill warn" title="In Odoo hat der Fertigungsauftrag keine Stückliste, damit auch keine Arbeitsgänge.">keine Stückliste</span>}
             {o.odoo_bom === "leer" && <span className="pill warn" title="Die Stückliste in Odoo hat keine Arbeitsgänge.">keine Arbeitsgänge</span>}
@@ -1646,6 +1681,20 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
               <FehlerMelden o={o} small={false} />
             </div>
           )}
+
+          {(() => {
+            const k = groupKeyOf(o);
+            const ab = ablaufOf(orders.filter((x) => groupKeyOf(x) === k), checks);
+            return (
+              <div className="dsec">
+                <h4 style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  Laufkarte {groupLabelOf(o)}
+                  <AblaufBar steps={ab.steps} />
+                </h4>
+                <Laufkarte ablauf={ab} onAction={(s) => ablaufAction(s, o)} />
+              </div>
+            );
+          })()}
 
           <div className="dsec">
             <h4>Plan</h4>
@@ -2350,6 +2399,22 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
     return { markers, lanes: laneEnds.length };
   };
 
+  // Stunden dieser Woche (bis Sonntag) je Maschine: Anteil jeder geplanten Position, der in die Woche fällt
+  const weekEndOff = todayOff + (7 - ((new Date(today + "T00:00:00Z").getUTCDay() + 6) % 7));
+  const weekHoursOf = (mid) => {
+    const p = plan.find((x) => x.m.id === mid);
+    if (!p) return { h: 0, rate: 0 };
+    const h = p.items
+      .filter((it) => it.scheduled)
+      .reduce((s, it) => {
+        const st = it.pastStart ?? it.start;
+        const a = Math.max(st, todayOff);
+        const e = Math.min(it.end, weekEndOff);
+        const len = it.end - st;
+        return e > a && len > 0 ? s + remainingOf(it.o) * Math.min(1, (e - a) / len) : s;
+      }, 0);
+    return { h, rate: p.rate || 0 };
+  };
   const machineLane = (p, bi) => {
     const blocks = buildBlocks(p.items);
     const strips = [];
@@ -2480,11 +2545,12 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
         const isSel = part.select != null && part.select === detailId;
         const isFresh = fresh != null && part.ids.includes(fresh);
         const tag = status === "late" ? <em className="tag bad" style={{ fontStyle: "normal" }}>+{g.lateDays} T</em> : status === "tight" && g && g.diff != null ? <em className="tag warn" style={{ fontStyle: "normal" }}>Puffer {Math.max(1, Math.floor(-g.diff))} T</em> : null;
-        const tipHtml = tipFor(part.tipTitle, part.tip, partImg(orders.find((x) => x.id === part.ids[0])));
+        const miss = notReady(part.ids);
+        const tipHtml = tipFor(part.tipTitle, miss.length ? [...part.tip, `Nicht startklar: ${miss.join(", ")}`] : part.tip, partImg(orders.find((x) => x.id === part.ids[0])));
         bars.push(
           <div
             key={`${block.key}-${part.ids[0]}`}
-            className={`bar amp-${ampel(g)}${status === "late" ? " late" : ""}${hlCls}${dim2}${grpCls}${isSel ? " sel" : ""}${linked ? " linked" : ""}${isFresh ? " fresh" : ""}${isDragged ? " dragged" : ""}${isPrio(part.ids) ? " prio" : ""}`}
+            className={`bar amp-${ampel(g)}${status === "late" ? " late" : ""}${hlCls}${dim2}${grpCls}${isSel ? " sel" : ""}${linked ? " linked" : ""}${isFresh ? " fresh" : ""}${isDragged ? " dragged" : ""}${isPrio(part.ids) ? " prio" : ""}${miss.length ? " nostart" : ""}`}
             data-bar="1"
             data-ids={part.ids.map((id) => `i${id}`).join(" ")}
             role="button"
@@ -2518,7 +2584,9 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
               // Wer an dieser Position arbeitet (Programmierung, Rüsten, Fräsen): kleine Fotos links, der Text rückt nach rechts
               const o0 = orders.find((x) => x.id === part.ids[0]);
               const names = o0 ? [...new Set(["programmierung", "ruesten", "fraesen"].map((a) => whoOf(o0, a)).filter(Boolean))] : [];
-              return names.length ? (
+              // Fotos nur auf breiten Balken, sonst wird der Auftrag abgeschnitten
+              const barPx = ((ce - cs) / total) * trackW;
+              return names.length && barPx >= 130 ? (
                 <span className="bar-who" title={names.join(", ")}>
                   {names.slice(0, 2).map((n) => (
                     <Avatar key={n} name={n} size={22} />
@@ -2544,6 +2612,14 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
         );
       });
     });
+    // Terminlinien nur für den gewählten Auftrag (oder alle, wenn eingeschaltet oder eine Hervorhebung läuft)
+    const aktiv = hoverAuftrag || (detailId != null ? (() => { const o = orders.find((x) => x.id === detailId); return o ? groupKeyOf(o) : null; })() : null);
+    const keyOfIds = (ids) => { const o = orders.find((x) => x.id === ids[0]); return o ? groupKeyOf(o) : null; };
+    if (!allLines) {
+      const keep = strips.filter((s) => (hlSet ? s.ids.some((id) => hlSet.has(id)) : aktiv && keyOfIds(s.ids) === aktiv));
+      strips.length = 0;
+      strips.push(...keep);
+    }
     // Terminlinien so auf Zeilen verteilen, dass sie sich (samt Text) nicht überdecken
     strips.sort((x, y) => x.a - y.a);
     const rowEnds = [];
@@ -2559,18 +2635,25 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
     const trackH = Math.max(66, 60 + Math.max(1, rowEnds.length) * 16 + 6);
     return (
       <div className="lane" key={p.m.id}>
-        <div className="lab">
-          <Ampel machine={p.m.id} />
-          <MTile c={p.m.c} img={p.m.img} imgZoom={p.m.imgZoom} title={p.m.name} />
-          <div className="lt">
-            <b>{p.m.name}</b>
-            <small>{p.rate ? `${fmtH(p.rate)} h/Woche` : "keine Wochenleistung"}</small>
-
-          </div>
-          <button type="button" className="btn icon quiet addb" title="Auftrag von Hand hinzufügen" aria-label={`Auftrag zu ${p.m.short} hinzufügen`} onClick={() => addOrder(p.m.id)}>
-            <Ico n="plus" s={15} />
-          </button>
-        </div>
+        {(() => {
+          const w = weekHoursOf(p.m.id);
+          return (
+            <div className="lab lab-hero" style={{ "--mc": p.m.c }}>
+              {p.m.img && <img src={p.m.img} alt="" className="lab-photo" />}
+              <div className="lab-txt">
+                <b>{p.m.name}</b>
+                <AmpelPill machine={p.m.id} interactive />
+              </div>
+              <div className="lab-load" title="Geplante Stunden dieser Woche (bis Sonntag) von der Wochenleistung">
+                <small>{fmtH(round1(w.h))} / {p.rate ? fmtH(p.rate) : "–"} h Woche</small>
+                <span><i style={{ width: `${Math.min(100, p.rate ? (w.h / p.rate) * 100 : 0)}%` }} /></span>
+              </div>
+              <button type="button" className="lab-add" title="Auftrag von Hand hinzufügen" aria-label={`Auftrag zu ${p.m.short} hinzufügen`} onClick={() => addOrder(p.m.id)}>
+                <Ico n="plus" s={14} />
+              </button>
+            </div>
+          );
+        })()}
         <div
           className={`track${dragActive && drag.target?.machine === p.m.id ? " droptarget" : ""}`}
           ref={(el) => {
@@ -2628,19 +2711,25 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
 
   const minorLane = ({ lane, blocks, rows }) => (
     <div className="lane minor" key={lane.id}>
-      <div className="lab">
-        <LaneTile id={lane.id} c={lane.c} />
-        <div className="lt">
-          <b>{lane.name}</b>
-          <small>{lane.cap}</small>
-
-        </div>
-        {lane.id !== "qs" && (
-          <button type="button" className="btn icon quiet addb" title="Auftrag von Hand hinzufügen" aria-label={`Auftrag zu ${lane.name} hinzufügen`} onClick={() => addLaneOrder(lane)}>
-            <Ico n="plus" s={15} />
-          </button>
-        )}
-      </div>
+      {(() => {
+        const list = orders.filter((o) => !o.done && o.machine === lane.id);
+        const over = list.filter((o) => o.extern_start && addDays(o.extern_start, daysIn(o)) < today).length;
+        return (
+          <div className="lab lab-hero lane-hero" style={{ "--mc": lane.c }}>
+            <span className="lane-big"><LaneIcon id={lane.id} s={58} /></span>
+            <div className="lab-txt">
+              <b>{lane.name}</b>
+              <span className="amp-pill"><i style={{ "--c": over ? "var(--bad)" : list.length ? "var(--ok)" : "var(--faint)" }} />{list.length} {list.length === 1 ? "Position" : "Positionen"}{over ? ` · ${over} überfällig` : ""}</span>
+            </div>
+            <div className="lab-load"><small>{lane.cap}</small></div>
+            {lane.id !== "qs" && (
+              <button type="button" className="lab-add" title="Auftrag von Hand hinzufügen" aria-label={`Auftrag zu ${lane.name} hinzufügen`} onClick={() => addLaneOrder(lane)}>
+                <Ico n="plus" s={14} />
+              </button>
+            )}
+          </div>
+        );
+      })()}
       <div
         className={`track${dragActive && drag.target?.machine === lane.id ? " droptarget" : ""}`}
         ref={(el) => {
@@ -2844,6 +2933,9 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
                 Heute
               </button>
             )}
+            <button className={`btn sm${allLines ? " on" : ""}`} type="button" aria-pressed={allLines} onClick={toggleAllLines} title="Terminlinien und Pfeile: aus = nur für den Auftrag unter der Maus oder in den Details, an = für alle">
+              {allLines ? "Alle Terminlinien" : "Terminlinien: Auswahl"}
+            </button>
           </div>
         </div>
         <div className={`tl${dense ? " dense" : ""}${detailId != null ? " has-sel" : ""}${dragActive ? " is-drag" : ""}`} style={{ "--n": total }}>
@@ -2877,7 +2969,12 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
             )}
             {links.length > 0 && (
               <svg className="links" width="100%" height="100%" aria-hidden="true">
-                {links.map((l) => (
+                {links.filter((l) => {
+                  if (allLines) return true;
+                  const o = orders.find((x) => x.id === l.id);
+                  const aktiv = hoverAuftrag || (detailId != null ? (() => { const d = orders.find((x) => x.id === detailId); return d ? groupKeyOf(d) : null; })() : null);
+                  return !!o && !!aktiv && groupKeyOf(o) === aktiv;
+                }).map((l) => (
                   <g key={l.id}>
                     <path d={`M${l.x1} ${l.y1} C${l.x1 + 30} ${l.y1} ${l.x2 - 30} ${l.y2} ${l.x2} ${l.y2}`} />
                     <polygon points={`${l.x2},${l.y2} ${l.x2 - 8},${l.y2 - 4} ${l.x2 - 8},${l.y2 + 4}`} />
@@ -3239,6 +3336,65 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
       </div>
     );
   };
+  // Aufeinanderfolgende Positionen desselben Auftrags in einer Spalte: eine Karte (wie ein Balken im Zeitstrahl). Mit Suche oder Filter einzeln.
+  const boardGroupsOf = (col) => {
+    const out = [];
+    col.cards.forEach((o) => {
+      const k = groupKeyOf(o);
+      const last = out[out.length - 1];
+      if (boardDrag && last && last.key === k) last.items.push(o);
+      else out.push({ key: k, items: [o] });
+    });
+    return out;
+  };
+  const boardGroupCard = (grp, col) => {
+    const first = grp.items[0];
+    const ids = grp.items.map((o) => o.id);
+    const g = groupByKey.get(grp.key);
+    const pill = pillOf(g);
+    const hours = grp.items.reduce((s, o) => s + (o.hours || 0), 0);
+    const its = col.machine ? grp.items.map((o) => itemById.get(o.id)?.it).filter((x) => x && x.scheduled) : [];
+    const when = its.length ? `${fmtShort(dateOf(Math.min(...its.map((i) => i.pastStart ?? i.start))))} bis ${fmtShort(endDateOf(Math.max(...its.map((i) => i.end))))}` : "";
+    const avs = grp.items.map((o) => avPill(o.id));
+    const worst = avs.reduce((a, b) => (b.done / (b.total || 1) < a.done / (a.total || 1) ? b : a), avs[0]);
+    const miss = notReady(ids);
+    const openKey = col.id + "|" + grp.key + "|" + first.id;
+    const isOpen = !!boardOpen[openKey];
+    const dragged = dragActive && ids.some((id) => drag.ids.includes(id));
+    return (
+      <div key={"g" + first.id} className={`bd-group${isOpen ? " open" : ""}`}>
+        <div
+          {...{ "data-card": first.id }}
+          className={`bd-card bd-gcard${boardDrag ? " can" : ""}${dragged ? " dragging" : ""}${miss.length ? " nostart" : ""}`}
+          onPointerDown={boardDrag ? (e) => startDrag(e, { ids, label: g ? g.label : groupLabelOf(first), sub: `${grp.items.length} Positionen`, toggle: null, fromBoard: true }) : undefined}
+          onClick={() => setBoardOpen((prev) => ({ ...prev, [openKey]: !prev[openKey] }))}
+          title={`${grp.items.map((o) => posNo(o)).join(", ")} · Klicken zum ${isOpen ? "Zuklappen" : "Aufklappen"}, ziehen verschiebt alle`}
+        >
+          <div className="bd-top">
+            <Thumb src={partImg(first)} size={36} />
+            <div className="bd-title">
+              <b>{g ? g.label : groupLabelOf(first)}</b>
+              <span className="bd-no">{grp.items.length} Positionen</span>
+            </div>
+            <span className="bd-tog" aria-hidden="true">{isOpen ? "▾" : "▸"}</span>
+          </div>
+          {first.customer && <div className="bd-prod">{first.customer}</div>}
+          <div className="bd-facts">
+            <span>{fmtH(round1(hours))} h</span>
+            {when && <span className="bd-when">{when}</span>}
+          </div>
+          <div className="bd-chips">
+            {pill ? <span className={`pill ${pill.cls}`}>{pill.text}</span> : null}
+            <span className={`av ${worst.s.ready ? "bereit" : ""}`} title="Schlechtester AV-Stand der Positionen">
+              AV {worst.done}/{worst.total}
+            </span>
+            {miss.length > 0 && <span className="pill warn" title={`Nicht startklar: ${miss.join(", ")}`}>nicht startklar</span>}
+          </div>
+        </div>
+        {isOpen && <div className="bd-sub">{grp.items.map((o) => boardCardOf(o, col))}</div>}
+      </div>
+    );
+  };
   const boardCard = (
     <div className="card" id="board">
       <div className="sec-head">
@@ -3261,20 +3417,46 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
       <div className="bd-cols">
         {boardColumns.map((col) => (
           <div key={col.id} className="bd-col" style={{ "--c": col.c }}>
-            <div className="bd-head">
-              {col.machine ? <MTile c={col.c} img={col.img} imgZoom={col.imgZoom} size={36} title={col.sub} /> : <i className="bd-dot" />}
-              <div className="bd-name">
-                <b>{col.name}</b>
-                <span>{col.sub}</span>
-              </div>
-              <span className="pill mute">{col.all.length}</span>
-            </div>
+            {col.machine ? (
+              (() => {
+                const w = weekHoursOf(col.id);
+                return (
+                  <div className="bd-hero" style={{ "--mc": col.c }}>
+                    {col.img && <img src={col.img} alt="" className="bd-photo" />}
+                    <div className="bd-htop">
+                      <b>{col.sub}</b>
+                      <AmpelPill machine={col.id} />
+                    </div>
+                    <span className="bd-count" title="offene Positionen">{col.all.length}</span>
+                    <div className="bd-load" title="Geplante Stunden dieser Woche (bis Sonntag) von der Wochenleistung">
+                      <small>{fmtH(round1(w.h))} / {fmtH(round1(w.rate))} h diese Woche</small>
+                      <span><i style={{ width: `${Math.min(100, w.rate ? (w.h / w.rate) * 100 : 0)}%` }} /></span>
+                    </div>
+                  </div>
+                );
+              })()
+            ) : (
+              (() => {
+                const over = col.all.filter((o) => o.extern_start && addDays(o.extern_start, daysIn(o)) < today).length;
+                return (
+                  <div className="bd-hero lane-hero" style={{ "--mc": col.c }}>
+                    <span className="lane-big bd-lane-big"><LaneIcon id={col.id} s={64} /></span>
+                    <div className="bd-htop">
+                      <b>{col.name}</b>
+                      <span className="amp-pill"><i style={{ "--c": over ? "var(--bad)" : col.all.length ? "var(--ok)" : "var(--faint)" }} />{over ? `${over} überfällig` : col.all.length ? `${col.all.length} ${col.all.length === 1 ? "Position" : "Positionen"}` : "leer"}</span>
+                    </div>
+                    <span className="bd-count" title="offene Positionen">{col.all.length}</span>
+                    <div className="bd-load"><small>{col.sub}</small></div>
+                  </div>
+                );
+              })()
+            )}
             <div className="bd-sum">
               {col.machine && <span>{fmtH(round1(col.hours))} h offen</span>}
               {col.late > 0 && <span className="pill bad">{col.late} verspätet</span>}
             </div>
             <div ref={(el) => (boardCols.current[col.id] = el)} className={`bd-body${dragActive && drag.target?.machine === col.id ? " droptarget" : ""}`}>
-              {col.cards.map((o) => boardCardOf(o, col))}
+              {boardGroupsOf(col).map((grp) => (grp.items.length > 1 ? boardGroupCard(grp, col) : boardCardOf(grp.items[0], col)))}
               {col.cards.length === 0 && <div className="bd-empty">{col.all.length === 0 ? "Keine Aufträge" : "Nichts gefunden"}</div>}
             </div>
           </div>
@@ -3284,6 +3466,34 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
   );
 
   // ---------- Aufträge im Überblick ----------
+  // Wohin ein Schritt der Laufkarte springt: AV-Schritte in die Arbeitsvorbereitung der betroffenen Position, Einplanen in die Liste
+  const ablaufAction = (step, o) => {
+    const id = (step.ids && step.ids[0]) || (o && o.id);
+    if (["zeiten", "material", "fa", "av"].includes(step.id)) {
+      if (goTo) {
+        setAvFocus(id);
+        goTo("av");
+      }
+      return;
+    }
+    if (step.id === "plan") {
+      setDetailId(null);
+      setTab("zeit");
+      setTimeout(() => scrollTo("pool"), 60);
+      return;
+    }
+    if (step.id === "qs") {
+      const x = orders.find((y) => y.id === id);
+      if (x && x.machine && x.machine !== "qs") {
+        setTab("extern");
+        return;
+      }
+    }
+    setTab("zeit");
+    if (id) openDetail(id);
+  };
+  const ablaufByKey = new Map(groups.map((g) => [g.key, ablaufOf(g.positions, checks)]));
+  const ablaufCounts = ABLAUF_SCHRITTE.map((s) => ({ ...s, n: groups.filter((g) => (ablaufByKey.get(g.key).next || {}).id === s.id).length })).filter((s) => s.n > 0);
   const ordersCard = (
     <div className="card">
       <div className="sec-head">
@@ -3292,6 +3502,17 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
           <p>Liefertermin und Start frühestens gelten für alle offenen Positionen des Auftrags. Ein Klick auf die Nummer zeigt die Positionen.</p>
         </div>
       </div>
+      {ablaufCounts.length > 0 && (
+        <div className="ab-filter" role="group" aria-label="Als Nächstes zu tun">
+          <b>Als Nächstes:</b>
+          <button type="button" className={`ab-chip${!ablaufFilter ? " on" : ""}`} onClick={() => setAblaufFilter(null)}>Alle <span>{groups.length}</span></button>
+          {ablaufCounts.map((s) => (
+            <button key={s.id} type="button" className={`ab-chip${ablaufFilter === s.id ? " on" : ""}`} onClick={() => setAblaufFilter(ablaufFilter === s.id ? null : s.id)}>
+              {s.label} <span>{s.n}</span>
+            </button>
+          ))}
+        </div>
+      )}
       {groups.length === 0 ? (
         <div style={{ padding: "22px 18px", color: "var(--muted)" }}>Noch keine Aufträge. Importiere sie aus Odoo.</div>
       ) : (
@@ -3306,10 +3527,12 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
                 <th>Status</th>
                 <th>Positionen</th>
                 <th>Fortschritt</th>
+                <th>Ablauf · als Nächstes</th>
               </tr>
             </thead>
             <tbody>
-              {groups.map((g) => {
+              {groups.filter((g) => !ablaufFilter || (ablaufByKey.get(g.key).next || {}).id === ablaufFilter).map((g) => {
+                const ab = ablaufByKey.get(g.key);
                 const open = g.positions.filter((o) => !o.done);
                 const dues = [...new Set(open.map((o) => o.due).filter(Boolean))].sort();
                 const deviating = dues.length > 1;
@@ -3376,6 +3599,19 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
                         <span className="meter"><i style={{ width: `${g.percent || 0}%` }} /></span>{" "}
                         <span className="num" style={{ color: "var(--muted)", fontSize: 12 }}>{g.percent != null ? `${g.percent} %` : "–"}</span>
                       </td>
+                      <td onClick={(e) => e.stopPropagation()}>
+                        <div className="ab-cell">
+                          <AblaufBar steps={ab.steps} />
+                          {ab.next ? (
+                            <button type="button" className="ab-next" onClick={() => ablaufAction(ab.next, g.positions.find((x) => !x.done) || g.positions[0])} title={ab.next.detail}>
+                              <b>{ab.next.label}</b>
+                              <small>{ab.next.detail}</small>
+                            </button>
+                          ) : (
+                            <span className="ab-next done">fertig</span>
+                          )}
+                        </div>
+                      </td>
                     </tr>
                     {isOpen &&
                       g.positions
@@ -3411,7 +3647,7 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
                                   <span style={{ color: "var(--faint)" }}>nicht eingeplant</span>
                                 )}
                               </td>
-                              <td colSpan={3}>
+                              <td colSpan={4}>
                                 <span className="num" style={{ color: "var(--muted)", fontSize: 12.5 }}>
                                   {o.hours > 0 ? `${fmtH(o.hours)} h` : "Stunden fehlen"}
                                   {f && f.it.percent != null ? ` · ${f.it.estimated ? "~" : ""}${f.it.percent} %` : ""}

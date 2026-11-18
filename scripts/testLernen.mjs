@@ -82,19 +82,19 @@ try {
   assert.equal((await api("x", "POST", "/api/programme/meldung", meldung)).status, 401);
   let r = await api("x", "POST", "/api/programme/meldung", meldung, { Authorization: `Bearer ${PKEY}` });
   assert.equal(r.gespeichert, 2, JSON.stringify(r));
+  // eigenes Programm im Auftragsordner: der AV-Punkt Programm geht gleich automatisch auf bereit (das Paket muss es nicht mehr vorschlagen)
+  assert.ok(r.programmBereit >= 1, JSON.stringify(r));
   await api("x", "POST", "/api/freigaben/vorbereiten", {});
   let list = (await api("x", "GET", "/api/freigaben")).items;
   const pk = (ref) => list.find((f) => f.art === "av" && f.bezug === ref);
-  assert.match(pk("FA01334").daten.notes.programm, /Programm im Auftragsordner: 042-69-017_S1\.mcam \(Stand 16\.11\.2026\)/);
-  assert.equal(pk("FA01334").daten.status.programm, "bereit");
+  assert.ok(!pk("FA01334") || !pk("FA01334").daten.notes.programm, "schon bereit: kein Vorschlag mehr");
   assert.match(pk("FA01309").daten.notes.programm, /Altprogramm aus A01100 .*Zeichnungsindex prüfen/);
   assert.ok(!pk("FA01309").daten.status.programm, "Altprogramm setzt nichts auf bereit");
-  r = await api("frank", "POST", `/api/freigaben/${pk("FA01334").id}`, { aktion: "freigeben" });
-  assert.match(r.ergebnis, /Programm auf bereit/, JSON.stringify(r));
   const checks = (await api("x", "GET", "/api/av")).checks;
   const prog = checks.find((c) => c.order_id === row("FA01334").id && c.item === "programm");
   assert.equal(prog.status, "bereit");
-  assert.match(prog.note, /Programm im Auftragsordner/);
+  assert.equal(prog.auto, 1);
+  assert.match(prog.note, /Auftragsordner: 042-69-017_S1\.mcam/);
   ok("Programme aus dem Auftragsordner: eigenes Programm -> „Programm: bereit“ mit Datei, Altprogramm nur als Hinweis; Meldung nur mit Schlüssel");
 
   // 2. Soll/Ist: fünf erledigte Positionen, die mit Kalkulationsstunden geplant waren (4 h) und 5 h gestempelt haben (FA01050)

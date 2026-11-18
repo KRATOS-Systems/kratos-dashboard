@@ -64,7 +64,7 @@ export default function registerProgramme(app, db) {
       db.exec("ROLLBACK");
       return res.status(500).json({ error: err.message });
     }
-    res.json({ ok: true, gespeichert: n });
+    res.json({ ok: true, gespeichert: n, programmBereit: programmAv() });
   });
 
   app.get("/api/programme", (req, res) => {
@@ -78,4 +78,34 @@ export default function registerProgramme(app, db) {
   });
 
   app.locals.programmOf = (fa) => (fa ? get.get(fa) : null);
+
+  // Eigenes Programm im Auftragsordner gefunden: AV-Punkt "Programm" auf bereit (automatisch markiert, wie Material aus dem Einkauf).
+  // Von Hand gesetzte Punkte bleiben, wie sie sind.
+  function programmAv() {
+    if (!db.prepare("PRAGMA table_info(av_checks)").all().some((c) => c.name === "auto")) return 0;
+    const rows = db.prepare("SELECT o.id, p.eigene FROM orders o JOIN programme p ON p.fa = COALESCE(o.parent_ref, o.odoo_ref) WHERE o.done = 0").all();
+    const cur = db.prepare("SELECT status, note, auto FROM av_checks WHERE order_id = ? AND item = 'programm'");
+    const put = db.prepare(
+      `INSERT INTO av_checks (order_id, item, status, due, note, assignee, updated_at, auto) VALUES (?, 'programm', 'bereit', NULL, ?, NULL, datetime('now'), 1)
+       ON CONFLICT (order_id, item) DO UPDATE SET status = excluded.status, note = excluded.note, updated_at = excluded.updated_at WHERE av_checks.auto = 1`
+    );
+    let n = 0;
+    for (const r of rows) {
+      let eigene = [];
+      try {
+        eigene = JSON.parse(r.eigene || "[]");
+      } catch {
+        eigene = [];
+      }
+      if (!eigene.length) continue;
+      const c = cur.get(r.id);
+      if (c && c.auto !== 1) continue;
+      const note = "Auftragsordner: " + eigene.map((e) => e.datei).slice(0, 3).join(", ");
+      if (c && c.status === "bereit" && c.note === note) continue;
+      put.run(r.id, note);
+      n++;
+    }
+    return n;
+  }
+  app.locals.programmAv = programmAv;
 }

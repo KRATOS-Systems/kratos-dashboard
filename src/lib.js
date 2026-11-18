@@ -2,7 +2,7 @@ export const MACHINES = [
   { id: "dmu40", name: "DMU 40 EVO", short: "DMU 40 EVO", colorKey: "blue", c: "var(--dmu)", img: "/machines/dmu40.webp" },
   { id: "dmu50", name: "DMG DMU 50", short: "DMU 50", colorKey: "teal", c: "var(--teal)", img: "/machines/dmu50.webp" },
   { id: "m1", name: "DMG M1", short: "M1", colorKey: "yellow", c: "var(--org)", img: "/machines/m1.webp" },
-  { id: "h800u", name: "POS Mill H800U", short: "H800U", colorKey: "red", c: "var(--mag)", img: "/machines/h800u.webp", imgZoom: 0.93 },
+  { id: "h800u", name: "POS Mill H800U", short: "H800U", colorKey: "violet", c: "var(--iris)", img: "/machines/h800u.webp", imgZoom: 0.93 },
 ];
 
 export const DAY = 86400000;

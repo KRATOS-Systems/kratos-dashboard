@@ -537,7 +537,7 @@ export default function registerBdeLaufzeit(app, ctx) {
   const UNSTARTED = ["blocked", "pending", "waiting", "ready"];
   const lc = (v) => String(v || "").trim().toLowerCase();
   const started = (w) => !UNSTARTED.includes(w.state) || (w.duration || 0) > 0;
-  async function moveMachine(productionId, fromKey, toKey) {
+  async function moveMachine(productionId, fromKey, toKey, { ganz = false } = {}) {
     const target = PLAN_MACHINES[toKey];
     if (!target || !Number.isInteger(productionId) || productionId <= 0) return { status: "nichts", text: "" };
     if (!odoo.writeEnabled) return { status: "aus", text: "Bedienen ist nicht freigeschaltet, in Odoo wurde nichts geändert" };
@@ -550,6 +550,9 @@ export default function registerBdeLaufzeit(app, ctx) {
     const fromName = PLAN_MACHINES[fromKey] || null;
     let cands = fraesen;
     if (cands.length > 1) cands = fraesen.filter((w) => (fromName && lc(machineOf(w)) === lc(fromName)) || baseName(machineOf(w)) === "fräsen");
+    // Steht die Karte für den ganzen Auftrag (nicht in Arbeitsgänge aufgeteilt) und liegen alle offenen Fräsen auf demselben Platz
+    // (z. B. zweimal „Fräsen (Maschine offen)“ aus der Musterstückliste), werden sie zusammen umgestellt, jedes mit seinem Rüsten.
+    if (cands.length > 1 && ganz && new Set(fraesen.map((w) => lc(machineOf(w)))).size === 1) return moveAll(productionId, open, fraesen, pair);
     if (cands.length !== 1) return { status: "mehrdeutig", text: "Der Auftrag hat mehrere offene Fräsen in Odoo, deshalb wurde dort nichts geändert. Bitte im Arbeitsplan prüfen" };
     const f = cands[0];
     const fromCenter = machineOf(f);
@@ -568,9 +571,23 @@ export default function registerBdeLaufzeit(app, ctx) {
     ctx.invalidate();
     return { status: "umgestellt", fa, text: `${fa || "Der Auftrag"}: in Odoo von ${fromCenter} auf ${pair.name} umgestellt` };
   }
-  app.locals.odooMaschine = async (productionId, fromKey, toKey) => {
+  async function moveAll(productionId, open, fraesen, pair) {
+    const fromCenter = machineOf(fraesen[0]);
+    if (lc(fromCenter) === lc(pair.name)) return { status: "passt", text: "" };
+    const expected = baseName(fromCenter) === "fräsen" ? "rüsten" : `${lc(fromCenter)} rüsten`;
+    const ruesten = open.filter((w) => stepOfWo(w) === "Rüsten" && baseName(machineOf(w)) === expected);
+    const [prod] = await odoo.read("mrp.production", "read", { ids: [productionId], fields: ["name"] });
+    const fa = prod ? prod.name : null;
+    if (fraesen.some(started) || ruesten.some(started)) return { status: "begonnen", fa, text: `${fa || "Der Auftrag"} hat in Odoo schon begonnen, deshalb bleibt er dort auf ${fromCenter}` };
+    await odoo.write("mrp.workorder", "write", { ids: fraesen.map((w) => w.id), vals: { workcenter_id: pair.id } });
+    if (ruesten.length) await odoo.write("mrp.workorder", "write", { ids: ruesten.map((w) => w.id), vals: { workcenter_id: pair.ruestenId } });
+    await postNote(productionId, `Maschine in der Planung geändert: ${fraesen.length} × Fräsen${ruesten.length ? ` und ${ruesten.length} × Rüsten` : ""} in Odoo von ${fromCenter} auf ${pair.name} umgestellt (Planung, ${today()})`).catch(() => {});
+    ctx.invalidate();
+    return { status: "umgestellt", fa, text: `${fa || "Der Auftrag"}: ${fraesen.length} Fräsen in Odoo von ${fromCenter} auf ${pair.name} umgestellt` };
+  }
+  app.locals.odooMaschine = async (productionId, fromKey, toKey, opts) => {
     try {
-      return await moveMachine(productionId, fromKey, toKey);
+      return await moveMachine(productionId, fromKey, toKey, opts);
     } catch (err) {
       return { status: "fehler", text: `In Odoo konnte die Maschine nicht umgestellt werden: ${err.message}` };
     }

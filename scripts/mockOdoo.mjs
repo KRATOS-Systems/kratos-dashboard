@@ -258,6 +258,48 @@ if (process.env.MOCK_ENTWURF) {
   M2O["purchase.order"] = { partner_id: "res.partner" };
   M2O["purchase.order.line"] = { order_id: "purchase.order", product_id: "product.product" };
 }
+// AV-Aktionen (nur mit MOCK_ABLAUF=1): FA01340 (A01440, 8 Stück) im Entwurf, Musterstückliste 903 (alles 60 min), kein Material;
+// FA01341 hat zwei offene Fräsen auf „Fräsen (Maschine offen)“ (Maschinenabgleich der Musterstückliste)
+if (process.env.MOCK_ABLAUF) {
+  T["product.category"] = [{ id: 15, complete_name: "All / Rohmaterial / Zuschnitt" }, { id: 16, complete_name: "All / Rohmaterial / Stangenware" }];
+  T["uom.uom"] = [{ id: 1, name: "Einheit(en)" }, { id: 6, name: "mm" }];
+  T["stock.route"] = [{ id: 5, name: "Einkaufen" }, { id: 1, name: "Auffüllung nach Auftrag (Auftragsfertigung)" }];
+  T["res.partner"].push({ id: 233, name: "SRS-Stahl", is_company: true }, { id: 242, name: "EHG Stahl.Metall Aichach GmbH", is_company: true }, { id: 126, name: "BIKAR METALLE", is_company: true }, { id: 245, name: "Vink König Deutschland GmbH", is_company: true });
+  T["product.template"].push({ id: 72, name: "Führungsschlitten Test" });
+  T["product.product"].push({ id: 2907, name: "[042-69-099] Führungsschlitten Test", default_code: "042-69-099", product_tmpl_id: 72 });
+  T["mrp.bom"].push({ id: 903, name: "MUSTER: Führungsschlitten Test", code: "MUSTER", product_tmpl_id: 72, operation_ids: [3300, 3301, 3302, 3303], bom_line_ids: [] });
+  T["mrp.routing.workcenter"] = [
+    { id: 3300, bom_id: 903, name: "Programmieren", workcenter_id: 6, time_cycle_manual: 60 },
+    { id: 3301, bom_id: 903, name: "Rüsten", workcenter_id: 22, time_cycle_manual: 60 },
+    { id: 3302, bom_id: 903, name: "Fräsen", workcenter_id: 21, time_cycle_manual: 60 },
+    { id: 3303, bom_id: 903, name: "QS Endprüfung", workcenter_id: 5, time_cycle_manual: 60 },
+  ];
+  T["mrp.bom.line"] = [];
+  T["stock.move"] = [];
+  T["mrp.production"].push(
+    { id: 1340, name: "FA01340", product_id: 2907, state: "draft", origin: "A01440", product_qty: 8, bom_id: 903, move_raw_ids: [], location_src_id: 8, production_location_id: 15, picking_type_id: 11, company_id: 1, date_deadline: day(20) + " 08:00:00", create_date: ago(5) },
+    { id: 1341, name: "FA01341", product_id: 2902, state: "confirmed", origin: "A01441", product_qty: 4, qty_producing: 0 }
+  );
+  T["mrp.workorder"].push(
+    { id: 7400, name: "Programmieren", sequence: 0, production_id: 1340, workcenter_id: 6, product_id: 2907, state: "ready", duration_expected: 60, duration: 0 },
+    { id: 7401, name: "Rüsten", sequence: 1, production_id: 1340, workcenter_id: 22, product_id: 2907, state: "blocked", duration_expected: 60, duration: 0 },
+    { id: 7402, name: "Fräsen", sequence: 2, production_id: 1340, workcenter_id: 21, product_id: 2907, state: "blocked", duration_expected: 480, duration: 0 },
+    { id: 7403, name: "QS Endprüfung", sequence: 3, production_id: 1340, workcenter_id: 5, product_id: 2907, state: "blocked", duration_expected: 60, duration: 0 },
+    { id: 7410, name: "Rüsten", sequence: 1, production_id: 1341, workcenter_id: 18, product_id: 2902, state: "ready", duration_expected: 60, duration: 0 },
+    { id: 7411, name: "Fräsen", sequence: 2, production_id: 1341, workcenter_id: 19, product_id: 2902, state: "blocked", duration_expected: 120, duration: 0 },
+    { id: 7412, name: "Rüsten", sequence: 3, production_id: 1341, workcenter_id: 18, product_id: 2902, state: "blocked", duration_expected: 60, duration: 0 },
+    { id: 7413, name: "Fräsen", sequence: 4, production_id: 1341, workcenter_id: 19, product_id: 2902, state: "blocked", duration_expected: 120, duration: 0 }
+  );
+  T["sale.order"].push({ id: 1440, name: "A01440", state: "sale", partner_id: 138, delivery_status: "pending", date_order: ago(30), commitment_date: day(20) + " 08:00:00" }, { id: 1441, name: "A01441", state: "sale", partner_id: 138, delivery_status: "pending", date_order: ago(30), commitment_date: day(25) + " 08:00:00" });
+  M2O["mrp.bom"] = { product_tmpl_id: "product.template" };
+  M2O["mrp.routing.workcenter"] = { bom_id: "mrp.bom", workcenter_id: "mrp.workcenter" };
+  M2O["mrp.bom.line"] = { bom_id: "mrp.bom", product_id: "product.product", product_uom_id: "uom.uom" };
+  M2O["stock.move"] = { product_id: "product.product", raw_material_production_id: "mrp.production", product_uom: "uom.uom" };
+  M2O["product.product"] = { ...M2O["product.product"], uom_id: "uom.uom" };
+  M2O["mrp.production"] = { ...M2O["mrp.production"], location_src_id: "stock.location", production_location_id: "stock.location" };
+  T["stock.location"] = [{ id: 8, name: "WH/Lager" }, { id: 15, name: "Virtual Locations/Production" }];
+  if (!T["mrp.workcenter"].some((w) => w.id === 19)) T["mrp.workcenter"].push({ id: 18, name: "Rüsten (Maschine offen)" }, { id: 19, name: "Fräsen (Maschine offen)" });
+}
 // Extern & Wareneingang (nur mit MOCK_ENTWURF=1 und MOCK_EXTERN=1), nach den echten Fällen vom 18.11.2026:
 //   P00581 AV CNC Milling (Rumänien, englisch) 7 Tage überfällig; P00601 Erwin Telle Material für FA01322, 1 Tag überfällig;
 //   P00582 CNC Kolodziej morgen fällig; P00557 bestätigt ohne Wareneingang (Altlast); FA01122 hat "Strahlen extern" ohne Bestellung
@@ -383,6 +425,8 @@ function term(model, r, [f, op, v]) {
         return x !== false && x >= v;
       case "ilike":
         return typeof x === "string" && x.toLowerCase().includes(String(v).toLowerCase());
+      case "=ilike":
+        return typeof x === "string" && new RegExp("^" + String(v).replace(/[.*+?^${}()|[\]\\]/g, (c) => (c === "%" ? c : "\\" + c)).replace(/%/g, ".*") + "$", "i").test(x);
       case "=like":
         return typeof x === "string" && new RegExp("^" + String(v).replace(/%/g, ".*") + "$").test(x);
       default:
@@ -472,6 +516,7 @@ function call(model, method, p) {
       const ids = p.vals_list.map((v) => {
         const id = nextId(model);
         T[model].push({ ...v, id, create_date: fmt(now()), ...(model === "mrp.workorder" ? { state: v.state || "blocked" } : {}) });
+        if (model === "product.template") T["product.product"].push({ id: nextId("product.product"), name: v.name, default_code: false, product_tmpl_id: id, uom_id: v.uom_id || 1 });
         return id;
       });
       log.push({ at: fmt(now()), call: `${model}.create(${JSON.stringify(p.vals_list)}) -> ${ids}` });
@@ -488,7 +533,24 @@ function call(model, method, p) {
       log.push({ at: fmt(now()), call: `${model}.action_feedback(${p.ids}, "${p.feedback}")` });
       return true;
     }
+    case "action_confirm": {
+      p.ids.forEach((id) => (byId(model, id).state = "confirmed"));
+      log.push({ at: fmt(now()), call: `${model}.action_confirm(${p.ids})` });
+      return true;
+    }
     case "write": {
+      if (model === "mrp.production" && p.vals.move_raw_ids) {
+        p.ids.forEach((id) => {
+          const rec = byId(model, id);
+          p.vals.move_raw_ids.forEach(([, , v]) => {
+            const mid = nextId("stock.move");
+            T["stock.move"].push({ ...v, id: mid, raw_material_production_id: id, state: rec.state === "draft" ? "draft" : "confirmed" });
+            rec.move_raw_ids = [...(rec.move_raw_ids || []), mid];
+          });
+        });
+        log.push({ at: fmt(now()), call: `${model}.write(${p.ids}, ${JSON.stringify(p.vals)})` });
+        return true;
+      }
       p.ids.forEach((id) => Object.assign(byId(model, id), p.vals));
       if (model === "mrp.workcenter.productivity") p.ids.forEach((id) => recomputeWo(byId(model, id).workorder_id));
       log.push({ at: fmt(now()), call: `${model}.write(${p.ids}, ${JSON.stringify(p.vals)})` });

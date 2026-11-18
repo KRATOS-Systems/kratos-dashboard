@@ -158,7 +158,8 @@ try {
   assert.equal(fa1334.material_date, day(12));
   assert.match(fa1334.material_info, /^P00620 .*Wareneingang offen, geplant/);
   assert.match(orders.find((o) => o.odoo_ref === "FA01122").material_info, /noch nicht bestellt/);
-  assert.equal(orders.find((o) => o.odoo_ref === "FA01122").material_date, null);
+  // nur angefragt: noch nicht unterwegs, die Planung rechnet mit Lieferung frühestens in 7 Tagen
+  assert.equal(orders.find((o) => o.odoo_ref === "FA01122").material_date, day(7));
   assert.match(orders.find((o) => o.odoo_ref === "FA01309").material_info, /eingegangen/);
   await api("PUT", `/api/orders/${fa1334.id}`, { hours: 4 });
   let v = await api("GET", "/api/planvorschlag");

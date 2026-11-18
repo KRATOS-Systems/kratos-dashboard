@@ -88,6 +88,37 @@ const stateLine = (m) => {
 };
 
 // Kleine Ampel im Maschinenkopf der Planung
+// Kleine Status-Pille (läuft, rüsten, steht …) für Kopfzeilen, gleiche Live-Daten wie die Ampel
+const PILL = { lauf: ["läuft", "var(--ok)"], ruesten: ["rüsten", "var(--warn)"], pause: ["Pause", "var(--warn)"], stoerung: ["Störung", "var(--bad)"], steht: ["steht", "var(--bad)"], frei: ["frei", "var(--faint)"] };
+export function AmpelPill({ machine, interactive = false }) {
+  const d = useAmpel();
+  const [open, setOpen] = useState(false);
+  const m = d && d.machines && d.machines[machine];
+  const state = (m && m.state) || "frei";
+  const [t, c] = PILL[state] || PILL.frei;
+  // Läuft: welcher Auftrag und seit wann (aus den Live-Daten der Ampel)
+  const run = m && m.state === "lauf" ? m.runs.find((r) => r.step === "Fräsen") || m.runs[0] : null;
+  const mins = run && run.start ? Math.max(0, Math.round((Date.now() - Date.parse(run.start)) / 60000)) : null;
+  const dauer = mins != null ? `${Math.floor(mins / 60)}:${String(mins % 60).padStart(2, "0")} h` : "";
+  const text = m ? [t, run && run.fa, dauer].filter(Boolean).join(" · ") : "keine Daten";
+  const cls = `amp-pill st-${m ? state : "none"}`;
+  const inner = (
+    <>
+      <i style={{ "--c": c }} />
+      {text}
+    </>
+  );
+  if (!interactive || !m) return <span className={cls} style={{ "--c": c }} title={m ? stateLine(m) : "keine Live-Daten"}>{inner}</span>;
+  return (
+    <>
+      <button type="button" className={cls + " btn-pill"} style={{ "--c": c }} title={`${stateLine(m)} · Klicken: Details, Lauf beenden`} onClick={(e) => { e.stopPropagation(); setOpen(true); }}>
+        {inner}
+      </button>
+      {open && <AmpelDialog machine={machine} onClose={() => setOpen(false)} />}
+    </>
+  );
+}
+
 export function Ampel({ machine }) {
   const d = useAmpel();
   const [open, setOpen] = useState(false);

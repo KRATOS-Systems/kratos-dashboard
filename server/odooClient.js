@@ -24,7 +24,13 @@ const WRITE_METHODS = {
   // Aufgabe vergeben: Odoo-Aktivität am Fertigungsauftrag, Verkaufsauftrag oder Mitarbeiter anlegen
   // und Rückfragen dazu als interne Notiz (message_post mit Untertyp Notiz, keine E-Mail)
   // button_mark_done: Fertigungsauftrag nach der QS abschließen; write nur für die produzierte Menge (qty_producing), die dafür gesetzt sein muss
-  "mrp.production": new Set(["activity_schedule", "message_post", "button_mark_done", "write"]),
+  // AV-Aktionen (server/avAktionen.js): Fertigungsauftrag bestätigen, Material als Komponente eintragen (nur move_raw_ids mit neuer Zeile)
+  "mrp.production": new Set(["activity_schedule", "message_post", "button_mark_done", "write", "action_confirm"]),
+  // AV-Aktionen: Zeiten aus der Kalkulation in die Stückliste (nur Zeit), Referenz MUSTER entfernen, Rohmaterial als Komponente, Rohmaterial-Artikel nach AV001
+  "mrp.routing.workcenter": new Set(["write"]),
+  "mrp.bom": new Set(["write"]),
+  "mrp.bom.line": new Set(["create"]),
+  "product.template": new Set(["create"]),
   "sale.order": new Set(["activity_schedule", "message_post"]),
   "hr.employee": new Set(["activity_schedule", "message_post"]),
 };
@@ -35,8 +41,19 @@ const SCHRITT_CREATE_FIELDS = new Set(["name", "workcenter_id", "production_id",
 const SCHRITT_WRITE_FIELDS = new Set(["sequence", "blocked_by_workorder_ids"]);
 // Maschine eines noch nicht begonnenen Arbeitsgangs umstellen (Karte in der Planung auf eine andere Maschine gezogen): nur der Arbeitsplatz
 const UMSTELL_WRITE_FIELDS = new Set(["workcenter_id"]);
-// Am Fertigungsauftrag darf nur die produzierte Menge gesetzt werden
+// Am Fertigungsauftrag darf nur die produzierte Menge gesetzt werden – und (AV-Aktion) eine neue Materialzeile angehängt werden
 const PRODUCTION_WRITE_FIELDS = new Set(["qty_producing"]);
+const MOVE_CREATE_FIELDS = new Set(["product_id", "product_uom_qty", "product_uom", "location_id", "location_dest_id", "picking_type_id", "company_id"]);
+// Plandauer eines Arbeitsgangs (Zeiten aus der Kalkulation übernehmen)
+const ZEIT_WRITE_FIELDS = new Set(["duration_expected"]);
+// AV-Aktionen: was an Stückliste, Arbeitsplan und neuem Rohmaterial-Artikel geschrieben werden darf
+const ROUTING_WRITE_FIELDS = new Set(["time_cycle_manual"]);
+const BOM_WRITE_FIELDS = new Set(["code"]);
+const BOM_LINE_CREATE_FIELDS = new Set(["bom_id", "product_id", "product_qty", "product_uom_id"]);
+const PRODUCT_CREATE_FIELDS = new Set(["name", "type", "is_storable", "categ_id", "uom_id", "purchase_ok", "sale_ok", "route_ids", "tracking", "seller_ids"]);
+const onlyFields = (vals, allowed) => !!vals && Object.keys(vals).length > 0 && Object.keys(vals).every((f) => allowed.has(f));
+// move_raw_ids: nur [0, 0, {…}] (neue Zeile) mit erlaubten Feldern
+const onlyNewMoves = (cmds) => Array.isArray(cmds) && cmds.length > 0 && cmds.every((c) => Array.isArray(c) && c[0] === 0 && onlyFields(c[2], MOVE_CREATE_FIELDS));
 // Kiosk-Wege von Odoo (Anwesenheit); die Firma wird über ihren Kiosk-Schlüssel erkannt
 const KIOSK_ROUTES = new Set(["/hr_attendance/attendance_barcode_scanned", "/hr_attendance/attendance_employee_data"]);
 const KIOSK_WRITES = new Set(["/hr_attendance/attendance_barcode_scanned"]);
@@ -135,10 +152,21 @@ export function createOdooClient() {
       const keys = params.vals ? Object.keys(params.vals) : [];
       const reihenfolge = keys.length > 0 && keys.every((f) => SCHRITT_WRITE_FIELDS.has(f));
       const umstellen = keys.length > 0 && keys.every((f) => UMSTELL_WRITE_FIELDS.has(f));
-      if (!reihenfolge && !umstellen) return Promise.reject(new Error("Am Arbeitsgang dürfen nur Reihenfolge, Abhängigkeit und der Arbeitsplatz geändert werden"));
+      const zeit = keys.length > 0 && keys.every((f) => ZEIT_WRITE_FIELDS.has(f));
+      if (!reihenfolge && !umstellen && !zeit) return Promise.reject(new Error("Am Arbeitsgang dürfen nur Reihenfolge, Abhängigkeit, Arbeitsplatz und Plandauer geändert werden"));
     }
-    if (model === "mrp.production" && method === "write" && (!params.vals || Object.keys(params.vals).some((f) => !PRODUCTION_WRITE_FIELDS.has(f))))
-      return Promise.reject(new Error("Am Fertigungsauftrag darf nur die produzierte Menge gesetzt werden"));
+    if (model === "mrp.production" && method === "write") {
+      const v = params.vals || {};
+      const menge = onlyFields(v, PRODUCTION_WRITE_FIELDS);
+      const material = Object.keys(v).length === 1 && onlyNewMoves(v.move_raw_ids);
+      if (!menge && !material) return Promise.reject(new Error("Am Fertigungsauftrag darf nur die produzierte Menge gesetzt oder eine neue Materialzeile angehängt werden"));
+    }
+    if (model === "mrp.routing.workcenter" && !onlyFields(params.vals, ROUTING_WRITE_FIELDS)) return Promise.reject(new Error("Im Arbeitsplan der Stückliste darf nur die Zeit geändert werden"));
+    if (model === "mrp.bom" && (!onlyFields(params.vals, BOM_WRITE_FIELDS) || params.vals.code !== false)) return Promise.reject(new Error("An der Stückliste darf nur die Referenz MUSTER entfernt werden"));
+    if (model === "mrp.bom.line" && (!Array.isArray(params.vals_list) || params.vals_list.some((v) => !onlyFields(v, BOM_LINE_CREATE_FIELDS))))
+      return Promise.reject(new Error("Für die Stückliste darf nur eine Materialzeile angelegt werden"));
+    if (model === "product.template" && (!Array.isArray(params.vals_list) || params.vals_list.length !== 1 || !onlyFields(params.vals_list[0], PRODUCT_CREATE_FIELDS) || params.vals_list[0].sale_ok !== false))
+      return Promise.reject(new Error("Angelegt werden darf nur ein Rohmaterial-Artikel (ohne Verkauf)"));
     return queued(() => json2(model, method, params));
   }
 

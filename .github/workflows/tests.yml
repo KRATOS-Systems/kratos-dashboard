@@ -71,6 +71,10 @@ jobs:
         run: node scripts/testBedienung.mjs
       - name: Prio-Aufträge, Platz-Vorschlag im Pool, Musterwerte
         run: node scripts/testPrio.mjs
+      - name: Ablauf (Material ehrlich, startklar, AV automatisch, AV-Aktionen in Odoo, Maschinenabgleich)
+        run: node scripts/testAblauf.mjs
+      - name: Laufkarte (Ablauf je Auftrag, nächster Schritt)
+        run: node scripts/testLaufkarte.mjs
       - name: Aufgaben (Von mir vergeben)
         run: node scripts/testAufgaben.mjs
       - name: Verbindung zu QS (Prüfplan, EMPB)

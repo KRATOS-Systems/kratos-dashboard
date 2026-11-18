@@ -3,7 +3,7 @@ import React, { createContext, useCallback, useContext, useEffect, useRef, useSt
 // Gemeinsame Bausteine: Symbole, Logo, Maschinen- und App-Kacheln, Vorschaubild, Hinweis (Toast)
 
 const RED = "#EE3340";
-const LIGHT = "#F6F6F6";
+const LIGHT = "currentColor"; // Farbe der Leiste: hell auf dunkel, dunkel auf hell
 
 export function BrandMark({ size = 34 }) {
   const inner = Math.round(size * 0.53);
@@ -146,6 +146,11 @@ const LANE_ICON = {
   extern_fert: '<path d="M4 26.5V14l8 4.2V14l8 4.2V6.5h6.5v20z"/><path d="M8.5 26.5v-3.5M14.5 26.5v-3.5M21 26.5v-3.5"/>',
   extern: '<path d="M16 5l11.5 6.2L16 17.4 4.5 11.2z"/><path d="M4.5 16.4L16 22.6l11.5-6.2"/><path d="M4.5 21.4L16 27.6l11.5-6.2"/>',
 };
+
+// Großes Symbol einer Station (QS, Extern) für ausgefüllte Köpfe
+export function LaneIcon({ id, s = 64 }) {
+  return <svg className="lane-icon" width={s} height={s} viewBox="0 0 32 32" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" dangerouslySetInnerHTML={{ __html: LANE_ICON[id] || "" }} />;
+}
 
 export function LaneTile({ id, c }) {
   return (
