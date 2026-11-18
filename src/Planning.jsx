@@ -9,6 +9,8 @@ import Auslastung from "./Auslastung.jsx";
 import PlanVerbessern from "./PlanVerbessern.jsx";
 import Arbeitskorb from "./Arbeitskorb.jsx";
 import PrioLeiste, { usePrio, prioSetzen } from "./PrioLeiste.jsx";
+import Laufkarte, { AblaufBar } from "./Laufkarte.jsx";
+import { ablaufOf, ABLAUF_SCHRITTE } from "./ablauf.js";
 const Kennzahlen = lazy(() => import("./Kennzahlen.jsx"));
 const Extern = lazy(() => import("./Extern.jsx"));
 const Datenqualitaet = lazy(() => import("./Datenqualitaet.jsx"));
@@ -204,6 +206,7 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
   const [links, setLinks] = useState([]);
   const [callouts, setCallouts] = useState([]);
   // Terminlinien und Pfeile: nur für den gewählten Auftrag (Maus darüber oder Details offen), auf Wunsch alle
+  const [ablaufFilter, setAblaufFilter] = useState(null); // Auftragsliste: nur Aufträge mit diesem nächsten Schritt
   const [boardOpen, setBoardOpen] = useState({}); // aufgeklappte Auftrags-Karten im Board
   const [allLines, setAllLines] = useState(() => {
     try {
@@ -1678,6 +1681,20 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
               <FehlerMelden o={o} small={false} />
             </div>
           )}
+
+          {(() => {
+            const k = groupKeyOf(o);
+            const ab = ablaufOf(orders.filter((x) => groupKeyOf(x) === k), checks);
+            return (
+              <div className="dsec">
+                <h4 style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  Laufkarte {groupLabelOf(o)}
+                  <AblaufBar steps={ab.steps} />
+                </h4>
+                <Laufkarte ablauf={ab} onAction={(s) => ablaufAction(s, o)} />
+              </div>
+            );
+          })()}
 
           <div className="dsec">
             <h4>Plan</h4>
@@ -3449,6 +3466,34 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
   );
 
   // ---------- Aufträge im Überblick ----------
+  // Wohin ein Schritt der Laufkarte springt: AV-Schritte in die Arbeitsvorbereitung der betroffenen Position, Einplanen in die Liste
+  const ablaufAction = (step, o) => {
+    const id = (step.ids && step.ids[0]) || (o && o.id);
+    if (["zeiten", "material", "fa", "av"].includes(step.id)) {
+      if (goTo) {
+        setAvFocus(id);
+        goTo("av");
+      }
+      return;
+    }
+    if (step.id === "plan") {
+      setDetailId(null);
+      setTab("zeit");
+      setTimeout(() => scrollTo("pool"), 60);
+      return;
+    }
+    if (step.id === "qs") {
+      const x = orders.find((y) => y.id === id);
+      if (x && x.machine && x.machine !== "qs") {
+        setTab("extern");
+        return;
+      }
+    }
+    setTab("zeit");
+    if (id) openDetail(id);
+  };
+  const ablaufByKey = new Map(groups.map((g) => [g.key, ablaufOf(g.positions, checks)]));
+  const ablaufCounts = ABLAUF_SCHRITTE.map((s) => ({ ...s, n: groups.filter((g) => (ablaufByKey.get(g.key).next || {}).id === s.id).length })).filter((s) => s.n > 0);
   const ordersCard = (
     <div className="card">
       <div className="sec-head">
@@ -3457,6 +3502,17 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
           <p>Liefertermin und Start frühestens gelten für alle offenen Positionen des Auftrags. Ein Klick auf die Nummer zeigt die Positionen.</p>
         </div>
       </div>
+      {ablaufCounts.length > 0 && (
+        <div className="ab-filter" role="group" aria-label="Als Nächstes zu tun">
+          <b>Als Nächstes:</b>
+          <button type="button" className={`ab-chip${!ablaufFilter ? " on" : ""}`} onClick={() => setAblaufFilter(null)}>Alle <span>{groups.length}</span></button>
+          {ablaufCounts.map((s) => (
+            <button key={s.id} type="button" className={`ab-chip${ablaufFilter === s.id ? " on" : ""}`} onClick={() => setAblaufFilter(ablaufFilter === s.id ? null : s.id)}>
+              {s.label} <span>{s.n}</span>
+            </button>
+          ))}
+        </div>
+      )}
       {groups.length === 0 ? (
         <div style={{ padding: "22px 18px", color: "var(--muted)" }}>Noch keine Aufträge. Importiere sie aus Odoo.</div>
       ) : (
@@ -3471,10 +3527,12 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
                 <th>Status</th>
                 <th>Positionen</th>
                 <th>Fortschritt</th>
+                <th>Ablauf · als Nächstes</th>
               </tr>
             </thead>
             <tbody>
-              {groups.map((g) => {
+              {groups.filter((g) => !ablaufFilter || (ablaufByKey.get(g.key).next || {}).id === ablaufFilter).map((g) => {
+                const ab = ablaufByKey.get(g.key);
                 const open = g.positions.filter((o) => !o.done);
                 const dues = [...new Set(open.map((o) => o.due).filter(Boolean))].sort();
                 const deviating = dues.length > 1;
@@ -3541,6 +3599,19 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
                         <span className="meter"><i style={{ width: `${g.percent || 0}%` }} /></span>{" "}
                         <span className="num" style={{ color: "var(--muted)", fontSize: 12 }}>{g.percent != null ? `${g.percent} %` : "–"}</span>
                       </td>
+                      <td onClick={(e) => e.stopPropagation()}>
+                        <div className="ab-cell">
+                          <AblaufBar steps={ab.steps} />
+                          {ab.next ? (
+                            <button type="button" className="ab-next" onClick={() => ablaufAction(ab.next, g.positions.find((x) => !x.done) || g.positions[0])} title={ab.next.detail}>
+                              <b>{ab.next.label}</b>
+                              <small>{ab.next.detail}</small>
+                            </button>
+                          ) : (
+                            <span className="ab-next done">fertig</span>
+                          )}
+                        </div>
+                      </td>
                     </tr>
                     {isOpen &&
                       g.positions
@@ -3576,7 +3647,7 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
                                   <span style={{ color: "var(--faint)" }}>nicht eingeplant</span>
                                 )}
                               </td>
-                              <td colSpan={3}>
+                              <td colSpan={4}>
                                 <span className="num" style={{ color: "var(--muted)", fontSize: 12.5 }}>
                                   {o.hours > 0 ? `${fmtH(o.hours)} h` : "Stunden fehlen"}
                                   {f && f.it.percent != null ? ` · ${f.it.estimated ? "~" : ""}${f.it.percent} %` : ""}

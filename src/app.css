@@ -1888,3 +1888,43 @@ html .lane .lab.lab-hero .lab-load small, html[data-look="neu"] .lane .lab.lab-h
 
 .bd-hero.lane-hero .bd-htop { right: 30%; }
 .bd-lane-big { right: 14px; bottom: 10px; }
+
+/* ---------- Schritt 4: Laufkarte und Ablauf ---------- */
+.ab-bar { display: inline-flex; gap: 3px; vertical-align: middle; }
+.ab-seg { width: 12px; height: 6px; border-radius: 3px; background: var(--line-strong); }
+.ab-seg.done { background: var(--ok); }
+.ab-seg.now { background: var(--warn); box-shadow: 0 0 6px var(--warn); }
+.ab-seg.run { background: var(--dmu); }
+.ab-cell { display: flex; align-items: center; gap: 10px; min-width: 240px; }
+.ab-next { all: unset; cursor: pointer; display: grid; min-width: 0; }
+.ab-next b { font-size: 13px; color: var(--warn); }
+.ab-next small { font-size: 12px; color: var(--muted); max-width: 260px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ab-next:hover b { text-decoration: underline; }
+.ab-next.done { color: var(--ok); font-weight: 600; cursor: default; }
+.ab-filter { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 0 18px 12px; }
+.ab-filter > b { font-size: 13px; margin-right: 4px; }
+.ab-chip { height: 32px; padding: 0 11px; border-radius: 99px; border: 1px solid var(--line); background: var(--sunken); color: var(--ink); font: 500 12.5px var(--f-body); cursor: pointer; }
+.ab-chip span { font: 600 12px var(--f-mono); color: var(--muted); margin-left: 4px; }
+.ab-chip.on { border-color: var(--ink); background: var(--surface); }
+.laufkarte { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.lk-step { display: grid; grid-template-columns: 24px minmax(0, 1fr) auto; gap: 10px; align-items: start; }
+.lk-ic { width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; font: 700 12px var(--f-body); background: var(--sunken); color: var(--faint); border: 1px solid var(--line); }
+.lk-step.done .lk-ic { background: var(--ok); color: #0B0D11; border-color: transparent; }
+.lk-step.now .lk-ic { background: var(--warn); color: #0B0D11; border-color: transparent; box-shadow: 0 0 10px color-mix(in srgb, var(--warn) 60%, transparent); }
+.lk-step.run .lk-ic { background: var(--dmu); color: #fff; }
+.lk-t { display: grid; min-width: 0; }
+.lk-t b { font-size: 13px; }
+.lk-step.open .lk-t b { color: var(--muted); font-weight: 500; }
+.lk-t small { font-size: 12px; color: var(--muted); }
+
+/* ---------- Ampel-Pille in voller Ampelfarbe: grün läuft, gelb rüsten/Pause, rot steht/Störung (blinkt leicht), grau frei ---------- */
+.amp-pill.st-lauf, .amp-pill.st-ruesten, .amp-pill.st-pause, .amp-pill.st-steht, .amp-pill.st-stoerung { background: color-mix(in srgb, var(--c) 82%, #000); color: #fff; font-weight: 600; box-shadow: 0 0 0 1px rgba(255,255,255,.18), 0 2px 8px color-mix(in srgb, var(--c) 45%, transparent); }
+.amp-pill.st-ruesten, .amp-pill.st-pause { color: #1A1406; background: var(--c); }
+.amp-pill[class*="st-"] i { background: #fff; box-shadow: 0 0 6px #fff; }
+.amp-pill.st-ruesten i, .amp-pill.st-pause i { background: #1A1406; box-shadow: none; }
+.amp-pill.st-frei, .amp-pill.st-none { background: rgba(0,0,0,.35); color: #fff; }
+.amp-pill.st-frei i, .amp-pill.st-none i { background: var(--c); box-shadow: none; }
+.amp-pill.st-steht, .amp-pill.st-stoerung { animation: ampBlink 1.6s ease-in-out infinite; }
+@keyframes ampBlink { 50% { box-shadow: 0 0 0 1px rgba(255,255,255,.25), 0 0 16px var(--c); filter: brightness(1.15); } }
+@media (prefers-reduced-motion: reduce) { .amp-pill.st-steht, .amp-pill.st-stoerung { animation: none; } }
+.amp-pill { max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
