@@ -116,6 +116,24 @@ try {
   assert.equal(k.company, "ACS Armoured Car Systems GmbH");
   ok("Empfehlung: überfällig oder kurzfristig anrufen, mit Vorlauf reicht eine Mail; Telefonnummer und Ansprechpartner kommen aus Odoo");
 
+  // 6b. Vor dem Anruf: Ansprechpartner aus den Odoo-Kontakten der Firma, Entwurf (Notiz, Termin) bleibt gespeichert, ändert aber nichts
+  const kt = await api("GET", "/api/fruehwarnung/kontakt?source=A01385");
+  assert.deepEqual(kt.personen.map((p) => p.name), ["ACS Armoured Car Systems GmbH", "Markus Fuss", "Petra Lang"], JSON.stringify(kt.personen));
+  assert.equal(kt.personen.find((p) => p.name === "Petra Lang").phone, "+49 9131 555 0150");
+  r = await api("POST", "/api/fruehwarnung/entwurf", { source: "A01385", date: day(40), channel: "telefon", contact: "Petra Lang", email: "p.lang@acs.example", note: "Teillieferung anbieten" });
+  assert.equal(r.status, 200, JSON.stringify(r));
+  w = await api("GET", "/api/fruehwarnung");
+  a = item(w, "A01385");
+  assert.deepEqual([a.draft.contact, a.draft.note, a.draft.date, a.draft.email], ["Petra Lang", "Teillieferung anbieten", day(40), "p.lang@acs.example"]);
+  assert.equal(a.state, "offen", "Ein Entwurf informiert den Kunden noch nicht");
+  assert.equal(a.due, "2026-11-05", "Ein Entwurf ändert den Liefertermin nicht");
+  m = await api("GET", "/api/fruehwarnung/mail?source=A01385&an=" + encodeURIComponent("p.lang@acs.example") + "&name=" + encodeURIComponent("Petra Lang"));
+  assert.equal(m.to, "p.lang@acs.example");
+  assert.match(m.body, /^Guten Tag Petra Lang,/);
+  r = await api("POST", "/api/fruehwarnung/entwurf", { source: "A09999", note: "x" });
+  assert.equal(r.status, 404);
+  ok("Vor dem Anruf: Ansprechpartner aus den Odoo-Kontakten wählbar, Notiz und Termin bleiben als Entwurf gespeichert, ohne etwas zu ändern");
+
   // 7. Telefonisch informiert: abgehakt ohne Mail, der genannte Termin wird Liefertermin, der ursprüngliche bleibt sichtbar
   const before = w.counts.nichtInformiert;
   const proposal = item(w, "A01385").proposal;
@@ -139,6 +157,8 @@ try {
   assert.equal(h[0].from, "2026-11-05");
   assert.equal(h[0].to, proposal);
   assert.match(h[0].reason, /Kunde informiert \(Telefon, Markus Fuss\)/);
+  assert.equal(a.draft, null, "Mit dem Abhaken ist der Entwurf übernommen und weg");
+  assert.match(w.odoo.info, /nicht freigeschaltet/, "Ohne Schreibfreigabe bleibt Odoo unberührt, der Grund steht dabei");
   r = await api("POST", "/api/fruehwarnung/informiert", { source: "A01385", channel: "fax" });
   assert.equal(r.status, 400);
   ok("Telefonisch abgehakt: ohne Mail erledigt, neuer Termin ist Liefertermin, ursprünglicher Termin und Verlauf bleiben erhalten");

@@ -22,6 +22,7 @@ import registerTalosPlan, { planTools, loadPlanInputs } from "./talosPlan.js";
 import { makeAllowed } from "./maschinenRegel.js";
 import { MACHINES as MACHINE_LIST } from "../src/lib.js";
 import registerTalosChat from "./talosChat.js";
+import registerDienste from "./dienste.js";
 import registerLogin from "./login.js";
 import registerQsBridge from "./qsBridge.js";
 import registerFreigaben from "./freigaben.js";
@@ -1289,6 +1290,7 @@ app.get("/api/plan/platz/:id", (req, res) => {
 });
 registerFeedback(app, db);
 registerTalosChat(app);
+registerDienste(app);
 qsBridge.start();
 
 if (existsSync(DIST_PATH)) {

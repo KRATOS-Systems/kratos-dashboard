@@ -75,6 +75,8 @@ jobs:
         run: node scripts/testAblauf.mjs
       - name: Laufkarte (Ablauf je Auftrag, nächster Schritt)
         run: node scripts/testLaufkarte.mjs
+      - name: Kunde informiert (Termin und Chatter-Notiz in Odoo, Kunde bei Fremdfertigung, Statuszeile)
+        run: node scripts/testKundeTermin.mjs
       - name: Aufgaben (Von mir vergeben)
         run: node scripts/testAufgaben.mjs
       - name: Verbindung zu QS (Prüfplan, EMPB)

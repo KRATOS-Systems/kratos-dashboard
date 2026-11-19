@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { fmtShort } from "./lib.js";
 
 // Frühwarnung: Aufträge, die laut Plan nach dem Liefertermin fertig werden (oder schon überfällig sind), mit Grund,
@@ -21,11 +21,16 @@ const call = (url, method, body) =>
 // Aufgeklapptes Feld eines Auftrags: neuer Termin, dann Telefon oder Mail
 function Kontakt({ item, startTab, onDone, onClose }) {
   const called = item.channel === "telefon"; // schon telefonisch informiert: Mail nur noch als Bestätigung
-  const [tab, setTab] = useState(startTab);
-  const [date, setDate] = useState(item.proposal || item.informedDate || "");
+  const d0 = item.draft || {};
+  const [tab, setTab] = useState(d0.channel === "mail" || d0.channel === "telefon" ? d0.channel : startTab);
+  const [date, setDate] = useState(d0.date || item.proposal || item.informedDate || "");
   const [k, setK] = useState(null);
-  const [person, setPerson] = useState(item.contact || "");
-  const [note, setNote] = useState("");
+  const [person, setPerson] = useState(d0.contact || item.contact || "");
+  const [email, setEmail] = useState(d0.email || "");
+  const [phone, setPhone] = useState("");
+  const [note, setNote] = useState(d0.note || "");
+  const [saved, setSaved] = useState(d0.at || null);
+  const first = useRef(true);
   const [afterCall, setAfterCall] = useState(called);
   const [m, setM] = useState(null);
   const [err, setErr] = useState("");
@@ -39,6 +44,8 @@ function Kontakt({ item, startTab, onDone, onClose }) {
         if (stop) return;
         setK(j);
         setPerson((p) => p || j.name || "");
+        setEmail((e) => e || j.email || "");
+        setPhone(j.phone || "");
       })
       .catch(() => !stop && setK({ hint: "Kontaktdaten nicht lesbar." }));
     return () => {
@@ -47,16 +54,44 @@ function Kontakt({ item, startTab, onDone, onClose }) {
   }, [item.source]);
 
   useEffect(() => {
+    if (first.current) {
+      first.current = false;
+      return undefined;
+    }
+    const t = setTimeout(() => {
+      call("/api/fruehwarnung/entwurf", "POST", { source: item.source, date: date || null, channel: tab, contact: person, email, note })
+        .then((j) => setSaved(j.at))
+        .catch(() => {});
+    }, 700);
+    return () => clearTimeout(t);
+  }, [item.source, date, tab, person, email, note]);
+
+  // Ansprechpartner aus Odoo gewählt: Name, Telefon und E-Mail übernehmen (alles bleibt änderbar)
+  const pick = (id) => {
+    const p = k && k.personen ? k.personen.find((x) => String(x.id) === String(id)) : null;
+    if (!p) return;
+    setPerson(p.firma ? "" : p.name);
+    setPhone(p.phone || (k && k.phone) || "");
+    setEmail(p.email || "");
+  };
+  const personen = (k && k.personen) || [];
+  const gewaehlt = personen.find((p) => !p.firma && p.name === person) || null;
+  const savedText = saved ? `Entwurf gespeichert ${new Date(saved).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })}` : "";
+
+  useEffect(() => {
     if (tab !== "mail") return undefined;
     let stop = false;
     setErr("");
-    call(`/api/fruehwarnung/mail?source=${encodeURIComponent(item.source)}${date ? "&date=" + date : ""}${afterCall ? "&nachTelefon=1" : ""}`, "GET")
+    call(
+      `/api/fruehwarnung/mail?source=${encodeURIComponent(item.source)}${date ? "&date=" + date : ""}${afterCall ? "&nachTelefon=1" : ""}${email ? "&an=" + encodeURIComponent(email) : ""}&name=${encodeURIComponent(person || "")}`,
+      "GET"
+    )
       .then((j) => !stop && setM(j))
       .catch((e) => !stop && setErr(e.message));
     return () => {
       stop = true;
     };
-  }, [tab, item.source, date, afterCall]);
+  }, [tab, item.source, date, afterCall, email, person]);
 
   const set = (key) => (ev) => setM((p) => ({ ...p, [key]: ev.target.value }));
   const mailto = m ? `mailto:${encodeURIComponent(m.to || "")}?subject=${encodeURIComponent(m.subject)}&body=${encodeURIComponent(m.body)}` : "#";
@@ -104,6 +139,19 @@ function Kontakt({ item, startTab, onDone, onClose }) {
         </button>
       </div>
       {err && <div className="fw-err">{err}</div>}
+      {personen.length > 0 && (
+        <label>
+          Ansprechpartner (aus den Odoo-Kontakten der Firma)
+          <select value={gewaehlt ? String(gewaehlt.id) : ""} onChange={(ev) => pick(ev.target.value)}>
+            <option value="">{person ? `${person} (eigene Eingabe)` : "– auswählen –"}</option>
+            {personen.map((p) => (
+              <option key={p.id} value={p.id}>
+                {[p.name, p.funktion, p.phone, p.email].filter(Boolean).join(" · ")}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
 
       {tab === "telefon" && (
         <>
@@ -111,11 +159,11 @@ function Kontakt({ item, startTab, onDone, onClose }) {
             {!k && <span className="fw-faint">Kontaktdaten werden geladen …</span>}
             {k && (
               <>
-                <b>{k.name || k.company || item.customer || "Ansprechpartner unbekannt"}</b>
+                <b>{person || k.name || k.company || item.customer || "Ansprechpartner unbekannt"}</b>
                 {k.name && k.company && <span className="fw-faint">{k.company}</span>}
-                {k.phone ? (
-                  <a href={"tel:" + k.phone.replace(/[^+\d]/g, "")} title="Anrufen (wenn dieses Gerät telefonieren kann)">
-                    {k.phone}
+                {phone || k.phone ? (
+                  <a href={"tel:" + (phone || k.phone).replace(/[^+\d]/g, "")} title="Anrufen (wenn dieses Gerät telefonieren kann)">
+                    {phone || k.phone}
                   </a>
                 ) : (
                   <span className="fw-hint">Keine Telefonnummer in Odoo hinterlegt</span>
@@ -130,9 +178,10 @@ function Kontakt({ item, startTab, onDone, onClose }) {
             <input value={person} maxLength={120} onChange={(ev) => setPerson(ev.target.value)} placeholder="Name des Gesprächspartners" />
           </label>
           <label>
-            Notiz (freiwillig)
-            <input value={note} maxLength={300} onChange={(ev) => setNote(ev.target.value)} placeholder="z. B. Teillieferung von 20 Stück gewünscht" />
+            Notiz (wird gespeichert, auch bevor du anrufst)
+            <textarea rows={3} value={note} maxLength={1000} onChange={(ev) => setNote(ev.target.value)} placeholder="Was willst du dem Kunden sagen? z. B. Teillieferung von 20 Stück anbieten" />
           </label>
+          {savedText && <div className="fw-faint">{savedText} · übernommen wird erst mit „Telefonisch informiert“</div>}
           <div className="fw-actions">
             <button type="button" className="btn primary" disabled={busy} onClick={() => informed("telefon")} title="Vermerkt: Der Kunde kennt den neuen Termin aus dem Telefonat.">
               Telefonisch informiert
@@ -157,7 +206,14 @@ function Kontakt({ item, startTab, onDone, onClose }) {
               {m.hint && <div className="fw-hint">{m.hint}</div>}
               <label>
                 An
-                <input value={m.to} onChange={set("to")} placeholder="E-Mail-Adresse des Kunden" />
+                <input
+                  value={m.to}
+                  onChange={(ev) => {
+                    set("to")(ev);
+                    setEmail(ev.target.value);
+                  }}
+                  placeholder="E-Mail-Adresse des Kunden"
+                />
               </label>
               <label>
                 Betreff
@@ -182,6 +238,7 @@ function Kontakt({ item, startTab, onDone, onClose }) {
                 </button>
               </div>
               <div className="fw-faint">Die App sendet nichts. Erst wenn du die Nachricht im Mailprogramm abschickst, geht sie an den Kunden.</div>
+              {savedText && <div className="fw-faint">{savedText}</div>}
             </>
           )}
         </>
@@ -316,6 +373,16 @@ export default function Fruehwarnung({ reloadKey, onChanged, open = true, onTogg
               </span>
             )}
             {i.state === "risiko" && <span className="pill warn">noch nicht eingeplant</span>}
+            {i.draft && i.state !== "informiert" && (
+              <span className="pill mute" title={[i.draft.contact ? "Gesprächspartner: " + i.draft.contact : "", i.draft.date ? "Termin: " + full(i.draft.date) : "", i.draft.note || ""].filter(Boolean).join("\n")}>
+                Entwurf{i.draft.note ? ": " + (i.draft.note.length > 40 ? i.draft.note.slice(0, 40) + " …" : i.draft.note) : ""}
+              </span>
+            )}
+            {i.state === "informiert" && i.odooInfo && (
+              <span className={`pill ${/^In Odoo eingetragen/.test(i.odooInfo) ? "mute" : "warn"}`} title={i.odooInfo}>
+                {/^In Odoo eingetragen/.test(i.odooInfo) ? "in Odoo" : "Odoo nicht eingetragen"}
+              </span>
+            )}
             {i.state === "informiert" && (
               <span
                 className="pill ok"
@@ -351,6 +418,7 @@ export default function Fruehwarnung({ reloadKey, onChanged, open = true, onTogg
             onDone={(j) => {
               setData(j);
               setOpenFor(null);
+              setErr(j && j.odoo && !j.odoo.ok ? j.odoo.info : "");
               if (onChanged) onChanged();
             }}
           />

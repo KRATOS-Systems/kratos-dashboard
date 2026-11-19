@@ -63,6 +63,20 @@ export function heuteListe(inp, { fw, vollst, closing = 0, muster = 0, freigaben
   }
   if (vollst) add("fehlt", vollst.fehlt.length, `${plural(vollst.fehlt.length, "Kundenauftrag fehlt", "Kundenaufträge fehlen")} in der App`, "bad", "av", "In der Arbeitsvorbereitung übernehmen");
   add("avLate", avLate, `${plural(avLate, "Position ist", "Positionen sind")} in der AV überfällig`, "bad", "av", "„Muss bis“ ist überschritten, die Maschine wartet sonst");
+  // Läuft laut App (schon gestempelt), aber seit Wochen keine Rückmeldung: hält die Maschine im Plan fest, obwohl dort vielleicht nichts läuft
+  const STILL_DAYS = 14;
+  const still = open
+    .filter((o) => o.machine && !LANE_IDS.includes(o.machine) && o.progress_date && daysBetween(o.progress_date, today) > STILL_DAYS)
+    .sort((a, b) => a.progress_date.localeCompare(b.progress_date));
+  const tag = (d) => `${d.slice(8, 10)}.${d.slice(5, 7)}.`;
+  add(
+    "still",
+    still.length,
+    `${plural(still.length, "Position läuft", "Positionen laufen")} laut App, aber seit über ${STILL_DAYS} Tagen keine Rückmeldung`,
+    "warn",
+    still.length ? "pos:" + still[0].id : "",
+    still.slice(0, 4).map((o) => `${o.order_no || o.odoo_ref}${o.source ? " (" + o.source + ")" : ""} zuletzt ${tag(o.progress_date)}`).join(", ") + " – fertig oder pausiert?"
+  );
   add("ohneStunden", noHours.length, `${plural(noHours.length, "Position hat", "Positionen haben")} noch keine Stunden`, "warn", "pool", withSuggest.length ? `für ${withSuggest.length} gibt es einen Vorschlag aus früheren Aufträgen` : "ohne Stunden kann nichts eingeplant werden");
   add("einplanen", ready.length, `${plural(ready.length, "Position wartet", "Positionen warten")} auf eine Maschine`, "warn", "planverbessern", "„Plan verbessern“ macht einen Vorschlag");
   add("material", notOrdered, `${plural(notOrdered, "Position", "Positionen")}: nur Anfrage in Odoo, Material klären`, "warn", "av", "bestellt? Dann in der AV „in Arbeit“ mit Datum oder „bereit“ eintragen");

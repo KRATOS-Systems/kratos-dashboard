@@ -53,7 +53,9 @@ export default function registerTalosChat(app) {
         signal: AbortSignal.timeout(240_000),
       });
       const data = await r.json().catch(() => ({}));
-      if (!r.ok) return res.status(r.status === 429 ? 429 : 502).json({ error: data.error || "Talos ist gerade nicht erreichbar." });
+      // Grund mitgeben (z. B. abgelaufener API-Schlüssel), damit man weiß, was zu tun ist
+      const why = data.status === 401 ? "API-Schlüssel des Talos-Servers ungültig oder abgelaufen" : data.grund ? String(data.grund).slice(0, 160) : "";
+      if (!r.ok) return res.status(r.status === 429 ? 429 : 502).json({ error: (data.error || "Talos ist gerade nicht erreichbar.") + (why ? ` Grund: ${why}` : "") });
       res.json({ antwort: String(data.antwort || ""), quellen: Array.isArray(data.quellen) ? data.quellen : [] });
     } catch {
       res.status(502).json({ error: "Talos ist gerade nicht erreichbar." });
