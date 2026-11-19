@@ -12,6 +12,7 @@ import {
 } from "./lib.js";
 import { Ico, MTile, SparkIcon, useToast } from "./ui.jsx";
 import { setDashFacts } from "./store.js";
+import MaschinenJetzt from "./MaschinenJetzt.jsx";
 
 const TREND_WEEKS = 8;
 
@@ -565,6 +566,8 @@ export default function Dashboard({ weekCap, saveCapacity, today, openTalos }) {
           </button>
         </div>
       </div>
+
+      <MaschinenJetzt />
 
       {!selected && (
         <div className="card rise" style={{ "--i": 1, padding: 18, color: "var(--muted)" }}>

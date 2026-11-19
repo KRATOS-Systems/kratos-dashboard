@@ -49,7 +49,43 @@ export function sauber(m) {
     fehler: Array.isArray(m.fehler) ? m.fehler.slice(0, 5).map((f) => txt(f)) : [],
     achsen: Object.keys(achsen).length ? achsen : null,
     abfrage: txt(m.letzte_abfrage, 30),
+    // für die Maschinenkarten im Dashboard
+    betriebsart: txt(m.betriebsart, 30),
+    unterprogramm: txt(m.unterprogramm, 120),
+    drehzahl: num(m.spindel_override),
+    werkzeugname: txt(m.werkzeugname || (m.werkzeug_info && m.werkzeug_info.name), 60),
+    werkzeugInfo: werkzeugInfo(m.werkzeug_info),
+    hinweise: Array.isArray(m.hinweise) ? m.hinweise.slice(0, 5).map((f) => txt(f)) : [],
+    restzeit: restzeit(m.restzeit),
+    laufStart: txt(m.lauf_start, 30),
+    zaehler: zaehler(m.zaehler),
+    heute: heute(m.heute),
   };
+}
+
+function werkzeugInfo(w) {
+  if (!w || typeof w !== "object") return null;
+  return { r: num(w.r), einsatzH: num(w.einsatz_h), standzeitProzent: num(w.standzeit_prozent), gesperrt: w.gesperrt === true };
+}
+function restzeit(r) {
+  if (!r || typeof r !== "object" || num(r.erwartet_s) === null) return null;
+  return {
+    erwartetS: num(r.erwartet_s),
+    gelaufenS: num(r.gelaufen_s),
+    restS: num(r.rest_s),
+    fertigUm: txt(r.fertig_um, 30),
+    prozent: num(r.prozent),
+    laeufe: num(r.laeufe),
+    ueberzogen: r.ueberzogen === true,
+  };
+}
+function zaehler(z) {
+  if (!z || typeof z !== "object") return null;
+  return { programmlaufzeitH: num(z.programmlaufzeit_h), eingeschaltetH: num(z.eingeschaltet_h), teile: num(z.teile), teileGesamt: num(z.teile_gesamt) };
+}
+function heute(h) {
+  if (!h || typeof h !== "object") return null;
+  return { laeufe: num(h.laeufe), laufzeitMin: num(h.laufzeit_min), laeuftMin: num(h.laeuft_min), auslastung: num(h.auslastung_prozent) };
 }
 
 // Zeitpunkt der letzten Meldung des Maschinen-Dienstes (0 = noch nie), für die Statuszeile (server/dienste.js)

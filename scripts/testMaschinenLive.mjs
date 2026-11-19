@@ -61,6 +61,26 @@ assert.equal(sauber({ id: "unbekannt", zustand: "laeuft" }), null);
 assert.equal(sauber({ id: "dmu50", zustand: "explodiert" }).zustand, "keine_daten");
 ok("Eingangsdaten werden bereinigt: unbekannte Maschinen, Felder und Werte fallen weg");
 
+const k = sauber({
+  id: "dmu40", zustand: "laeuft", programm: "A3.H", unterprogramm: "BOHR.H", betriebsart: "AUTOMATIC", spindel_override: 100,
+  werkzeug: 583, werkzeugname: "KUGEL-D4-ALU", werkzeug_info: { r: 2, einsatz_h: 3.6, standzeit_prozent: 85, gesperrt: false, l: 99 },
+  hinweise: ["SCHMIERUNG PRÜFEN"],
+  restzeit: { erwartet_s: 3060, gelaufen_s: 1740, rest_s: 1320, fertig_um: "2026-11-12T14:57:00", prozent: 56.9, laeufe: 2, ueberzogen: false },
+  zaehler: { programmlaufzeit_h: 1497.9, eingeschaltet_h: 3480.3, teile: 0, teile_gesamt: 4049 },
+  heute: { laeufe: 8, laufzeit_min: 156, laeuft_min: 150, auslastung_prozent: 70 },
+  lauf_start: "2026-11-12T14:05:00",
+});
+assert.deepEqual(k.werkzeugInfo, { r: 2, einsatzH: 3.6, standzeitProzent: 85, gesperrt: false });
+assert.equal(k.restzeit.fertigUm, "2026-11-12T14:57:00");
+assert.equal(k.restzeit.laeufe, 2);
+assert.deepEqual(k.heute, { laeufe: 8, laufzeitMin: 156, laeuftMin: 150, auslastung: 70 });
+assert.equal(k.zaehler.teileGesamt, 4049);
+assert.deepEqual([k.werkzeugname, k.unterprogramm, k.betriebsart, k.drehzahl, k.laufStart], ["KUGEL-D4-ALU", "BOHR.H", "AUTOMATIC", 100, "2026-11-12T14:05:00"]);
+assert.deepEqual(k.hinweise, ["SCHMIERUNG PRÜFEN"]);
+const leer = sauber({ id: "m1", zustand: "bereit", restzeit: { prozent: 5 }, heute: "x" });
+assert.deepEqual([leer.restzeit, leer.heute, leer.werkzeugInfo, leer.zaehler], [null, null, null, null]);
+ok("Felder für die Maschinenkarten (Restzeit, Werkzeug, Hinweise, Zähler, Tageszahlen) kommen bereinigt an");
+
 // ---------------------------------------------------------------- Server
 const ODOO_PORT = 8074;
 const APP_PORT = 3058;
