@@ -179,9 +179,9 @@ export default function registerExtern(app, db, helpers) {
       : [];
     const lines = ids.length ? await readAll(read, "purchase.order.line", [["order_id", "in", ids]], ["order_id", "name", "product_id", "product_qty", "qty_received", "date_planned", "display_type"], 3000) : [];
     const pids = [...new Set(pos.map((p) => m2oId(p.partner_id)).filter(Boolean))];
-    let partners = pids.length ? await readAll(read, "res.partner", [["id", "in", pids]], ["name", "email", "phone", "mobile", "lang", "country_id", "parent_id"], 500) : [];
+    let partners = pids.length ? await readAll(read, "res.partner", [["id", "in", pids]], ["name", "email", "phone", "lang", "country_id", "parent_id"], 500) : [];
     const parentIds = [...new Set(partners.map((p) => m2oId(p.parent_id)).filter((x) => x && !pids.includes(x)))];
-    if (parentIds.length) partners = partners.concat(await readAll(read, "res.partner", [["id", "in", parentIds]], ["name", "email", "phone", "mobile", "lang", "country_id", "parent_id"], 500));
+    if (parentIds.length) partners = partners.concat(await readAll(read, "res.partner", [["id", "in", parentIds]], ["name", "email", "phone", "lang", "country_id", "parent_id"], 500));
     const partnerBy = new Map(partners.map((p) => [p.id, p]));
     const contact = (id) => {
       const p = partnerBy.get(id) || {};
@@ -190,7 +190,7 @@ export default function registerExtern(app, db, helpers) {
       const lang = String(p.lang || parent.lang || "");
       return {
         email: p.email || parent.email || null,
-        phone: p.phone || p.mobile || parent.phone || parent.mobile || null,
+        phone: p.phone || parent.phone || null, // „mobile“ gibt es in Odoo 19 nicht mehr (HTTP 500 beim Lesen)
         lang: lang ? (lang.startsWith("de") ? "de" : "en") : /deutschland|germany|österreich|austria|schweiz|switzerland/i.test(country) || !country ? "de" : "en",
       };
     };
