@@ -83,9 +83,28 @@ function zaehler(z) {
   if (!z || typeof z !== "object") return null;
   return { programmlaufzeitH: num(z.programmlaufzeit_h), eingeschaltetH: num(z.eingeschaltet_h), teile: num(z.teile), teileGesamt: num(z.teile_gesamt) };
 }
+const ZUSTAENDE = ["laeuft", "unterbrochen", "stoerung", "bereit", "offline", "keine_daten"];
 function heute(h) {
   if (!h || typeof h !== "object") return null;
-  return { laeufe: num(h.laeufe), laufzeitMin: num(h.laufzeit_min), laeuftMin: num(h.laeuft_min), auslastung: num(h.auslastung_prozent) };
+  return {
+    laeufe: num(h.laeufe),
+    laufzeitMin: num(h.laufzeit_min),
+    laeuftMin: num(h.laeuft_min),
+    auslastung: num(h.auslastung_prozent),
+    tag: typeof h.tag === "string" && /^\d{4}-\d{2}-\d{2}$/.test(h.tag) ? h.tag : null,
+    verlauf: verlauf(h.verlauf),
+  };
+}
+// Tagesverlauf: [["HH:MM:SS", zustand], ...] aufsteigend, höchstens 400 Abschnitte
+function verlauf(v) {
+  if (!Array.isArray(v)) return [];
+  const out = [];
+  for (const e of v.slice(0, 400)) {
+    if (!Array.isArray(e) || typeof e[0] !== "string" || !/^\d{2}:\d{2}:\d{2}$/.test(e[0]) || !ZUSTAENDE.includes(e[1])) continue;
+    if (out.length && e[0] < out[out.length - 1][0]) continue;
+    out.push([e[0], e[1]]);
+  }
+  return out;
 }
 
 // Zeitpunkt der letzten Meldung des Maschinen-Dienstes (0 = noch nie), für die Statuszeile (server/dienste.js)
@@ -138,7 +157,7 @@ export function ampelZustand(stempelState, runs, live, { working, waiting, now =
 
 // Eingang: VOR dem Passwortschutz registrieren (eigener Schutz über MASCHINEN_KEY)
 export function registerMaschinenEingang(app, key = process.env.MASCHINEN_KEY || "") {
-  app.post("/api/maschinen/eingang", express.json({ limit: "64kb" }), (req, res) => {
+  app.post("/api/maschinen/eingang", express.json({ limit: "256kb" }), (req, res) => {
     if (!key || key.length < 16) return res.status(404).json({ error: "Nicht eingerichtet" });
     if (!same(req.get("X-Maschinen-Key") || "", key)) return res.status(401).json({ error: "Schlüssel falsch" });
     const liste = Array.isArray(req.body && req.body.maschinen) ? req.body.maschinen : [];

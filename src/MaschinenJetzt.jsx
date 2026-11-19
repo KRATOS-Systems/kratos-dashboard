@@ -156,6 +156,96 @@ function Karte({ mm, m, onOpen, now }) {
   );
 }
 
+// Heute im Verlauf: ein Balken je Maschine aus den Zustandswechseln des Tages (vom Maschinen-Dienst mitgeschickt)
+const VZ = {
+  laeuft: ["Läuft", "var(--ok)"],
+  unterbrochen: ["Unterbrochen", "var(--warn)"],
+  stoerung: ["Störung", "var(--bad)"],
+  bereit: ["Bereit", "var(--mj-bereit)"],
+  keine_daten: ["Keine Statusdaten", "var(--iris)"],
+  offline: ["keine Aufzeichnung", null],
+};
+const sek = (u) => Number(u.slice(0, 2)) * 3600 + Number(u.slice(3, 5)) * 60 + Number(u.slice(6, 8));
+const hhmm = (s) => `${String(Math.floor(s / 3600)).padStart(2, "0")}:${String(Math.floor((s % 3600) / 60)).padStart(2, "0")}`;
+const heuteIso = (now) => {
+  const d = new Date(now);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+};
+
+// Abschnitte [von, bis, zustand] in Sekunden ab Mitternacht; der letzte reicht bis jetzt (Live-Zustand, falls neuer)
+function abschnitte(live, now) {
+  const h = live && live.heute;
+  if (!h || !h.verlauf || !h.verlauf.length || h.tag !== heuteIso(now)) return null;
+  const d = new Date(now);
+  const jetzt = d.getHours() * 3600 + d.getMinutes() * 60 + d.getSeconds();
+  const v = h.verlauf.map(([u, z]) => [sek(u), z]);
+  if (live.zustand && live.seit && live.seit.slice(0, 10) === h.tag) {
+    const s = sek(live.seit.slice(11, 19));
+    const last = v[v.length - 1];
+    if (last[1] !== live.zustand && s >= last[0] && s <= jetzt) v.push([s, live.zustand]);
+  }
+  return v.map(([a, z], i) => [a, i + 1 < v.length ? v[i + 1][0] : jetzt, z]).filter(([a, b]) => b > a);
+}
+
+function Verlauf({ machines, now }) {
+  const reihen = MACHINES.map((mm) => {
+    const m = machines[mm.id];
+    return { mm, m, seg: m && m.live ? abschnitte(m.live, now) : null };
+  }).filter((r) => r.m);
+  if (!reihen.some((r) => r.seg)) return null;
+  const d = new Date(now);
+  const erste = reihen.flatMap((r) => (r.seg || []).filter((s) => s[2] !== "offline").map((s) => Math.floor(s[0] / 3600)));
+  const vonH = Math.min(6, ...erste);
+  const bisH = Math.min(24, Math.max(20, d.getHours() + 1));
+  const span = (bisH - vonH) * 3600;
+  const pos = (s) => Math.max(0, Math.min(100, ((s - vonH * 3600) / span) * 100));
+  const stunden = [];
+  for (let h = vonH; h <= bisH; h++) stunden.push(h);
+  return (
+    <div className="card mj-verlauf">
+      <div className="mj-v-head">
+        <h3>Heute im Verlauf</h3>
+      </div>
+      <div className="mj-v-row mj-v-axis">
+        <span />
+        <div className="mj-v-achse">
+          {stunden.map((h) => (
+            <span key={h} className={h % 3 ? "minor" : undefined} style={{ left: `${((h - vonH) / (bisH - vonH)) * 100}%` }}>
+              {h}
+            </span>
+          ))}
+        </div>
+        <small>Auslastung*</small>
+      </div>
+      {reihen.map(({ mm, m, seg }) => {
+        const a = m.live && m.live.heute ? m.live.heute.auslastung : null;
+        return (
+          <div className="mj-v-row" key={mm.id}>
+            <b>{mm.short}</b>
+            <div className="mj-v-band">
+              {(seg || [])
+                .filter(([, , z]) => z !== "offline" && VZ[z])
+                .map(([s, e, z]) => (
+                  <i key={s} title={`${VZ[z][0]} ${hhmm(s)}–${hhmm(e)}`} style={{ left: `${pos(s)}%`, width: `${Math.max(0.15, pos(e) - pos(s))}%`, background: VZ[z][1] }} />
+                ))}
+            </div>
+            <b>{a != null ? `${Math.round(a)} %` : "–"}</b>
+          </div>
+        );
+      })}
+      <div className="mj-v-leg">
+        {Object.entries(VZ).map(([k, [t, c]]) => (
+          <span key={k}>
+            <i className={c ? "" : "off"} style={c ? { background: c } : undefined} />
+            {t}
+          </span>
+        ))}
+      </div>
+      <small className="mj-v-note">* Anteil „läuft“ an der Zeit, in der die Steuerung Auskunft gab (ohne „keine Aufzeichnung“ und „keine Statusdaten“).</small>
+    </div>
+  );
+}
+
 export default function MaschinenJetzt() {
   const d = useAmpel();
   const now = useNow(30000);
@@ -173,6 +263,7 @@ export default function MaschinenJetzt() {
           return m ? <Karte key={mm.id} mm={mm} m={m} now={now} onOpen={() => setOpen(mm.id)} /> : null;
         })}
       </div>
+      <Verlauf machines={d.machines} now={now} />
       {open && <AmpelDialog machine={open} onClose={() => setOpen(null)} />}
     </section>
   );
