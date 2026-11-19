@@ -40,7 +40,7 @@ try {
   const log = (await fetch("http://localhost:8091/__log").then((x) => x.json())).slice(before.length).map((l) => l.call);
   assert.equal(log.length, 2, JSON.stringify(log));
   assert.equal(log[0], `sale.order.write(1385, {"commitment_date":"${proposal} 07:00:00"})`, "Uhrzeit des alten Termins bleibt");
-  assert.match(log[1], /^sale\.order\.message_post\(1385, mail\.mt_note\)/);
+  assert.match(log[1], /^sale\.order\.message_post\(1385, mail\.mt_note, html\)/, "Notiz als HTML senden, sonst zeigt Odoo <p> und <b> als Text");
   assert.match(log[1], new RegExp(`Liefertermin verschoben: 05\\.11\\.2026 → ${de(proposal).replace(/\./g, "\\.")}`));
   const msgs = await fetch("http://localhost:8091/json/2/mail.message/search_read", { method: "POST", headers: { "Content-Type": "application/json", Authorization: "bearer t" }, body: JSON.stringify({ domain: [["model", "=", "sale.order"], ["res_id", "=", 1385]], fields: ["body"] }) }).then((x) => x.json());
   const note = msgs.map((x) => x.body).join(" ");
