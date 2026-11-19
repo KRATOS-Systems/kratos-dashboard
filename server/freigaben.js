@@ -241,7 +241,7 @@ export default function registerFreigaben(app, db, helpers) {
     if (zd && zd.werkstoff && !notes.material) hinweise.push(`Werkstoff laut Zeichnung: ${zd.werkstoff}${zd.index ? " (Index " + zd.index + ")" : ""}`);
     if (o.odoo_draft) hinweise.push("Fertigungsauftrag in Odoo noch im Entwurf: nach der AV dort bestätigen");
     if (o.odoo_bom === "muster") hinweise.push("Stückliste läuft auf Musterwerten: Maschine und Zeit in Odoo prüfen");
-    if (/noch nicht bestellt/.test(o.material_info || "")) hinweise.push("Material nur angefragt, noch nicht bestellt");
+    if (/noch nicht bestellt/.test(o.material_info || "")) hinweise.push("Material: nur Anfrage in Odoo, klären");
     if (!(o.hours > 0) && !hours) hinweise.push(code && kalk.enabled && !(k && k.known) ? "Noch nicht kalkuliert: „In der Kalkulation berechnen“ liefert Zeiten" : "Keine Zeiten ermittelbar: Stunden bitte schätzen");
     return {
       orderId: o.id,

@@ -21,7 +21,7 @@ export function loadPlanInputs(db, { orderOut, planSettingsOut }, today = todayS
   const rates = Object.fromEntries(db.prepare("SELECT machine, weekly_hours FROM plan_rates").all().map((r) => [r.machine, r.weekly_hours]));
   const weekCap = Object.fromEntries(db.prepare("SELECT reading_date, capacity_hours FROM week_capacity").all().map((r) => [r.reading_date, r.capacity_hours]));
   const freeDays = db.prepare("SELECT date, name FROM free_days ORDER BY date").all();
-  const checks = new Map(db.prepare("SELECT order_id, item, status, due, note, assignee FROM av_checks").all().map((c) => [avKey(c.order_id, c.item), c]));
+  const checks = new Map(db.prepare("SELECT * FROM av_checks").all().map((c) => [avKey(c.order_id, c.item), c]));
   const settings = planSettingsOut();
   return { orders, rates, weekCap, freeDays, checks, settings, today };
 }
@@ -49,7 +49,7 @@ export function makeContext({ rates, weekCap, freeDays, checks, settings, today 
       if (o.done) return o;
       const s = avSummary(checks, o.id);
       const mat = s.states.find((x) => x.id === "material");
-      const material_ok = !!mat && (mat.status === "bereit" || mat.status === "entfaellt");
+      const material_ok = !!mat && (mat.status === "bereit" || mat.status === "entfaellt" || (!mat.auto && !!mat.due));
       return !s.ready && s.readyDate ? { ...o, av_ready: s.readyDate, material_ok } : material_ok ? { ...o, material_ok } : o;
     });
   const dateOf = (off) => addDays(monday0, Math.floor(off));

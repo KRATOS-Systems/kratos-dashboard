@@ -39,7 +39,7 @@ export function ablaufOf(positions, checks) {
   r.material = {
     done: !mat.length,
     ids: mat.map((o) => o.id),
-    detail: !mat.length ? "Material da" : nb.length ? `${plural(nb.length, "Position", "Positionen")}: nur angefragt, bestellen` : unterwegs.length ? `bestellt, kommt ${unterwegs.map((o) => o.material_date).sort()[0].split("-").reverse().join(".").slice(0, 6)}` : `${ref(mat)}: Material anlegen oder bestellen`,
+    detail: !mat.length ? "Material da" : nb.length ? `${plural(nb.length, "Position", "Positionen")}: nur Anfrage in Odoo, Material klären` : unterwegs.length ? `bestellt, kommt ${unterwegs.map((o) => o.material_date).sort()[0].split("-").reverse().join(".").slice(0, 6)}` : `${ref(mat)}: Material anlegen oder bestellen`,
   };
 
   const fa = vor.filter((o) => o.odoo_draft);

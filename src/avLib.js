@@ -51,7 +51,7 @@ export function startklar(o, checks) {
   if (o.odoo_bom === "muster") fehlt.push("Musterwerte");
   if (o.odoo_bom === "none" || o.odoo_bom === "leer") fehlt.push("Stückliste");
   if (o.odoo_draft) fehlt.push("FA im Entwurf");
-  if (!avDone(avState(checks, o.id, "material").status)) fehlt.push(/noch nicht bestellt/.test(o.material_info || "") ? "Material nicht bestellt" : "Material");
+  if (!avDone(avState(checks, o.id, "material").status)) fehlt.push(/noch nicht bestellt/.test(o.material_info || "") ? "Material klären" : "Material");
   if (!avDone(avState(checks, o.id, "programm").status)) fehlt.push("Programm");
   return fehlt;
 }
