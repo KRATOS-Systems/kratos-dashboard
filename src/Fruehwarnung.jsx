@@ -1,5 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { fmtShort } from "./lib.js";
+import { Thumb } from "./ui.jsx";
+import { ODOO_URL, ODOO_PO_URL } from "./planLogic.js";
 
 // Frühwarnung: Aufträge, die laut Plan nach dem Liefertermin fertig werden (oder schon überfällig sind), mit Grund,
 // Vorschlag für den neuen Termin und der Empfehlung, ob man anruft oder eine Mail reicht.
@@ -19,7 +21,7 @@ const call = (url, method, body) =>
   });
 
 // Aufgeklapptes Feld eines Auftrags: neuer Termin, dann Telefon oder Mail
-function Kontakt({ item, startTab, onDone, onClose }) {
+function Kontakt({ item, startTab, onDone, onClose, onKontakt }) {
   const called = item.channel === "telefon"; // schon telefonisch informiert: Mail nur noch als Bestätigung
   const d0 = item.draft || {};
   const [tab, setTab] = useState(d0.channel === "mail" || d0.channel === "telefon" ? d0.channel : startTab);
@@ -43,6 +45,7 @@ function Kontakt({ item, startTab, onDone, onClose }) {
       .then((j) => {
         if (stop) return;
         setK(j);
+        if (onKontakt) onKontakt(j);
         setPerson((p) => p || j.name || "");
         setEmail((e) => e || j.email || "");
         setPhone(j.phone || "");
@@ -247,6 +250,131 @@ function Kontakt({ item, startTab, onDone, onClose }) {
   );
 }
 
+const ODOO_BASE = ODOO_URL.replace(/\/manufacturing$/, "");
+const WEGTEXT = { telefon: "Telefon", mail: "Mail", beides: "Telefon und Mail" };
+const tagZeit = (iso) => (iso ? new Date(iso).toLocaleString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "");
+
+// Aufgeklappt: links das Formular, rechts der Auftrag auf einen Blick (gleiche Kontaktdaten, nur einmal aus Odoo gelesen)
+function Offen({ item, ...rest }) {
+  const [k, setK] = useState(null);
+  return (
+    <div className="fw-open">
+      <Kontakt item={item} {...rest} onKontakt={setK} />
+      <AuftragInfo item={item} k={k} />
+    </div>
+  );
+}
+
+// Auftrag auf einen Blick: Kopf mit Odoo-Link, Teile mit Stand, Teillieferung, Gründe mit Hilfe, Verlauf
+function AuftragInfo({ item, k }) {
+  const teile = item.teile || [];
+  const offen = teile.filter((t) => !t.fertig);
+  const v = item.verlauf || { termine: [], kontakte: [] };
+  return (
+    <aside className="fw-info" aria-label={"Auftrag " + item.label}>
+      <section className="fwi-head">
+        <div>
+          <b>{item.label}</b>
+          <span>{item.customer || "–"}</span>
+        </div>
+        <div className="fwi-meta">
+          {k && k.ref && <span>Bestellung Kunde <b>{k.ref}</b></span>}
+          {k && k.datum && <span>Auftrag vom {full(k.datum)}</span>}
+          <span>{plural(teile.length, "Position", "Positionen")}, {offen.length} offen</span>
+        </div>
+        {k && k.soId ? (
+          <a className="btn sm" href={`${ODOO_BASE}/sales/${k.soId}`} target="_blank" rel="noopener noreferrer">
+            Kundenauftrag in Odoo öffnen ↗
+          </a>
+        ) : (
+          <span className="fw-faint">{k ? "Kundenauftrag in Odoo nicht gefunden" : "Odoo wird gelesen …"}</span>
+        )}
+      </section>
+
+      <section>
+        <h5>Teile im Auftrag</h5>
+        <div className="fwi-teile">
+          {teile.map((t) => (
+            <div key={t.id} className={`fwi-teil${t.fertig ? " fertig" : ""}${t.laeuft ? " laeuft" : ""}`}>
+              <Thumb src={t.odooId ? "/api/part-image/" + t.odooId : null} size={44} />
+              <div className="fwi-t">
+                <b title={t.produkt}>{t.produkt || "–"}</b>
+                <span>
+                  {t.menge != null ? `${t.menge} Stück · ` : ""}
+                  {t.odooId ? (
+                    <a href={`${ODOO_URL}/${t.odooId}`} target="_blank" rel="noopener noreferrer" title="Fertigungsauftrag in Odoo öffnen">
+                      {t.nr} ↗
+                    </a>
+                  ) : t.poId ? (
+                    <a href={`${ODOO_PO_URL}/${t.poId}`} target="_blank" rel="noopener noreferrer" title="Bestellung in Odoo öffnen">
+                      {t.nr.split("-")[0]} ↗
+                    </a>
+                  ) : (
+                    t.nr
+                  )}
+                </span>
+              </div>
+              <div className="fwi-s">
+                <span className="fwi-ort">{t.ort}</span>
+                <small title={t.stand}>{t.stand}</small>
+                <small className="fwi-ende">{t.fertig ? (t.ende ? "fertig " + full(t.ende) : "fertig") : t.ende ? "fertig ca. " + full(t.ende) : "Ende offen"}</small>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {item.teillieferung && (
+        <section className={`fwi-teil-lief${item.teillieferung.moeglich ? " ja" : ""}`}>
+          <h5>Teillieferung</h5>
+          <p>{item.teillieferung.text}</p>
+        </section>
+      )}
+
+      {(item.gruende || []).length > 0 && (
+        <section>
+          <h5>Warum später</h5>
+          <ul className="fwi-gruende">
+            {item.gruende.map((g, ix) => (
+              <li key={ix}>
+                <span>{g.text}</span>
+                {g.hilft && <small>→ {g.hilft}</small>}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      <section>
+        <h5>Verlauf</h5>
+        {!v.termine.length && !v.kontakte.length ? (
+          <p className="fw-faint">Noch keine Verschiebung und kein Kontakt zu diesem Auftrag.</p>
+        ) : (
+          <ul className="fwi-verlauf">
+            {[
+              ...v.termine.map((t) => ({ at: t.at, kind: "termin", text: `Liefertermin ${full(t.von)} → ${full(t.nach)}`, sub: [t.wer, t.grund].filter(Boolean).join(" · ") })),
+              ...v.kontakte.map((c) => ({
+                at: c.at,
+                kind: "kontakt",
+                text: `Kunde informiert per ${WEGTEXT[c.weg] || c.weg || "?"}${c.mit ? " (" + c.mit + ")" : ""}${c.termin ? ", Termin " + full(c.termin) : ""}`,
+                sub: [c.wer, c.notiz].filter(Boolean).join(" · "),
+              })),
+            ]
+              .sort((a, b) => String(a.at).localeCompare(String(b.at)))
+              .map((e, ix) => (
+                <li key={ix} className={e.kind}>
+                  <small>{tagZeit(e.at)}</small>
+                  <span>{e.text}</span>
+                  {e.sub && <small>{e.sub}</small>}
+                </li>
+              ))}
+          </ul>
+        )}
+      </section>
+    </aside>
+  );
+}
+
 // Kopf einer Kundengruppe: mehrere verspätete Aufträge desselben Kunden sind ein Anruf. "Alle telefonisch informiert" hakt jeden Auftrag
 // mit seinem vorgeschlagenen Termin ab (ohne Vorschlag bleibt der Liefertermin, wie er ist).
 function GroupHead({ name, items, onDone }) {
@@ -410,9 +538,9 @@ export default function Fruehwarnung({ reloadKey, onChanged, open = true, onTogg
           </div>
         </div>
         {isOpen && (
-          <Kontakt
-            key={i.source + openFor.tab}
+          <Offen
             item={i}
+            key={i.source + openFor.tab}
             startTab={openFor.tab}
             onClose={() => setOpenFor(null)}
             onDone={(j) => {
