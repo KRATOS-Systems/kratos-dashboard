@@ -33,7 +33,7 @@ function fetchAmpel(fresh) {
   })();
   return pending[key];
 }
-function useAmpel() {
+export function useAmpel() {
   const [d, setD] = useState(current);
   useEffect(() => {
     listeners.add(setD);
@@ -54,7 +54,7 @@ function useAmpel() {
   return d;
 }
 
-const TEXT = { lauf: "Fräsen läuft", ruesten: "Wird gerüstet", pause: "Programm unterbrochen", stoerung: "Störung", steht: "Steht", frei: "Nichts zu tun" };
+export const TEXT = { lauf: "Fräsen läuft", ruesten: "Wird gerüstet", pause: "Programm unterbrochen", stoerung: "Störung", steht: "Steht", frei: "Nichts zu tun" };
 const LAMP = { steht: "r", stoerung: "r", ruesten: "y", pause: "y", lauf: "g" };
 const SPINDEL = { rechts: "Spindel läuft", links: "Spindel läuft (links)", aus: "Spindel steht" };
 
@@ -191,7 +191,7 @@ function LiveBlock({ l }) {
   );
 }
 
-function AmpelDialog({ machine, onClose }) {
+export function AmpelDialog({ machine, onClose }) {
   const d = useAmpel();
   const toast = useToast();
   const session = useBdeSession(0);
