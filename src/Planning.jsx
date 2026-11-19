@@ -1407,13 +1407,25 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
         const bar = barOf(id);
         if (bar && posRec.get(id)) {
           const rb = bar.getBoundingClientRect();
+          // Linke Grenze: rechts neben den Maschinenköpfen, damit die Karte nie darüber liegt
+          const labEl = tin.querySelector(".lane .lab");
+          const minLeft = labEl ? labEl.getBoundingClientRect().right - r0.left + 8 : 4;
           let left = rb.right - r0.left + 14;
+          let top = Math.max(2, rb.top - r0.top - 6);
           let flip = false;
+          let under = false;
           if (left + 270 > r0.width) {
             left = rb.left - r0.left - 276;
             flip = true;
           }
-          nc.push({ id, left: Math.max(4, left), top: Math.max(2, rb.top - r0.top - 6), flip });
+          if (left < minLeft) {
+            // Balken füllt die Breite (z. B. läuft seit Wochen): Karte unter den Anfang des sichtbaren Balkens
+            left = Math.max(minLeft, Math.min(rb.left - r0.left, r0.width - 270));
+            top = rb.bottom - r0.top + 10;
+            flip = false;
+            under = true;
+          }
+          nc.push({ id, left, top, flip, under });
         }
       }
       nc.sort((x, y) => x.top - y.top);
@@ -2989,7 +3001,7 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
               const f = itemById.get(c.id);
               const why = waitText(f && f.it) || (causeText(c.id) ?? "Die Maschine ist bis dahin belegt. Ein anderer Platz oder mehr Kapazität würde helfen.");
               return (
-                <div className={`callout${c.flip ? " l" : ""}`} key={c.id} role="note" style={{ left: c.left, top: c.top }}>
+                <div className={`callout${c.flip ? " l" : ""}${c.under ? " u" : ""}`} key={c.id} role="note" style={{ left: c.left, top: c.top }}>
                   {hl === "soon" ? (
                     <>
                       <b>{p.no}</b> · startet {fmtShort(p.start)}
