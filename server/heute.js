@@ -65,7 +65,7 @@ export function heuteListe(inp, { fw, vollst, closing = 0, muster = 0, freigaben
   add("avLate", avLate, `${plural(avLate, "Position ist", "Positionen sind")} in der AV überfällig`, "bad", "av", "„Muss bis“ ist überschritten, die Maschine wartet sonst");
   add("ohneStunden", noHours.length, `${plural(noHours.length, "Position hat", "Positionen haben")} noch keine Stunden`, "warn", "pool", withSuggest.length ? `für ${withSuggest.length} gibt es einen Vorschlag aus früheren Aufträgen` : "ohne Stunden kann nichts eingeplant werden");
   add("einplanen", ready.length, `${plural(ready.length, "Position wartet", "Positionen warten")} auf eine Maschine`, "warn", "planverbessern", "„Plan verbessern“ macht einen Vorschlag");
-  add("material", notOrdered, `${plural(notOrdered, "Position", "Positionen")}: Material nur angefragt, noch nicht bestellt`, "warn", "av", "Bestellung in Odoo auslösen");
+  add("material", notOrdered, `${plural(notOrdered, "Position", "Positionen")}: nur Anfrage in Odoo, Material klären`, "warn", "av", "bestellt? Dann in der AV „in Arbeit“ mit Datum oder „bereit“ eintragen");
   add("avSoon", avSoon, `${plural(avSoon, "Position startet", "Positionen starten")} in 7 Tagen, AV noch nicht fertig`, "warn", "av");
   if (vollst) add("ohneBeleg", vollst.ohneBeleg.length, `${plural(vollst.ohneBeleg.length, "Kundenauftrag", "Kundenaufträge")} ohne Fertigungs- oder Einkaufsbeleg`, "warn", "av", "prüfen oder abhaken");
   add("schliessen", closing, `${plural(closing, "Position ist", "Positionen sind")} in Odoo erledigt, in der App noch offen`, "mute", "sync", "beim Odoo-Abgleich schließen");

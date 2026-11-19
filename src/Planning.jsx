@@ -381,7 +381,8 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
       const s = avSummary(checks, o.id);
       const mat = s.states.find((x) => x.id === "material");
       // Material in der AV als bereit gemeldet: Der Termin aus dem Einkauf hält die Position dann nicht mehr zurück (wie im Server, talosPlan.js)
-      const material_ok = !!mat && (mat.status === "bereit" || mat.status === "entfaellt");
+      // Von Hand mit Datum eingetragen („in Arbeit, kommt am …“): Dieses Datum zählt (über av_ready), nicht der Termin aus Odoo
+      const material_ok = !!mat && (mat.status === "bereit" || mat.status === "entfaellt" || (!mat.auto && !!mat.due));
       if ((!s.ready && s.readyDate) || material_ok) m.set(o.id, { av_ready: !s.ready && s.readyDate ? s.readyDate : undefined, material_ok });
     });
     return m;

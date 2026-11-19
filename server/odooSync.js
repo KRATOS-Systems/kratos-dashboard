@@ -30,7 +30,6 @@
 // Odoo wird nur gelesen, und nur wenn ODOO_URL und ODOO_API_KEY gesetzt sind.
 
 import { staffName } from "../src/staffLib.js";
-import { addDays, todayStr } from "../src/lib.js";
 
 const OPEN_STATES = ["confirmed", "progress", "to_close"];
 // Stichtag für das laufende Geschäft: Kundenaufträge mit Auftragsdatum ab diesem Tag. Ältere offene Aufträge sind Altlasten und bleiben draußen.
@@ -70,7 +69,6 @@ export function looksMuster(mill, qty) {
   return ops.every((m) => m != null && (Math.abs(m - 60) < 0.01 || Math.abs(m - 60 * qty) < 0.01));
 }
 const EVERY = 10 * 60 * 1000;
-const MATERIAL_ANFRAGE_TAGE = Math.max(1, Number(process.env.MATERIAL_ANFRAGE_TAGE) || 7);
 const EXT_OFFSET = 1000000000; // Einkaufspositionen liegen in odoo_seen oberhalb dieser Zahl, getrennt von den Fertigungsaufträgen
 const FRESH_DAYS = 3; // beim ersten Abgleich gelten Aufträge, die in den letzten Tagen angelegt wurden, als neu
 
@@ -293,10 +291,9 @@ export default function registerOdooSync(app, db, { isDate, nextPosition }) {
         out.set(fa, { date: d, info: `${who(last)}, Wareneingang offen, ${neu ? "neuer Termin" : "geplant"} ${fmtDay(d)}${neu ? " (vom Lieferanten)" : ""}` });
       } else if (ordered.length) out.set(fa, { date: null, info: `${who(ordered[0])}, Material eingegangen` });
       else {
-        // Nur angefragt: das Material ist nicht unterwegs. Die Planung rechnet mit einer Lieferung frühestens MATERIAL_ANFRAGE_TAGE nach heute
-        // (Standard 7), solange niemand bestellt – sonst sähe der Plan einen Start, der nicht gehen kann.
-        const d = addDays(todayStr(), MATERIAL_ANFRAGE_TAGE);
-        out.set(fa, { date: d, info: `${who(list[0])}, Material noch nicht bestellt (Anfrage), frühestens ${fmtDay(d)}` });
+        // Nur angefragt: Oft wird woanders gesammelt bestellt, die Anfrage in Odoo sagt also nichts Sicheres. Kein Termin, nichts wird verschoben;
+        // die AV zeigt „Material klären“, bis dort jemand bereit oder „in Arbeit“ mit Datum einträgt.
+        out.set(fa, { date: null, info: `${who(list[0])}, nur Anfrage in Odoo (noch nicht bestellt), Material klären` });
       }
     });
     return out;
@@ -735,9 +732,18 @@ export default function registerOdooSync(app, db, { isDate, nextPosition }) {
       `INSERT INTO av_checks (order_id, item, status, due, note, assignee, updated_at, auto) VALUES (?, 'material', ?, ?, ?, NULL, datetime('now'), 1)
        ON CONFLICT (order_id, item) DO UPDATE SET status = excluded.status, due = excluded.due, note = excluded.note, updated_at = excluded.updated_at WHERE av_checks.auto = 1`
     );
+    // Wareneingang in Odoo: Das Material ist da, das gilt auch über einen Eintrag von Hand
+    const force = db.prepare(
+      `INSERT INTO av_checks (order_id, item, status, due, note, assignee, updated_at, auto) VALUES (?, 'material', 'bereit', NULL, ?, NULL, datetime('now'), 1)
+       ON CONFLICT (order_id, item) DO UPDATE SET status = 'bereit', due = NULL, note = excluded.note, updated_at = excluded.updated_at, auto = 1`
+    );
     rows.forEach((r) => {
       const c = cur.get(r.id);
-      if (c && c.auto !== 1) return; // von Hand gesetzt: nie anfassen
+      if (c && c.auto !== 1) {
+        // von Hand gesetzt: nie anfassen – außer der Wareneingang ist in Odoo gebucht
+        if (/eingegangen/.test(r.material_info || "") && c.status !== "bereit" && c.status !== "entfaellt") force.run(r.id, "Einkauf: " + r.material_info);
+        return;
+      }
       // ohne Bestellung zum Auftrag: Odoo meldet die Komponenten als verfügbar (Lager) -> bereit; sonst nichts setzen
       if (!r.material_info) {
         if (!/^(verfügbar|available)$/i.test(String(r.component_status || "").trim())) return;

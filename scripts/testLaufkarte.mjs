@@ -24,8 +24,8 @@ try {
   // 2. Zeiten da, Material nur angefragt
   ab = ablaufOf([pos({ machine: "", material_info: "P1 SRS, Material noch nicht bestellt (Anfrage)" })], ck([]));
   assert.equal(ab.next.id, "material");
-  assert.match(ab.next.detail, /nur angefragt, bestellen/);
-  ok("Zeiten da, Material nur angefragt: als Nächstes Material, mit Hinweis „bestellen“");
+  assert.match(ab.next.detail, /nur Anfrage in Odoo, Material klären/);
+  ok("Zeiten da, Material nur angefragt: als Nächstes Material, mit Hinweis „Material klären“");
 
   // 3. Material da, FA im Entwurf
   ab = ablaufOf([pos({ machine: "", odoo_draft: true })], ck([[1, "material", "bereit"]]));

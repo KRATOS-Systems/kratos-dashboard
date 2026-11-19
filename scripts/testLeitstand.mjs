@@ -158,8 +158,8 @@ try {
   assert.equal(fa1334.material_date, day(12));
   assert.match(fa1334.material_info, /^P00620 .*Wareneingang offen, geplant/);
   assert.match(orders.find((o) => o.odoo_ref === "FA01122").material_info, /noch nicht bestellt/);
-  // nur angefragt: noch nicht unterwegs, die Planung rechnet mit Lieferung frühestens in 7 Tagen
-  assert.equal(orders.find((o) => o.odoo_ref === "FA01122").material_date, day(7));
+  // nur angefragt: kein Termin, die Planung verschiebt nichts
+  assert.equal(orders.find((o) => o.odoo_ref === "FA01122").material_date, null);
   assert.match(orders.find((o) => o.odoo_ref === "FA01309").material_info, /eingegangen/);
   await api("PUT", `/api/orders/${fa1334.id}`, { hours: 4 });
   let v = await api("GET", "/api/planvorschlag");
@@ -175,6 +175,23 @@ try {
   prop = v.vorschlaege.find((x) => x.id === fa1334.id);
   assert.ok(prop.start <= day(7), JSON.stringify(prop));
   ok("Steht Material in der AV auf bereit, plant die App ohne den Termin aus dem Einkauf");
+
+  // 7b. Von Hand „in Arbeit, kommt am …“ eingetragen: dieses Datum zählt, nicht der Termin aus Odoo
+  await api("PUT", "/api/av", { order_id: fa1334.id, item: "material", status: "in_arbeit", due: day(3) });
+  v = await api("GET", "/api/planvorschlag");
+  prop = v.vorschlaege.find((x) => x.id === fa1334.id);
+  assert.ok(prop.start >= day(3) && prop.start < day(12), "Start nach dem eigenen Datum, vor dem Odoo-Termin: " + JSON.stringify(prop));
+  ok("Datum von Hand in der AV zählt vor dem Liefertermin aus Odoo");
+
+  // 7c. Wareneingang in Odoo setzt Material bereit, auch über einen Eintrag von Hand
+  const fa1309 = orders.find((o) => o.odoo_ref === "FA01309");
+  await api("PUT", "/api/av", { order_id: fa1309.id, item: "material", status: "in_arbeit", due: day(5) });
+  r = await api("POST", "/api/odoo/sync", { dryRun: false });
+  assert.equal(r.status, 200, JSON.stringify(r));
+  const m1309 = (await api("GET", "/api/av")).checks.find((c) => c.order_id === fa1309.id && c.item === "material");
+  assert.equal(m1309.status, "bereit", JSON.stringify(m1309));
+  assert.equal(m1309.due, null);
+  ok("Wareneingang in Odoo: Material bereit, auch wenn vorher von Hand ein Datum stand");
 
   // 8. In Odoo hat die App nichts geschrieben (ohne Bedienen-Freigabe wird beim Maschinenwechsel nichts umgestellt)
   const log = await fetch("http://localhost:8082/__log").then((x) => x.json());

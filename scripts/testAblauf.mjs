@@ -87,18 +87,19 @@ try {
   assert.equal(materialOptionen("AlMgSi1 3.2315", "60x30x140").optionen[0].name, "3.2315/6082 FL 60x30", "Flach: Breite x Dicke");
   ok("AV001: Werkstoff (1.4301, 3.2315/6082), Form (VK/FL/RD, PL bei Blech) und Name nach Schema");
 
-  // 2. Material nur angefragt: Planung wartet (geschätzter Termin), AV-Punkt bleibt offen
+  // 2. Material nur angefragt: nichts wird verschoben (oft woanders gesammelt bestellt), AV-Punkt bleibt offen mit „Material klären“
   await api("x", "POST", "/api/odoo/sync", { dryRun: false });
   let orders = (await api("x", "GET", "/api/orders")).orders;
   const row = (ref) => orders.find((o) => o.odoo_ref === ref);
   const f1122 = row("FA01122");
   assert.match(f1122.material_info, /noch nicht bestellt/);
-  assert.ok(f1122.material_date && f1122.material_date > new Date().toISOString().slice(0, 10), "geschätzter Liefertermin in der Zukunft: " + f1122.material_date);
+  assert.match(f1122.material_info, /Material klären/);
+  assert.equal(f1122.material_date, null, "keine geschätzte Verschiebung");
   let checks = (await api("x", "GET", "/api/av")).checks;
   const mat = (id) => checks.find((c) => c.order_id === id && c.item === "material");
   assert.equal(mat(f1122.id).status, "offen", "nur angefragt bleibt offen, nicht in Arbeit");
   assert.equal(mat(row("FA01309").id).status, "bereit");
-  ok("Material nur angefragt: Planung rechnet mit Lieferung frühestens in 7 Tagen, AV-Punkt bleibt offen");
+  ok("Material nur angefragt: kein Termin, nichts verschoben, AV-Punkt bleibt offen („Material klären“)");
 
   // 3. startklar
   const ck = new Map(checks.map((c) => [`${c.order_id}|${c.item}`, c]));
