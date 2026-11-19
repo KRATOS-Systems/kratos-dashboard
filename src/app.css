@@ -1928,3 +1928,7 @@ html .lane .lab.lab-hero .lab-load small, html[data-look="neu"] .lane .lab.lab-h
 @keyframes ampBlink { 50% { box-shadow: 0 0 0 1px rgba(255,255,255,.25), 0 0 16px var(--c); filter: brightness(1.15); } }
 @media (prefers-reduced-motion: reduce) { .amp-pill.st-steht, .amp-pill.st-stoerung { animation: none; } }
 .amp-pill { max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* ---------- Infokarte zur Terminlinie: fester Hintergrund, über Balken und Köpfen ---------- */
+html .callout.callout, html[data-look="neu"] .callout.callout { z-index: 40; background: var(--surface); backdrop-filter: none; -webkit-backdrop-filter: none; border: 1px solid var(--line-strong); box-shadow: 0 14px 34px rgba(0, 0, 0, .45); }
+html .callout.u::before { left: 18px; top: -6px; transform: rotate(135deg); }
