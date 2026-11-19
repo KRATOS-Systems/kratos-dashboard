@@ -281,7 +281,8 @@ export default function registerFreigaben(app, db, helpers) {
     const inp = inputs();
     // ohne Stunden zuerst (die brauchen die Kalkulation am dringendsten), dann nach Liefertermin
     const open = inp.orders
-      .filter((o) => !o.done && !LANE_IDS.includes(o.machine) && !o.is_split)
+      // ohne Nummer und ohne Odoo-Bezug (leere Karte) gibt es nichts vorzubereiten
+      .filter((o) => !o.done && !LANE_IDS.includes(o.machine) && !o.is_split && (String(o.order_no || "").trim() || o.odoo_ref))
       .sort((a, b) => (a.hours > 0) - (b.hours > 0) || (a.due || "9999").localeCompare(b.due || "9999") || a.id - b.id);
     const kalkLeft = { n: KALK_PER_RUN };
     const zLeft = { n: process.env.ZEICHNUNG_AUTO === "0" ? 0 : ZEICHNUNG_PER_RUN };

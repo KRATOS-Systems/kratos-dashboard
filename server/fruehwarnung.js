@@ -25,6 +25,8 @@ const CHANNELS = ["telefon", "mail", "beides"];
 const isDate = (s) => typeof s === "string" && /^\d{4}-\d{2}-\d{2}$/.test(s) && !Number.isNaN(Date.parse(s));
 const fmt = (d) => `${d.slice(8, 10)}.${d.slice(5, 7)}.${d.slice(0, 4)}`;
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+const escHtml = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+const DRAFT_COLS = ["draft_date", "draft_channel", "draft_contact", "draft_email", "draft_note", "draft_at", "draft_by"];
 
 export default function registerFruehwarnung(app, db, helpers) {
   db.exec(`
@@ -41,6 +43,9 @@ export default function registerFruehwarnung(app, db, helpers) {
   const cols = db.prepare("PRAGMA table_info(delay_notice)").all().map((c) => c.name);
   if (!cols.includes("channel")) db.exec("ALTER TABLE delay_notice ADD COLUMN channel TEXT");
   if (!cols.includes("contact")) db.exec("ALTER TABLE delay_notice ADD COLUMN contact TEXT");
+  // Entwurf vor dem Anruf: Termin, Weg, Gesprächspartner, E-Mail und Notiz bleiben gespeichert, bis „informiert“ geklickt wird
+  DRAFT_COLS.forEach((c) => !cols.includes(c) && db.exec(`ALTER TABLE delay_notice ADD COLUMN ${c} TEXT`));
+  if (!cols.includes("odoo_info")) db.exec("ALTER TABLE delay_notice ADD COLUMN odoo_info TEXT");
 
   // Liefert die Liste und (nur intern) die offenen Positionen je Auftrag
   function compute(today = todayStr()) {
@@ -137,6 +142,11 @@ export default function registerFruehwarnung(app, db, helpers) {
         channel: informed ? n.channel || null : null,
         contact: informed ? n.contact || null : null,
         note: n && n.note ? n.note : "",
+        draft:
+          n && (n.draft_note || n.draft_contact || n.draft_date || n.draft_email)
+            ? { date: n.draft_date || null, channel: n.draft_channel || null, contact: n.draft_contact || "", email: n.draft_email || "", note: n.draft_note || "", at: n.draft_at || null, by: n.draft_by || null }
+            : null,
+        odooInfo: informed ? n.odoo_info || null : null,
         reasons,
         customerReason: material ? "eine Verzögerung bei der Materialbeschaffung" : extern ? "eine längere Durchlaufzeit bei der externen Bearbeitung" : "die hohe Auslastung in unserer Fertigung",
         parts: [...new Set(open.map((o) => [o.quantity != null ? `${o.quantity} Stück` : null, o.product].filter(Boolean).join(" ")).filter(Boolean))].slice(0, 8),
@@ -172,7 +182,7 @@ export default function registerFruehwarnung(app, db, helpers) {
 
   // Ansprechpartner des Kundenauftrags aus Odoo (nur lesen): Person, Telefon, E-Mail, Bestellnummer des Kunden
   async function contactOf(source) {
-    const c = { name: "", company: "", phone: "", email: "", ref: "", hint: "" };
+    const c = { name: "", company: "", phone: "", email: "", ref: "", hint: "", personen: [], personId: null };
     const read = app.locals.odooRead;
     if (!read) return { ...c, hint: "Odoo ist nicht verbunden: Kontaktdaten bitte selbst nachschlagen." };
     if (!/^[A-Z]\d{3,}$/.test(source)) return { ...c, hint: "Zu diesem Auftrag gibt es keinen Kundenauftrag in Odoo." };
@@ -186,11 +196,21 @@ export default function registerFruehwarnung(app, db, helpers) {
       c.company = pname.split(",")[0].trim();
       if (pname.includes(",")) c.name = pname.split(",").slice(1).join(",").trim();
       if (pid) {
-        const p = await read("res.partner", { domain: [["id", "=", pid]], fields: ["email", "phone"], limit: 1 });
+        const p = await read("res.partner", { domain: [["id", "=", pid]], fields: ["email", "phone", "parent_id"], limit: 1 });
         if (p[0]) {
           if (typeof p[0].email === "string") c.email = p[0].email.trim();
           if (typeof p[0].phone === "string") c.phone = p[0].phone.trim();
         }
+        // Alle Ansprechpartner der Firma (Kontakte unter der Firma in Odoo) zur Auswahl, die Firma selbst zuerst
+        c.personId = pid;
+        const firmaId = p[0] && Array.isArray(p[0].parent_id) ? p[0].parent_id[0] : pid;
+        const str = (v) => (typeof v === "string" ? v.trim() : "");
+        const firma = await read("res.partner", { domain: [["id", "=", firmaId]], fields: ["name", "email", "phone"], limit: 1 });
+        const leute = await read("res.partner", { domain: [["parent_id", "=", firmaId]], fields: ["name", "function", "email", "phone", "type"], limit: 60 });
+        c.personen = [
+          ...firma.map((f) => ({ id: f.id, name: str(f.name), funktion: "Firma (allgemein)", phone: str(f.phone), email: str(f.email), firma: true })),
+          ...leute.filter((x) => x.type === "contact" || !x.type).map((x) => ({ id: x.id, name: str(x.name).includes(",") ? str(x.name).split(",").slice(1).join(",").trim() : str(x.name), funktion: str(x.function), phone: str(x.phone), email: str(x.email), firma: false })),
+        ].filter((x) => x.name);
       }
     } catch (err) {
       c.hint = "Kontaktdaten konnten nicht aus Odoo gelesen werden: " + err.message;
@@ -199,8 +219,10 @@ export default function registerFruehwarnung(app, db, helpers) {
   }
 
   // Entwurf der Nachricht an den Kunden (nur Text, gesendet wird nichts). afterCall = Bestätigung nach einem Telefonat
-  async function draft(item, date, sender, afterCall) {
+  async function draft(item, date, sender, afterCall, wahl = {}) {
     const c = await contactOf(item.source);
+    if (wahl.email) c.email = wahl.email;
+    if (wahl.name !== undefined && wahl.name !== null) c.name = wahl.name;
     const hint = c.hint || (!c.email ? "Beim Kunden ist in Odoo keine E-Mail-Adresse hinterlegt: Empfänger bitte selbst eintragen." : "");
     const order = c.ref ? `Ihrer Bestellung ${c.ref}` : "Ihrem Auftrag";
     const was = item.dueOriginal || item.due;
@@ -248,11 +270,64 @@ export default function registerFruehwarnung(app, db, helpers) {
     const item = compute().out.items.find((i) => i.source === source && i.kind !== "risiko");
     if (!item) return res.status(404).json({ error: "Für diesen Auftrag gibt es keinen Verzug" });
     const date = isDate(req.query.date) ? req.query.date : item.proposal || item.informedDate;
-    res.json(await draft(item, date, sessionName(req), req.query.nachTelefon === "1"));
+    const an = String(req.query.an || "").trim().slice(0, 200);
+    const name = req.query.name !== undefined ? String(req.query.name).trim().slice(0, 120) : undefined;
+    res.json(await draft(item, date, sessionName(req), req.query.nachTelefon === "1", { email: an, name }));
   });
 
+  // Entwurf vor dem Anruf speichern (wird beim Tippen laufend gesichert; erst „informiert“ übernimmt ihn)
+  app.post("/api/fruehwarnung/entwurf", (req, res) => {
+    const { source, date, channel, contact, email, note } = req.body || {};
+    if (typeof source !== "string" || !source.trim() || source.length > 60) return res.status(400).json({ error: "Auftrag fehlt" });
+    if (!db.prepare("SELECT 1 FROM delay_notice WHERE source = ?").get(source)) return res.status(404).json({ error: "Für diesen Auftrag gibt es keinen Verzug" });
+    if (date !== undefined && date !== null && date !== "" && !isDate(date)) return res.status(400).json({ error: "Der Termin ist kein gültiges Datum" });
+    if (channel !== undefined && channel !== null && !CHANNELS.includes(channel)) return res.status(400).json({ error: "Weg unbekannt" });
+    const at = new Date().toISOString();
+    db.prepare("UPDATE delay_notice SET draft_date = ?, draft_channel = ?, draft_contact = ?, draft_email = ?, draft_note = ?, draft_at = ?, draft_by = ? WHERE source = ?").run(
+      date || null,
+      channel || null,
+      String(contact || "").trim().slice(0, 120) || null,
+      String(email || "").trim().slice(0, 200) || null,
+      String(note || "").slice(0, 1000) || null,
+      at,
+      sessionName(req),
+      source
+    );
+    res.json({ ok: true, at });
+  });
+
+  // Neuen Liefertermin am Kundenauftrag in Odoo eintragen (nur „Zugesagtes Datum“) und die Verschiebung als interne Notiz in den Chatter
+  async function odooTermin(item, { date, way, person, note, who }) {
+    const w = app.locals.odooBde;
+    const read = app.locals.odooRead;
+    if (!w || !w.writeEnabled || !read) return { ok: false, grund: "Schreiben in Odoo ist nicht freigeschaltet (BDE_WRITE): Termin und Notiz bitte selbst in Odoo eintragen." };
+    if (!/^[A-Z]\d{3,}$/.test(item.source)) return { ok: false, grund: "Zu diesem Auftrag gibt es keinen Kundenauftrag in Odoo." };
+    try {
+      const so = await read("sale.order", { domain: [["name", "=", item.source]], fields: ["commitment_date"], limit: 1 });
+      if (!so[0]) return { ok: false, grund: "Der Kundenauftrag wurde in Odoo nicht gefunden." };
+      const alt = typeof so[0].commitment_date === "string" ? so[0].commitment_date : null;
+      const zeit = alt && /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(alt) ? alt.slice(11) : "07:00:00";
+      const geschrieben = !alt || alt.slice(0, 10) !== date;
+      if (geschrieben) await w.write("sale.order", "write", { ids: [so[0].id], vals: { commitment_date: `${date} ${zeit}` } });
+      const vorher = alt ? alt.slice(0, 10) : item.due;
+      const weg = way === "telefon" ? "Telefon" : way === "mail" ? "Mail" : "Telefon und Mail";
+      const nr = item.dueShifts > 0 ? `${item.dueShifts}. Verschiebung` : "Verschiebung";
+      const urspr = item.dueOriginal ? `, ursprünglich ${fmt(item.dueOriginal)}` : "";
+      const body =
+        (geschrieben
+          ? `<p><b>Liefertermin verschoben: ${fmt(vorher)} → ${fmt(date)}</b> (${nr}${urspr})</p>`
+          : `<p><b>Liefertermin ${fmt(date)} dem Kunden bestätigt</b>${item.dueOriginal ? ` (ursprünglich ${fmt(item.dueOriginal)})` : ""}</p>`) +
+        `<p>Kunde informiert per ${weg}${person ? " (" + escHtml(person) + ")" : ""}.${note ? " Notiz: " + escHtml(note) : ""}</p>` +
+        `<p>${escHtml(who || "Produktionsdashboard")} über das Produktionsdashboard</p>`;
+      await w.write("sale.order", "message_post", { ids: [so[0].id], body, message_type: "comment", subtype_xmlid: "mail.mt_note" });
+      return { ok: true, geschrieben, grund: null };
+    } catch (err) {
+      return { ok: false, grund: "Odoo: " + err.message };
+    }
+  }
+
   // Kunde wurde informiert (Weg, Gesprächspartner, genannter neuer Termin) oder den Vermerk wieder lösen
-  app.post("/api/fruehwarnung/informiert", (req, res) => {
+  app.post("/api/fruehwarnung/informiert", async (req, res) => {
     const { source, date, note, undo, channel, contact } = req.body || {};
     if (typeof source !== "string" || !source.trim() || source.length > 60) return res.status(400).json({ error: "Auftrag fehlt" });
     if (!db.prepare("SELECT 1 FROM delay_notice WHERE source = ?").get(source)) return res.status(404).json({ error: "Für diesen Auftrag gibt es keinen Verzug" });
@@ -266,6 +341,7 @@ export default function registerFruehwarnung(app, db, helpers) {
       const ids = compute().openIds.get(source) || [];
       db.exec("BEGIN");
       try {
+        db.prepare(`UPDATE delay_notice SET ${DRAFT_COLS.map((c) => c + " = NULL").join(", ")} WHERE source = ?`).run(source);
         db.prepare("UPDATE delay_notice SET informed_at = ?, informed_by = ?, informed_date = COALESCE(?, informed_date), channel = ?, contact = ?, note = ? WHERE source = ?").run(
           new Date().toISOString(),
           who,
@@ -287,7 +363,17 @@ export default function registerFruehwarnung(app, db, helpers) {
         db.exec("COMMIT");
       } catch (err) {
         db.exec("ROLLBACK");
-        throw err;
+        return res.status(500).json({ error: "Speichern fehlgeschlagen: " + err.message });
+      }
+      // Termin und Chatter-Notiz in Odoo (nach dem Speichern in der App; ein Fehler dort hält den Vermerk nicht auf)
+      if (date) {
+        const item = compute().out.items.find((i) => i.source === source);
+        if (item) {
+          const odoo = await odooTermin(item, { date, way, person, note: String(note || "").trim().slice(0, 300), who });
+          const info = odoo.ok ? `In Odoo eingetragen (${odoo.geschrieben ? "Termin und Notiz" : "Notiz, Termin stand schon"})` : odoo.grund;
+          db.prepare("UPDATE delay_notice SET odoo_info = ? WHERE source = ?").run(info, source);
+          return res.json({ ...compute().out, odoo: { ...odoo, info } });
+        }
       }
     }
     res.json(compute().out);

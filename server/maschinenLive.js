@@ -52,6 +52,9 @@ export function sauber(m) {
   };
 }
 
+// Zeitpunkt der letzten Meldung des Maschinen-Dienstes (0 = noch nie), für die Statuszeile (server/dienste.js)
+export const liveEmpfangen = () => stand.empfangen || 0;
+
 export function liveStand(now = Date.now()) {
   if (!stand.empfangen || now - stand.empfangen > STALE_MS) return {};
   return stand.maschinen;

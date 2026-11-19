@@ -226,7 +226,8 @@ const T = {
 };
 // Zur Vollständigkeitsprüfung: Kunden, weitere Artikel und der Einkauf (nur mit MOCK_ENTWURF=1)
 if (process.env.MOCK_ENTWURF) {
-  T["res.partner"].push({ id: 136, name: "Ernst Meck GmbH" }, { id: 187, name: "ACS Armoured Car Systems GmbH, Markus Fuss", email: "einkauf@acs.example", phone: "+49 9131 555 0142" }, { id: 138, name: "Schneider Gmbh & Co. KG" }, { id: 108, name: "Konecranes GmbH" });
+  T["res.partner"].push({ id: 136, name: "Ernst Meck GmbH" }, { id: 186, name: "ACS Armoured Car Systems GmbH", is_company: true, phone: "+49 9131 555 0100", email: "info@acs.example" }, { id: 187, name: "ACS Armoured Car Systems GmbH, Markus Fuss", email: "einkauf@acs.example", phone: "+49 9131 555 0142", parent_id: 186, function: "Einkauf", type: "contact" }, { id: 188, name: "Petra Lang", parent_id: 186, function: "Disposition", phone: "+49 9131 555 0150", email: "p.lang@acs.example", type: "contact" }, { id: 138, name: "Schneider Gmbh & Co. KG" }, { id: 108, name: "Konecranes GmbH" });
+  M2O["res.partner"] = { ...(M2O["res.partner"] || {}), parent_id: "res.partner" };
   T["product.product"].push(
     { id: 2903, name: "Flach 40x20, 70lg.", default_code: "89058665", product_tmpl_id: 70 },
     { id: 2904, name: "Bundbuchse", default_code: "SK966-114100.005.0", product_tmpl_id: 70 },
@@ -257,6 +258,15 @@ if (process.env.MOCK_ENTWURF) {
   T["mrp.workcenter.productivity"].push({ id: 4300, employee_id: 2, user_id: 30, workorder_id: 5051, workcenter_id: 14, production_id: 1050, date_start: ago(52), date_end: ago(48), description: false });
   M2O["purchase.order"] = { partner_id: "res.partner" };
   M2O["purchase.order.line"] = { order_id: "purchase.order", product_id: "product.product" };
+}
+// Fremdfertigung mit Kunde (nur mit MOCK_ENTWURF=1 und MOCK_FREMD=1): A01446 (Hof) wird komplett bei Industrieservice Edel gefertigt (P00602)
+if (process.env.MOCK_ENTWURF && process.env.MOCK_FREMD) {
+  T["res.partner"].push({ id: 490, name: "Hof Sonderanlagenbau GmbH, Henrik Weber" }, { id: 214, name: "Industrieservice Edel" });
+  T["sale.order"].find((s) => s.name === "A01446").partner_id = 490;
+  // P00602 gibt es schon (Einkauf zu A01446); frisch angelegt, damit der erste Abgleich ihn übernimmt
+  Object.assign(T["purchase.order"].find((p) => p.id === 602), { create_date: ago(2), partner_id: 214 });
+  T["purchase.order.line"].push({ id: 1768, order_id: 602, name: "[06-670-3332] ABDECKFLANSCH", product_id: 2901, product_qty: 8, qty_received: 0, date_planned: day(2) + " 11:00:00", display_type: false });
+  T["sale.order.line"].push({ id: 90010, order_id: 1446, product_id: 2901, product_type: "consu", product_uom_qty: 8, display_type: false });
 }
 // AV-Aktionen (nur mit MOCK_ABLAUF=1): FA01340 (A01440, 8 Stück) im Entwurf, Musterstückliste 903 (alles 60 min), kein Material;
 // FA01341 hat zwei offene Fräsen auf „Fräsen (Maschine offen)“ (Maschinenabgleich der Musterstückliste)

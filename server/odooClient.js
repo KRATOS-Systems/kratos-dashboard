@@ -31,7 +31,8 @@ const WRITE_METHODS = {
   "mrp.bom": new Set(["write"]),
   "mrp.bom.line": new Set(["create"]),
   "product.template": new Set(["create"]),
-  "sale.order": new Set(["activity_schedule", "message_post"]),
+  // write: nur das zugesagte Lieferdatum (Kunde über neuen Termin informiert, server/fruehwarnung.js)
+  "sale.order": new Set(["activity_schedule", "message_post", "write"]),
   "hr.employee": new Set(["activity_schedule", "message_post"]),
 };
 // Beim Nachtragen der Endzeit darf nur Ende und Beschreibung geändert werden
@@ -48,6 +49,7 @@ const MOVE_CREATE_FIELDS = new Set(["product_id", "product_uom_qty", "product_uo
 const ZEIT_WRITE_FIELDS = new Set(["duration_expected"]);
 // AV-Aktionen: was an Stückliste, Arbeitsplan und neuem Rohmaterial-Artikel geschrieben werden darf
 const ROUTING_WRITE_FIELDS = new Set(["time_cycle_manual"]);
+const SALE_WRITE_FIELDS = new Set(["commitment_date"]);
 const BOM_WRITE_FIELDS = new Set(["code"]);
 const BOM_LINE_CREATE_FIELDS = new Set(["bom_id", "product_id", "product_qty", "product_uom_id"]);
 const PRODUCT_CREATE_FIELDS = new Set(["name", "type", "is_storable", "categ_id", "uom_id", "purchase_ok", "sale_ok", "route_ids", "tracking", "seller_ids"]);
@@ -161,6 +163,7 @@ export function createOdooClient() {
       const material = Object.keys(v).length === 1 && onlyNewMoves(v.move_raw_ids);
       if (!menge && !material) return Promise.reject(new Error("Am Fertigungsauftrag darf nur die produzierte Menge gesetzt oder eine neue Materialzeile angehängt werden"));
     }
+    if (model === "sale.order" && method === "write" && !onlyFields(params.vals, SALE_WRITE_FIELDS)) return Promise.reject(new Error("Am Kundenauftrag darf nur das zugesagte Lieferdatum geändert werden"));
     if (model === "mrp.routing.workcenter" && !onlyFields(params.vals, ROUTING_WRITE_FIELDS)) return Promise.reject(new Error("Im Arbeitsplan der Stückliste darf nur die Zeit geändert werden"));
     if (model === "mrp.bom" && (!onlyFields(params.vals, BOM_WRITE_FIELDS) || params.vals.code !== false)) return Promise.reject(new Error("An der Stückliste darf nur die Referenz MUSTER entfernt werden"));
     if (model === "mrp.bom.line" && (!Array.isArray(params.vals_list) || params.vals_list.some((v) => !onlyFields(v, BOM_LINE_CREATE_FIELDS))))

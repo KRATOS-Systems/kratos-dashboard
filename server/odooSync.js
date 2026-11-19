@@ -367,7 +367,7 @@ export default function registerOdooSync(app, db, { isDate, nextPosition }) {
     const sold = new Map(); // Kundenauftrag -> Artikel, die verkauft wurden
     for (let i = 0; i < sources.length; i += 100) {
       const chunk = sources.slice(i, i + 100);
-      const so = await odoo("sale.order", "search_read", { domain: [["name", "in", chunk]], fields: ["name", "state", "delivery_status", "commitment_date"], limit: 300 });
+      const so = await odoo("sale.order", "search_read", { domain: [["name", "in", chunk]], fields: ["name", "state", "delivery_status", "commitment_date", "partner_id"], limit: 300 });
       so.forEach((r) => sales.set(r.name, r));
       const sl = await odoo("sale.order.line", "search_read", { domain: [["order_id.name", "in", chunk], ["display_type", "=", false]], fields: ["order_id", "product_id"], limit: 3000 });
       sl.forEach((r) => {
@@ -400,6 +400,7 @@ export default function registerOdooSync(app, db, { isDate, nextPosition }) {
         start: dayOf(po.date_approve) || dayOf(po.date_order) || (created && created.slice(0, 10)),
         planned,
         due: sale ? dayOf(sale.commitment_date) : null,
+        customer: sale ? customerOf(sale.partner_id) : null,
         delivered: !!sale && sale.delivery_status === "full",
         saleCancelled: !!sale && sale.state === "cancel",
         created,
@@ -438,7 +439,7 @@ export default function registerOdooSync(app, db, { isDate, nextPosition }) {
   function applyExternal(x, ext, closeRefs) {
     const now = new Date().toISOString();
     const insert = db.prepare(
-      "INSERT INTO orders (machine, order_no, due_date, position, odoo_ref, source, product, quantity, extern_start, extern_days, supplier, po_id) VALUES ('extern_fert', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+      "INSERT INTO orders (machine, order_no, due_date, position, odoo_ref, source, product, quantity, extern_start, extern_days, supplier, po_id, customer) VALUES ('extern_fert', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
     );
     const seenNew = db.prepare("INSERT OR IGNORE INTO odoo_seen (odoo_id, first_seen) VALUES (?, ?)");
     const seenOld = db.prepare("INSERT OR IGNORE INTO odoo_seen (odoo_id, first_seen) VALUES (?, 'baseline')");
@@ -453,7 +454,7 @@ export default function registerOdooSync(app, db, { isDate, nextPosition }) {
     try {
       let position = nextPosition("extern_fert");
       x.created.forEach((e) => {
-        insert.run(e.po, e.due || dueBySource.get(e.source) || null, position++, e.odoo_ref, e.source, e.product, e.quantity, e.start || new Date().toISOString().slice(0, 10), extDays(e), e.supplier, e.po_id);
+        insert.run(e.po, e.due || dueBySource.get(e.source) || null, position++, e.odoo_ref, e.source, e.product, e.quantity, e.start || new Date().toISOString().slice(0, 10), extDays(e), e.supplier, e.po_id, e.customer || null);
         seenNew.run(x.seenKey(e), now);
       });
       if (x.baseline) {
@@ -463,6 +464,9 @@ export default function registerOdooSync(app, db, { isDate, nextPosition }) {
       // Bereits übernommene Positionen: Link zur Bestellung nachtragen
       const link = db.prepare("UPDATE orders SET po_id = ?, supplier = COALESCE(supplier, ?) WHERE odoo_ref = ? AND po_id IS NULL");
       ext.forEach((e) => link.run(e.po_id, e.supplier, e.odoo_ref));
+      // Kunde nachtragen (früher übernommene externe Fertigungen hatten keinen)
+      const kunde = db.prepare("UPDATE orders SET customer = ? WHERE odoo_ref = ? AND (customer IS NULL OR customer = '')");
+      ext.forEach((e) => e.customer && kunde.run(e.customer, e.odoo_ref));
       closeRefs.forEach((ref) => close.run(ref));
       db.exec("COMMIT");
     } catch (err) {
@@ -866,6 +870,12 @@ export default function registerOdooSync(app, db, { isDate, nextPosition }) {
     }
   }
 
+  // für die Statuszeile (server/dienste.js)
+  app.locals.odooZustand = () => ({
+    enabled,
+    lastSync: getState("last_sync"),
+    lastError: getState("last_error") || (getState("ext_error") ? "Einkauf (Fremdfertigung): " + getState("ext_error") : null),
+  });
   app.get("/api/odoo/status", (req, res) => {
     let pending = [];
     try {

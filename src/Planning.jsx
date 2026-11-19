@@ -23,6 +23,7 @@ import { AV_ITEMS, AV_STATUS, AV_TEAM, isNewAv, avKey, avState, avSummary, start
 import { STAFF, ACTIVITIES, STAFF_DEFAULTS, responsible, avResponsible, sharedMachine } from "./staffLib.js";
 import Avatar from "./Avatar.jsx";
 import { AppTile, Ico, LaneIcon, LaneTile, MTile, Thumb, useToast, partImg } from "./ui.jsx";
+import DiensteStatus from "./DiensteStatus.jsx";
 import { pollEvery } from "./poll.js";
 import {
   DEFAULT_TIGHT_DAYS,
@@ -169,6 +170,7 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
       setPvOpen(true);
       scrollTo("planverbessern");
     } else if (ziel === "pool") scrollTo("pool");
+    else if (typeof ziel === "string" && ziel.startsWith("pos:")) openDetail(Number(ziel.slice(4)));
   };
   const [hl, setHl] = useState(null); // late | pool | soon: Hervorhebung über die Kennzahlen
   const [hoverGroup, setHoverGroup] = useState(null);
@@ -3958,6 +3960,7 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
           </p>
         </div>
         <div className="actions">
+          <DiensteStatus />
           {odooStatus && odooStatus.enabled && (
             <button className="sync" type="button" onClick={openSync} title="Jetzt mit Odoo abgleichen">
               <span className={"ok" + (odooStatus.lastError ? " err" : "")} />
