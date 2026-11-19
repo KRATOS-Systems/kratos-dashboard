@@ -13,7 +13,8 @@
 
 import { loadPlanInputs, makeContext } from "./talosPlan.js";
 import { avSummary } from "../src/avLib.js";
-import { addDays, daysBetween, todayStr } from "../src/lib.js";
+import { addDays, daysBetween, todayStr, MACHINES } from "../src/lib.js";
+import { ablaufOf } from "../src/ablauf.js";
 import { LANE_IDS, tagsOf } from "../src/planLogic.js";
 import { staffName } from "../src/staffLib.js";
 import { postNotiz } from "./odooNotiz.js";
@@ -46,13 +47,68 @@ export default function registerFruehwarnung(app, db, helpers) {
   if (!cols.includes("contact")) db.exec("ALTER TABLE delay_notice ADD COLUMN contact TEXT");
   // Entwurf vor dem Anruf: Termin, Weg, Gesprächspartner, E-Mail und Notiz bleiben gespeichert, bis „informiert“ geklickt wird
   DRAFT_COLS.forEach((c) => !cols.includes(c) && db.exec(`ALTER TABLE delay_notice ADD COLUMN ${c} TEXT`));
+  // Jeder Kontakt mit dem Kunden zu einem Auftrag (für den Verlauf: was wurde wann wem gesagt)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS delay_contact (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      source TEXT NOT NULL,
+      at TEXT NOT NULL,
+      by_name TEXT,
+      channel TEXT,
+      contact TEXT,
+      date TEXT,
+      note TEXT
+    );
+    CREATE INDEX IF NOT EXISTS delay_contact_source ON delay_contact (source);
+  `);
+  const ORT = { qs: "QS", extern: "Oberfläche extern", extern_fert: "Fertigung extern", "": "nicht eingeplant" };
+  const ortOf = (m) => (m in ORT ? ORT[m] : (MACHINES.find((x) => x.id === m) || {}).short || m);
+  // Was hilft gegen den jeweiligen Grund (kurz, als Hinweis fürs Gespräch und für danach)
+  const HILFT = [
+    [/^In Odoo nicht freigegeben/, "FA in Odoo bestätigen (AV: „Fertigungsauftrag bestätigen“)"],
+    [/nicht eingeplant/, "Einplanen: „Plan verbessern“ macht einen Vorschlag"],
+    [/ohne Stunden/, "Stunden aus der Kalkulation übernehmen (AV)"],
+    [/^Arbeitsvorbereitung offen/, "In der AV erledigen oder Termin für die offenen Punkte setzen"],
+    [/^Material kommt laut Einkauf/, "Beim Lieferanten einen früheren Termin anfragen (Reiter Extern)"],
+    [/^Material laut Odoo nicht verfügbar/, "Material klären: bestellt? Dann in der AV „in Arbeit“ mit Datum"],
+    [/^Externe Bearbeitung/, "Beim Lieferanten nachfragen, ob es schneller geht (Reiter Extern)"],
+    [/^Laut Plan fertig/, "Maschine ausgelastet: in „Plan verbessern“ andere Maschine oder Reihenfolge prüfen"],
+  ];
+  const hilftOf = (r) => (HILFT.find(([re]) => re.test(r)) || [null, null])[1];
+  const dueRows = db.prepare("SELECT order_id, old_due, new_due, at, by_name, reason FROM due_history ORDER BY at");
+  const contactRows = db.prepare("SELECT at, by_name, channel, contact, date, note FROM delay_contact WHERE source = ? ORDER BY at");
   if (!cols.includes("odoo_info")) db.exec("ALTER TABLE delay_notice ADD COLUMN odoo_info TEXT");
 
   // Liefert die Liste und (nur intern) die offenen Positionen je Auftrag
   function compute(today = todayStr()) {
     const inputs = loadPlanInputs(db, helpers, today);
     const ctx = makeContext(inputs);
-    const { groups } = ctx.compute(inputs.orders);
+    const { groups, plan } = ctx.compute(inputs.orders);
+    // voraussichtliches Ende je Position (für die Teile-Liste)
+    const endOf = new Map();
+    plan.forEach((p) => p.items.forEach((i) => i.scheduled && endOf.set(i.o.id, ctx.endDateOf(i.end))));
+    let dueAll = null; // Terminverlauf, nur einmal je Berechnung gelesen
+    const dueOf = (ids) => {
+      if (!dueAll) {
+        dueAll = new Map();
+        dueRows.all().forEach((r) => {
+          if (!dueAll.has(r.order_id)) dueAll.set(r.order_id, []);
+          dueAll.get(r.order_id).push(r);
+        });
+      }
+      // dieselbe Verschiebung mehrerer Positionen nur einmal
+      const seen = new Set();
+      return ids
+        .flatMap((id) => dueAll.get(id) || [])
+        .sort((a, b) => a.at.localeCompare(b.at))
+        .filter((r) => {
+          const k = r.old_due + ">" + r.new_due + "@" + r.at.slice(0, 16);
+          if (seen.has(k)) return false;
+          seen.add(k);
+          return true;
+        })
+        .map((r) => ({ at: r.at, von: r.old_due, nach: r.new_due, wer: r.by_name || null, grund: r.reason || null }));
+    };
     const buffer = Math.max(0, Math.round(Number(inputs.settings.tight_days) || 0));
     const freeDates = new Set(inputs.freeDays.map((d) => d.date));
     const isWorkday = (d) => ![0, 6].includes(new Date(d + "T00:00:00Z").getUTCDay()) && !freeDates.has(d);
@@ -153,6 +209,47 @@ export default function registerFruehwarnung(app, db, helpers) {
         parts: [...new Set(open.map((o) => [o.quantity != null ? `${o.quantity} Stück` : null, o.product].filter(Boolean).join(" ")).filter(Boolean))].slice(0, 8),
         positions: open.length,
         unscheduled: g.unscheduled,
+        // Auftrag auf einen Blick: Teile mit Stand, Teillieferung, Gründe mit Hilfe, Verlauf
+        teile: g.positions
+          .slice()
+          .sort((a, b) => (a.done ? 1 : 0) - (b.done ? 1 : 0) || String(a.odoo_ref || a.order_no).localeCompare(String(b.odoo_ref || b.order_no)))
+          .map((o) => {
+            const nx = o.done ? null : ablaufOf([o], inputs.checks).next;
+            return {
+              id: o.id,
+              nr: o.odoo_ref || o.order_no || "",
+              odooId: o.odoo_id || null,
+              poId: o.po_id || null,
+              produkt: o.product || "",
+              menge: o.quantity != null ? o.quantity : null,
+              ort: ortOf(o.machine || ""),
+              fertig: !!o.done,
+              ende: o.done ? o.done_date || null : endOf.get(o.id) || null,
+              stand: o.done ? "fertig" : nx ? nx.label + (nx.detail ? ": " + nx.detail.replace(/^[A-Z]+\d[^:]*:\s*/, "") : "") : "fertig",
+              laeuft: !!(nx && nx.running),
+            };
+          }),
+        teillieferung: (() => {
+          const fertig = g.positions.filter((o) => o.done);
+          const gefertigt = open.filter((o) => o.produced_date);
+          const stueck = (l) => l.reduce((s, o) => s + (Number(o.quantity) || 0), 0);
+          const erst = open.map((o) => endOf.get(o.id)).filter(Boolean).sort()[0] || null;
+          if (fertig.length && open.length)
+            return { moeglich: true, text: `${fertig.length} von ${plural(g.positions.length, "Position", "Positionen")} fertig${stueck(fertig) ? ` (${stueck(fertig)} Stück)` : ""}: Teillieferung möglich` };
+          if (gefertigt.length) return { moeglich: true, text: `${plural(gefertigt.length, "Position ist", "Positionen sind")} gefertigt (QS/extern): Teillieferung nach der Prüfung möglich` };
+          if (open.length > 1 && erst) return { moeglich: false, text: `Noch nichts fertig. Erste Position voraussichtlich am ${fmt(erst)}` };
+          return { moeglich: false, text: open.length > 1 ? "Noch nichts fertig" : "Nur eine Position: keine Teillieferung möglich" };
+        })(),
+        gruende: reasons.map((r) => ({ text: r, hilft: hilftOf(r) })),
+        verlauf: {
+          termine: dueOf(g.positions.map((o) => o.id)),
+          kontakte: (() => {
+            const list = contactRows.all(source).map((r) => ({ at: r.at, wer: r.by_name, weg: r.channel, mit: r.contact, termin: r.date, notiz: r.note || "" }));
+            // vor dem Verlauf: nur der letzte Vermerk
+            if (!list.length && n && n.informed_at) list.push({ at: n.informed_at, wer: n.informed_by, weg: n.channel, mit: n.contact, termin: n.informed_date, notiz: n.note || "" });
+            return list;
+          })(),
+        },
       });
     }
     // Aufräumen: Aufträge, die es nicht mehr gibt (erledigt), und nicht mehr gefährdete ohne Information an den Kunden
@@ -183,14 +280,16 @@ export default function registerFruehwarnung(app, db, helpers) {
 
   // Ansprechpartner des Kundenauftrags aus Odoo (nur lesen): Person, Telefon, E-Mail, Bestellnummer des Kunden
   async function contactOf(source) {
-    const c = { name: "", company: "", phone: "", email: "", ref: "", hint: "", personen: [], personId: null };
+    const c = { name: "", company: "", phone: "", email: "", ref: "", hint: "", personen: [], personId: null, soId: null, datum: null };
     const read = app.locals.odooRead;
     if (!read) return { ...c, hint: "Odoo ist nicht verbunden: Kontaktdaten bitte selbst nachschlagen." };
     if (!/^[A-Z]\d{3,}$/.test(source)) return { ...c, hint: "Zu diesem Auftrag gibt es keinen Kundenauftrag in Odoo." };
     try {
-      const so = await read("sale.order", { domain: [["name", "=", source]], fields: ["partner_id", "client_order_ref"], limit: 1 });
+      const so = await read("sale.order", { domain: [["name", "=", source]], fields: ["partner_id", "client_order_ref", "date_order"], limit: 1 });
       if (!so[0]) return { ...c, hint: "Der Kundenauftrag wurde in Odoo nicht gefunden." };
       c.ref = so[0].client_order_ref ? String(so[0].client_order_ref).trim() : "";
+      c.soId = so[0].id;
+      c.datum = typeof so[0].date_order === "string" ? so[0].date_order.slice(0, 10) : null;
       const pid = Array.isArray(so[0].partner_id) ? so[0].partner_id[0] : null;
       const pname = Array.isArray(so[0].partner_id) ? String(so[0].partner_id[1]) : "";
       // "Firma, Ansprechpartner": Der Teil nach dem Komma ist die Person
@@ -343,6 +442,15 @@ export default function registerFruehwarnung(app, db, helpers) {
       db.exec("BEGIN");
       try {
         db.prepare(`UPDATE delay_notice SET ${DRAFT_COLS.map((c) => c + " = NULL").join(", ")} WHERE source = ?`).run(source);
+        db.prepare("INSERT INTO delay_contact (source, at, by_name, channel, contact, date, note) VALUES (?, ?, ?, ?, ?, ?, ?)").run(
+          source,
+          new Date().toISOString(),
+          who,
+          way,
+          person || null,
+          date || null,
+          String(note || "").trim().slice(0, 300) || null
+        );
         db.prepare("UPDATE delay_notice SET informed_at = ?, informed_by = ?, informed_date = COALESCE(?, informed_date), channel = ?, contact = ?, note = ? WHERE source = ?").run(
           new Date().toISOString(),
           who,

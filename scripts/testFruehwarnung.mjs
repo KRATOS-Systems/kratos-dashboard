@@ -120,6 +120,8 @@ try {
   const kt = await api("GET", "/api/fruehwarnung/kontakt?source=A01385");
   assert.deepEqual(kt.personen.map((p) => p.name), ["ACS Armoured Car Systems GmbH", "Markus Fuss", "Petra Lang"], JSON.stringify(kt.personen));
   assert.equal(kt.personen.find((p) => p.name === "Petra Lang").phone, "+49 9131 555 0150");
+  assert.equal(kt.soId, 1385, "Odoo-ID des Kundenauftrags für den Link");
+  assert.equal(kt.datum, "2026-10-21");
   r = await api("POST", "/api/fruehwarnung/entwurf", { source: "A01385", date: day(40), channel: "telefon", contact: "Petra Lang", email: "p.lang@acs.example", note: "Teillieferung anbieten" });
   assert.equal(r.status, 200, JSON.stringify(r));
   w = await api("GET", "/api/fruehwarnung");
@@ -159,6 +161,15 @@ try {
   assert.match(h[0].reason, /Kunde informiert \(Telefon, Markus Fuss\)/);
   assert.equal(a.draft, null, "Mit dem Abhaken ist der Entwurf übernommen und weg");
   assert.match(w.odoo.info, /nicht freigeschaltet/, "Ohne Schreibfreigabe bleibt Odoo unberührt, der Grund steht dabei");
+  // Auftrag auf einen Blick: Teile mit Ort und Stand, Teillieferung, Gründe mit Hilfe, Verlauf (Termin + Kontakt)
+  assert.deepEqual(a.teile.map((t) => [t.nr, t.ort, t.fertig]), [["FA01309", "DMU 40 EVO", false]], JSON.stringify(a.teile));
+  assert.ok(a.teile[0].ende && a.teile[0].stand, JSON.stringify(a.teile[0]));
+  assert.match(a.teillieferung.text, /keine Teillieferung/);
+  assert.ok(a.gruende.length && a.gruende.every((g) => typeof g.text === "string"), JSON.stringify(a.gruende));
+  assert.equal(a.verlauf.termine.length, 1, JSON.stringify(a.verlauf));
+  assert.deepEqual([a.verlauf.termine[0].von, a.verlauf.termine[0].nach], ["2026-11-05", proposal]);
+  assert.equal(a.verlauf.kontakte.length, 1);
+  assert.deepEqual([a.verlauf.kontakte[0].weg, a.verlauf.kontakte[0].mit, a.verlauf.kontakte[0].notiz], ["telefon", "Markus Fuss", "Teillieferung nicht nötig"]);
   r = await api("POST", "/api/fruehwarnung/informiert", { source: "A01385", channel: "fax" });
   assert.equal(r.status, 400);
   ok("Telefonisch abgehakt: ohne Mail erledigt, neuer Termin ist Liefertermin, ursprünglicher Termin und Verlauf bleiben erhalten");

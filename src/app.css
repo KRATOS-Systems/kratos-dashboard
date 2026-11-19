@@ -1945,3 +1945,39 @@ html .callout.u::before { left: 18px; top: -6px; transform: rotate(135deg); }
 .dienste-row span { grid-column: 2; font-size: 12.5px; color: var(--muted); }
 .dienste-row b { font-size: 13px; }
 .dienste-pop small { color: var(--faint); font-size: 11.5px; }
+
+/* ---------- Kunde informieren: Formular links, Auftrag auf einen Blick rechts ---------- */
+.fw-open { display: grid; grid-template-columns: minmax(0, 620px) minmax(0, 1fr); gap: 18px; align-items: start; margin: 4px 0 14px; }
+@media (max-width: 1150px) { .fw-open { grid-template-columns: minmax(0, 1fr); } }
+.fw-open > .fw-mail { margin: 0; }
+.fw-info { border: 1px solid var(--line); border-radius: 12px; background: var(--sunken); padding: 14px 16px; display: grid; gap: 14px; min-width: 0; }
+.fw-info section { display: grid; gap: 8px; min-width: 0; }
+.fw-info h5 { margin: 0; font: 600 11px/1 var(--f-body); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.fwi-head { grid-template-columns: minmax(0, 1fr) auto; align-items: center; column-gap: 14px; padding-bottom: 12px; border-bottom: 1px solid var(--line); }
+.fwi-head > div:first-child { display: grid; gap: 2px; }
+.fwi-head > div:first-child b { font: 600 17px var(--f-mono); }
+.fwi-head > div:first-child span { color: var(--muted); font-size: 13px; }
+.fwi-meta { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 12.5px; color: var(--muted); }
+.fwi-meta b { color: var(--ink); font-weight: 600; }
+.fwi-head > .btn, .fwi-head > .fw-faint { grid-row: 1; grid-column: 2; }
+.fwi-teile { display: grid; gap: 6px; }
+.fwi-teil { display: grid; grid-template-columns: 44px minmax(0, 1fr) minmax(150px, 40%); gap: 12px; align-items: center; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+.fwi-teil.fertig { opacity: .7; border-color: color-mix(in srgb, var(--ok) 45%, var(--line)); }
+.fwi-teil.laeuft { border-color: color-mix(in srgb, var(--dmu) 55%, var(--line)); }
+.fwi-t { display: grid; gap: 3px; min-width: 0; }
+.fwi-t b { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fwi-t span { font-size: 12px; color: var(--muted); }
+.fwi-t a { color: var(--ink); font-family: var(--f-mono); text-decoration: underline; text-underline-offset: 2px; }
+.fwi-s { display: grid; gap: 2px; justify-items: end; text-align: right; min-width: 0; }
+.fwi-ort { font: 600 11.5px var(--f-body); padding: 2px 8px; border-radius: 99px; background: var(--sunken); border: 1px solid var(--line); }
+.fwi-s small { font-size: 12px; color: var(--muted); max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fwi-teil.fertig .fwi-ende { color: var(--ok); font-weight: 600; }
+.fwi-teil-lief p { margin: 0; font-size: 13px; padding: 8px 10px; border-radius: 8px; background: var(--surface); border: 1px solid var(--line); }
+.fwi-teil-lief.ja p { border-color: color-mix(in srgb, var(--ok) 55%, var(--line)); color: var(--ok); font-weight: 600; }
+.fwi-gruende, .fwi-verlauf { list-style: none; margin: 0; padding: 0; display: grid; gap: 7px; }
+.fwi-gruende li { display: grid; gap: 2px; font-size: 13px; padding-left: 12px; border-left: 2px solid var(--warn); }
+.fwi-gruende small { color: var(--muted); font-size: 12px; }
+.fwi-verlauf li { display: grid; gap: 1px; font-size: 13px; padding-left: 12px; border-left: 2px solid var(--line-strong); }
+.fwi-verlauf li.kontakt { border-left-color: var(--ok); }
+.fwi-verlauf li.termin { border-left-color: var(--warn); }
+.fwi-verlauf small { color: var(--muted); font-size: 11.5px; }
