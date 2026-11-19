@@ -7,6 +7,7 @@
 //   Untertyp Notiz: keine E-Mail, Kunden sehen nichts).
 
 import { m2o, isPhone } from "./bde.js";
+import { postNotiz } from "./odooNotiz.js";
 
 const MARK = "über Kratos BDE";
 const escHtml = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -116,12 +117,7 @@ export default function registerBdeQuestions(app, db, ctx) {
         const me = ctx.employees().get(s.e);
         const other = s.e === assignee?.id ? assigner : assignee;
         try {
-          await odoo.write(a.res_model, "message_post", {
-            ids: [a.res_id],
-            body: `<p><b>${s.e === assignee?.id ? "Rückfrage" : "Antwort"} zur Aufgabe „${escHtml(a.summary || "")}“</b> (${escHtml(me ? me.name : "?")} an ${escHtml(other ? other.name : "?")}, ${MARK}):</p><p>${escHtml(text)}</p>`,
-            message_type: "comment",
-            subtype_xmlid: "mail.mt_note",
-          });
+          await postNotiz(odoo, a.res_model, a.res_id, `<p><b>${s.e === assignee?.id ? "Rückfrage" : "Antwort"} zur Aufgabe „${escHtml(a.summary || "")}“</b> (${escHtml(me ? me.name : "?")} an ${escHtml(other ? other.name : "?")}, ${MARK}):</p><p>${escHtml(text)}</p>`);
           odooNote = true;
         } catch (err) {
           console.error("BDE: Notiz in Odoo fehlgeschlagen", err.message);

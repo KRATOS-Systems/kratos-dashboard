@@ -16,6 +16,7 @@ import { avSummary } from "../src/avLib.js";
 import { addDays, daysBetween, todayStr } from "../src/lib.js";
 import { LANE_IDS, tagsOf } from "../src/planLogic.js";
 import { staffName } from "../src/staffLib.js";
+import { postNotiz } from "./odooNotiz.js";
 
 const RISK_DAYS = 10; // Liefertermin in so vielen Tagen und noch nicht alles eingeplant: Risiko
 const CALL_WORKDAYS = 5; // weniger Arbeitstage bis zum Liefertermin: anrufen statt Mail
@@ -319,7 +320,7 @@ export default function registerFruehwarnung(app, db, helpers) {
           : `<p><b>Liefertermin ${fmt(date)} dem Kunden bestätigt</b>${item.dueOriginal ? ` (ursprünglich ${fmt(item.dueOriginal)})` : ""}</p>`) +
         `<p>Kunde informiert per ${weg}${person ? " (" + escHtml(person) + ")" : ""}.${note ? " Notiz: " + escHtml(note) : ""}</p>` +
         `<p>${escHtml(who || "Produktionsdashboard")} über das Produktionsdashboard</p>`;
-      await w.write("sale.order", "message_post", { ids: [so[0].id], body, message_type: "comment", subtype_xmlid: "mail.mt_note" });
+      await postNotiz(w, "sale.order", so[0].id, body);
       return { ok: true, geschrieben, grund: null };
     } catch (err) {
       return { ok: false, grund: "Odoo: " + err.message };
