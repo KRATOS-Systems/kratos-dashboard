@@ -46,7 +46,7 @@ export const VERSAND_DDL = `
 // Noch zu berechnen je Auftragsposition: geliefert (höchstens bestellt) minus berechnet; Dienstleistungen und Abschnitte zählen nicht
 export function offenZuBerechnen(lines) {
   return lines
-    .filter((l) => !l.display_type && l.product_type !== "service")
+    .filter((l) => !l.display_type && l.product_type !== "service" && (Number(l.price_unit) || 0) > 0)
     .map((l) => {
       const bestellt = Number(l.product_uom_qty) || 0;
       const geliefert = Math.min(Number(l.qty_delivered) || 0, bestellt);
@@ -55,6 +55,17 @@ export function offenZuBerechnen(lines) {
       return { artikel: m2oName(l.product_id) || String(l.name || "").split("\n")[0], code: codeOf(m2oName(l.product_id)), bestellt, geliefert, berechnet, offen, wert: offen * (Number(l.price_unit) || 0) };
     })
     .filter((x) => x.offen > 0);
+}
+
+// Wert des Gelieferten (höchstens die bestellte Menge) – zum Vergleich mit den gebuchten Rechnungsbeträgen
+export function gelieferterWert(lines) {
+  return lines
+    .filter((l) => !l.display_type && (Number(l.price_unit) || 0) > 0)
+    .reduce((t, l) => t + Math.min(Number(l.qty_delivered) || 0, Number(l.product_uom_qty) || 0) * (Number(l.price_unit) || 0), 0);
+}
+// Gebuchte Rechnungen minus Gutschriften (netto)
+export function berechneterWert(moves) {
+  return moves.filter((m) => m.state === "posted").reduce((t, m) => t + (m.move_type === "out_refund" ? -1 : m.move_type === "out_invoice" ? 1 : 0) * (Number(m.amount_untaxed) || 0), 0);
 }
 
 // Versandstand einer Position aus den Zeilen ihres Kundenauftrags (gleicher Artikel: Name, sonst Artikelnummer)
@@ -164,20 +175,52 @@ export default function registerVersand(app, db) {
       versand.filter((v) => v.info).forEach((v) => info.run(v.info, v.id));
     }
 
-    // 2. Zu berechnen: geliefert, aber noch nicht (vollständig) berechnet
-    const kandidaten = await readAll(
-      "sale.order",
-      [["state", "=", "sale"], ["date_order", ">=", ORDERS_SINCE + " 00:00:00"], ["delivery_status", "in", ["partial", "full"]], ["invoice_status", "!=", "invoiced"]],
-      ["name", "partner_id", "commitment_date", "delivery_status", "invoice_status", "currency_id"],
-      500
-    );
-    const kLines = kandidaten.length ? await linesOf(kandidaten.map((s) => s.id)) : [];
+    // 2. Zu berechnen: geliefert, aber noch nicht (vollständig) berechnet.
+    //    Erst je Auftragsposition nach Mengen; dann gegen die gebuchten Rechnungsbeträge geprüft (Odoo verknüpft Rechnungszeilen nicht
+    //    immer mit der Auftragszeile, z. B. A01086) – auch über Duplikate hinweg: gleicher Kunde und gleiche Bestellnummer des Kunden
+    //    (Lieferung auf dem einen, Rechnung auf dem anderen Auftrag, z. B. A01233/A01091). Aufträge über 0 € zählen nicht.
+    const kandidaten = (
+      await readAll(
+        "sale.order",
+        [["state", "=", "sale"], ["date_order", ">=", ORDERS_SINCE + " 00:00:00"], ["delivery_status", "in", ["partial", "full"]], ["invoice_status", "!=", "invoiced"]],
+        ["name", "partner_id", "commitment_date", "delivery_status", "invoice_status", "amount_untaxed", "invoice_ids", "client_order_ref", "origin"],
+        500
+      )
+    ).filter((s) => (Number(s.amount_untaxed) || 0) > 0);
+    const refOf = (s) => {
+      const r = String(s.client_order_ref || s.origin || "").trim();
+      return r && !/^A\d{3,}$/.test(r) ? r : null;
+    };
+    const gruppeOf = (s) => (refOf(s) ? `${customerOf(s.partner_id) || m2oId(s.partner_id)}|${refOf(s)}` : "#" + s.id);
+    const refs = [...new Set(kandidaten.map(refOf).filter(Boolean))];
+    const zwillinge = [];
+    for (let i = 0; i < refs.length; i += 80) {
+      const chunk = refs.slice(i, i + 80);
+      zwillinge.push(...(await readAll("sale.order", [["state", "=", "sale"], "|", ["client_order_ref", "in", chunk], ["origin", "in", chunk]], ["name", "partner_id", "invoice_ids", "client_order_ref", "origin"], 500)));
+    }
+    const alle = [...kandidaten, ...zwillinge.filter((z) => !kandidaten.some((k) => k.id === z.id))];
+    const kLines = alle.length ? await linesOf(alle.map((s) => s.id)) : [];
+    const moveIds = [...new Set(alle.flatMap((s) => s.invoice_ids || []))];
+    const moves = [];
+    for (let i = 0; i < moveIds.length; i += 200) moves.push(...(await readAll("account.move", [["id", "in", moveIds.slice(i, i + 200)]], ["move_type", "state", "amount_untaxed"], 400)));
+    const gruppen = new Map();
+    alle.forEach((s) => {
+      const g = gruppeOf(s);
+      if (!gruppen.has(g)) gruppen.set(g, []);
+      gruppen.get(g).push(s);
+    });
     const kPicks = await lieferungenOf(kandidaten);
     const zuBerechnen = kandidaten
       .map((s) => {
         const offen = offenZuBerechnen(kLines.filter((l) => m2oId(l.order_id) === s.id));
         if (!offen.length) return null;
+        const g = gruppen.get(gruppeOf(s)) || [s];
+        const geliefert = g.reduce((t, x) => t + gelieferterWert(kLines.filter((l) => m2oId(l.order_id) === x.id)), 0);
+        const berechnet = berechneterWert(moves.filter((m) => g.some((x) => (x.invoice_ids || []).includes(m.id))));
+        const rest = Math.round((geliefert - berechnet) * 100) / 100;
+        if (rest <= 1) return null; // die Rechnungen decken das Gelieferte (auch wenn Odoo die Zeilen nicht verknüpft hat)
         const done = (kPicks.get(s.name) || []).filter((p) => p.state === "done" && p.datum).sort((a, b) => b.datum.localeCompare(a.datum));
+        const zeilenWert = offen.reduce((t, x) => t + x.wert, 0);
         return {
           sale: s.name,
           saleId: s.id,
@@ -186,7 +229,8 @@ export default function registerVersand(app, db) {
           lieferung: done.length ? done[0].name : null,
           teil: s.delivery_status === "partial",
           positionen: offen,
-          wert: Math.round(offen.reduce((t, x) => t + x.wert, 0) * 100) / 100,
+          wert: Math.round(Math.min(zeilenWert, rest) * 100) / 100,
+          duplikat: g.filter((x) => x.id !== s.id).map((x) => x.name),
           sig: offen.map((x) => `${x.code || x.artikel}:${x.geliefert}`).sort().join("|"),
         };
       })
@@ -332,7 +376,7 @@ export default function registerVersand(app, db) {
     }
   });
 
-  app.locals.versand = { get };
+  app.locals.versand = { get, cached: () => (cache ? cache.data : null) };
   if (process.env.VERSAND_AUTO !== "0") {
     setTimeout(() => get(true).catch((err) => console.error("Versand:", err.message)), 90 * 1000).unref();
     setInterval(() => get(true).catch((err) => console.error("Versand:", err.message)), 10 * 60 * 1000).unref();

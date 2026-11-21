@@ -2056,3 +2056,9 @@ html .callout.u::before { left: 18px; top: -6px; transform: rotate(135deg); }
 .vs-table tbody tr:hover, .vs-table tbody tr:focus-visible { background: var(--sunken); outline: none; }
 .vs-art { max-width: 34ch; color: var(--muted); }
 .lane-info { display: grid; gap: 4px; font-size: 13px; margin-bottom: 8px; }
+.vs-auto { display: flex; gap: 18px; align-items: center; flex-wrap: wrap; padding: 14px 18px; font-size: 13px; }
+.vs-auto select { margin-left: 4px; }
+.vs-log { padding: 0 18px 14px 34px; font-size: 12.5px; }
+.vs-loglink { background: none; border: 0; padding: 0; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.vs-loglink:hover { color: var(--brand); }
+.lab-txt .lane-over { margin-top: 4px; color: var(--bad); }

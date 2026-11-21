@@ -38,6 +38,7 @@ import registerDatenqualitaet from "./datenqualitaet.js";
 import registerPrio from "./prio.js";
 import registerAvAktionen from "./avAktionen.js";
 import registerVersand from "./versand.js";
+import registerAutomatik from "./automatik.js";
 import { registerMaschinenEingang, registerMaschinenLive } from "./maschinenLive.js";
 
 // Lokal dürfen Umgebungsvariablen in einer Datei .env stehen (nicht im Repository). Bei Hostinger gibt es sie nicht.
@@ -454,6 +455,7 @@ const orderOut = (r) => ({
   po_id: r.po_id,
   shipped_date: r.shipped_date || null,
   ship_info: r.ship_info || null,
+  ext_info: r.ext_info || null,
   parent_ref: r.parent_ref || null,
   new_since: r.new_since && /^\d{4}-/.test(r.new_since) ? r.new_since : null,
 });
@@ -1253,6 +1255,7 @@ registerFreigaben(app, db, { orderOut: (r) => orderOut(r), planSettingsOut: () =
 registerKennzahlen(app, db);
 registerExtern(app, db, { orderOut: (r) => orderOut(r), planSettingsOut: () => planSettingsOut(), staffName });
 registerVersand(app, db);
+registerAutomatik(app, db);
 registerLiefertermin(app, db, { orderOut: (r) => orderOut(r), planSettingsOut: () => planSettingsOut() });
 registerAbwesenheit(app, db);
 registerMorgenbericht(app, db);

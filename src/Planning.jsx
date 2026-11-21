@@ -99,9 +99,15 @@ function LaneInfo({ o }) {
         )}
       </div>
     );
-  if (!isExt) return null;
+  if (!isExt)
+    return o.machine === "qs" && o.ext_info ? (
+      <div className="lane-info">
+        <span className="pill mute">{o.ext_info}</span>
+      </div>
+    ) : null;
   return (
     <div className="lane-info">
+      {o.ext_info && <span className={`pill ${/Teil-Wareneingang/.test(o.ext_info) ? "warn" : "mute"}`}>{o.ext_info}</span>}
       {o.supplier && (
         <div>
           Lieferant: <b>{o.supplier}</b>
@@ -220,6 +226,7 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
     if (ziel === "sync") return openSync();
     setTab("zeit");
     if (ziel === "extern") return setTab("extern");
+    if (ziel === "versand") return setTab("versand");
     if (ziel === "freigaben" || ziel === "fruehwarnung") {
       scrollTo("arbeitskorb");
     } else if (ziel === "planverbessern") {
@@ -1206,7 +1213,10 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
         const k = `${groupKeyOf(o)}|${o.extern_start}|${duration}`;
         if (!byKey.has(k)) {
           const start = daysBetween(monday0, o.extern_start);
-          const b = { key: k, groupKey: groupKeyOf(o), label: groupLabelOf(o), ids: [], tags: new Set(), start, end: start + duration, duration };
+          // Überfällig (Prüfung länger als geplant, Lieferant über dem Termin): Balken bis heute durchziehen, damit er sichtbar bleibt
+          const planEnd = start + duration;
+          const late = lane.id !== "versand" && planEnd <= todayOff;
+          const b = { key: k, groupKey: groupKeyOf(o), label: groupLabelOf(o), ids: [], tags: new Set(), start, end: late ? Math.max(planEnd, todayOff + 1) : planEnd, planEnd, late, duration };
           byKey.set(k, b);
           blocks.push(b);
         }
@@ -2874,13 +2884,19 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
     <div className="lane minor" key={lane.id}>
       {(() => {
         const list = orders.filter((o) => !o.done && o.machine === lane.id);
-        const over = list.filter((o) => o.extern_start && addDays(o.extern_start, daysIn(o)) < today).length;
+        const over = lane.id === "versand" ? 0 : list.filter((o) => o.extern_start && addDays(o.extern_start, daysIn(o)) < today).length;
         return (
           <div className="lab lab-hero lane-hero" style={{ "--mc": lane.c }}>
             <span className="lane-big"><LaneIcon id={lane.id} s={58} /></span>
             <div className="lab-txt">
               <b>{lane.name}</b>
-              <span className="amp-pill"><i style={{ "--c": over ? "var(--bad)" : list.length ? "var(--ok)" : "var(--faint)" }} />{list.length} {list.length === 1 ? "Position" : "Positionen"}{over ? ` · ${over} überfällig` : ""}</span>
+              <span className="amp-pill"><i style={{ "--c": list.length ? "var(--ok)" : "var(--faint)" }} />{list.length} {list.length === 1 ? "Position" : "Positionen"}</span>
+              {over > 0 && (
+                <span className="amp-pill lane-over" title={lane.id === "qs" ? "Prüfung dauert länger als geplant" : "Termin des Lieferanten ist vorbei, Ware noch nicht eingegangen"}>
+                  <i style={{ "--c": "var(--bad)" }} />
+                  {over} überfällig
+                </span>
+              )}
             </div>
             <div className="lab-load"><small>{lane.cap}</small></div>
             {lane.id !== "qs" && (
@@ -2906,7 +2922,9 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
         </div>
         {blocks.map((b) => {
           const g = groupByKey.get(b.groupKey);
-          const overdue = lane.id === "qs" && b.end <= todayOff; // Prüfung länger als geplant
+          const overdue = b.late; // Prüfung länger als geplant bzw. Lieferant über dem Termin
+          const ueber = overdue ? Math.max(1, Math.round(todayOff - b.planEnd) + 1) : 0;
+          const extInfo = (orders.find((x) => x.id === b.ids[0]) || {}).ext_info || "";
           const isDragged = dragActive && b.ids.some((id) => drag.ids.includes(id));
           const tags = [...b.tags];
           const sup = (orders.find((x) => x.id === b.ids[0]) || {}).supplier || "";
@@ -2915,7 +2933,8 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
           const tipHtml = tipFor(`${b.label} · ${b.ids.length} ${b.ids.length === 1 ? "Position" : "Positionen"} in ${lane.name}`, [
             tags.length ? tags.join(", ") : "",
             sup ? `Lieferant: ${sup}` : "",
-            `${fmtDuration(b.duration)}, ab ${fmtShort(dateOf(b.start))} bis ca. ${fmtShort(endDateOf(b.end))}${overdue ? " – Prüfung überfällig" : ""}`,
+            `${fmtDuration(b.duration)}, ab ${fmtShort(dateOf(b.start))} bis ca. ${fmtShort(endDateOf(b.planEnd))}${overdue ? (lane.id === "qs" ? " – Prüfung überfällig" : ` – Lieferant ${ueber} ${ueber === 1 ? "Tag" : "Tage"} über dem Termin`) : ""}`,
+            extInfo,
             g && g.due ? `Liefertermin ${fmtShort(g.due)}` : "",
             g && g.status === "late" ? `Achtung: Auftrag ${days(g.lateDays)} zu spät (Ende: ${g.endMachine})` : "",
             "Klicken für Details · ziehen zum Verschieben (auch zurück auf eine Maschine)",
@@ -2948,7 +2967,16 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
               <span>
                 {b.ids.length > 1 ? `${b.ids.length} Pos. · ` : ""}
                 {sup ? `${sup} · ` : ""}
-                {tags.length ? tags.join(", ") : fmtDuration(b.duration)}
+                {tags.length ? tags.join(", ") + " · " : ""}
+                {lane.id === "extern_fert" || lane.id === "extern"
+                  ? overdue
+                    ? `${ueber} ${ueber === 1 ? "Tag" : "Tage"} über Termin`
+                    : /Teil-Wareneingang/.test(extInfo)
+                    ? extInfo.split(" (")[0]
+                    : `bis ${fmtShort(endDateOf(b.planEnd))}`
+                  : tags.length
+                  ? ""
+                  : fmtDuration(b.duration)}
               </span>
             </div>
           );

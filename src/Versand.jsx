@@ -11,6 +11,64 @@ const day = (s) => (s ? fmtShort(s) : "–");
 const eur = (n) => (n || 0).toLocaleString("de-DE", { style: "currency", currency: "EUR" });
 const fmtN = (n) => (Math.round(n * 100) / 100).toLocaleString("de-DE");
 
+const ZIEL = { qs: "QS (Wareneingangsprüfung)", versand: "Versand" };
+
+// Automatik: wohin eine Position nach dem Wareneingang geht, und was zuletzt automatisch weiterging (server/automatik.js)
+function Automatik({ reloadKey, onOpen }) {
+  const [a, setA] = useState(null);
+  const load = () =>
+    fetch("/api/automatik")
+      .then((r) => (r.ok ? r.json() : null))
+      .then(setA)
+      .catch(() => {});
+  useEffect(() => {
+    load();
+  }, [reloadKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  if (!a) return null;
+  const set = async (k, v) => {
+    const r = await fetch("/api/automatik/einstellungen", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ [k]: v }) }).catch(() => null);
+    if (r && r.ok) setA({ ...a, einstellungen: (await r.json()).einstellungen });
+  };
+  return (
+    <div className="card vs-card" style={{ marginBottom: 16 }}>
+      <div className="sec-head">
+        <div>
+          <h2>Automatisch nach dem Wareneingang</h2>
+          <p>Ist die Ware laut Odoo eingegangen, geht die Position von selbst weiter. Vollständig ausgelieferte Aufträge schließt die App selbst.</p>
+        </div>
+      </div>
+      <div className="vs-auto">
+        <label>
+          Fertigung extern →{" "}
+          <select value={a.einstellungen.nachFremd} onChange={(e) => set("nachFremd", e.target.value)}>
+            <option value="qs">{ZIEL.qs}</option>
+            <option value="versand">{ZIEL.versand}</option>
+          </select>
+        </label>
+        <label>
+          Oberfläche extern →{" "}
+          <select value={a.einstellungen.nachOberflaeche} onChange={(e) => set("nachOberflaeche", e.target.value)}>
+            <option value="versand">{ZIEL.versand}</option>
+            <option value="qs">QS</option>
+          </select>
+        </label>
+        <span className="fg-faint">Ohne Kundenauftrag statt Versand: erledigt.</span>
+      </div>
+      {a.protokoll && a.protokoll.length > 0 && (
+        <ul className="fg-notes vs-log">
+          {a.protokoll.slice(0, 8).map((p, i) => (
+            <li key={i}>
+              <button type="button" className="vs-loglink" onClick={() => p.id && onOpen(p.id)}>
+                {day(p.am.slice(0, 10))}: {p.text}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 export default function Versand({ orders, reloadKey, onOpen, onChanged }) {
   const [d, setD] = useState(null);
   const [err, setErr] = useState("");
@@ -62,6 +120,7 @@ export default function Versand({ orders, reloadKey, onOpen, onChanged }) {
   const a = d && d.aufgabe;
   return (
     <>
+      <Automatik reloadKey={reloadKey} onOpen={onOpen} />
       <div className="card vs-card" style={{ marginBottom: 16 }}>
         <div className="sec-head">
           <div>
@@ -144,6 +203,11 @@ export default function Versand({ orders, reloadKey, onOpen, onChanged }) {
                     {z.lieferung ? ` (${z.lieferung})` : ""}
                   </span>
                   {z.teil && <span className="pill warn">Teillieferung</span>}
+                  {z.duplikat && z.duplikat.length > 0 && (
+                    <span className="pill mute" title="Gleicher Kunde und gleiche Bestellnummer: Lieferungen und Rechnungen beider Aufträge zählen zusammen">
+                      mit {z.duplikat.join(", ")} (gleiche Bestellung)
+                    </span>
+                  )}
                   <span style={{ flex: 1 }} />
                   <b>{eur(z.wert)}</b>
                 </div>

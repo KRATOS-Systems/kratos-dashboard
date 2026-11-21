@@ -85,3 +85,5 @@ jobs:
         run: node scripts/testMaschinenLive.mjs
       - name: Versand und Abrechnung (versendet laut Odoo, Zu berechnen, Aufgabe Rechnung stellen, Erledigt)
         run: node scripts/testVersand.mjs
+      - name: Automatik (Wareneingang weiter, ausgeliefert abschliessen, Abrechnung nach Betraegen und Duplikaten, Heute zu tun)
+        run: node scripts/testAutomatik.mjs

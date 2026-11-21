@@ -356,10 +356,10 @@ if (process.env.MOCK_ENTWURF && process.env.MOCK_EXTERN) {
 if (process.env.MOCK_VERSAND) {
   T["product.product"].push({ id: 3101, name: "Halter", default_code: "V-100", product_tmpl_id: 80 }, { id: 3102, name: "Deckel", default_code: "V-200", product_tmpl_id: 81 }, { id: 3103, name: "Erstmusterprüfbericht", default_code: "EMPB", product_tmpl_id: 82 }, { id: 3104, name: "Lasche", default_code: "V-300", product_tmpl_id: 83 });
   T["sale.order"].push(
-    { id: 1501, name: "A01501", state: "sale", delivery_status: "partial", invoice_status: "to invoice", date_order: ago(240), commitment_date: day(5) + " 08:00:00" },
-    { id: 1502, name: "A01502", state: "sale", delivery_status: "full", invoice_status: "to invoice", date_order: ago(240), commitment_date: day(-1) + " 08:00:00" },
-    { id: 1503, name: "A01503", state: "sale", delivery_status: "full", invoice_status: "to invoice", date_order: ago(1500), commitment_date: day(-45) + " 08:00:00" },
-    { id: 1504, name: "A01504", state: "sale", delivery_status: "full", invoice_status: "invoiced", date_order: ago(1500), commitment_date: day(-30) + " 08:00:00" }
+    { id: 1501, name: "A01501", state: "sale", amount_untaxed: 125, delivery_status: "partial", invoice_status: "to invoice", date_order: ago(240), commitment_date: day(5) + " 08:00:00" },
+    { id: 1502, name: "A01502", state: "sale", amount_untaxed: 350, delivery_status: "full", invoice_status: "to invoice", date_order: ago(240), commitment_date: day(-1) + " 08:00:00" },
+    { id: 1503, name: "A01503", state: "sale", amount_untaxed: 60, delivery_status: "full", invoice_status: "to invoice", date_order: ago(1500), commitment_date: day(-45) + " 08:00:00" },
+    { id: 1504, name: "A01504", state: "sale", amount_untaxed: 24, delivery_status: "full", invoice_status: "invoiced", date_order: ago(1500), commitment_date: day(-30) + " 08:00:00" }
   );
   T["sale.order.line"] = T["sale.order.line"] || [];
   T["sale.order.line"].push(
@@ -379,6 +379,55 @@ if (process.env.MOCK_VERSAND) {
     { id: 9905, name: "L00905", picking_type_code: "outgoing", state: "done", date_done: ago(30 * 24), sale_id: 1504, origin: "A01504", backorder_id: false }
   );
   M2O["stock.picking"] = { ...(M2O["stock.picking"] || {}), sale_id: "sale.order", backorder_id: "stock.picking" };
+}
+// Automatik nach dem Wareneingang und genauere Abrechnung (nur mit MOCK_AUTOMATIK=1):
+// P00701 (Fremdfertigung A01601) komplett eingegangen, P00702 (A01602) 12 von 20 eingegangen, P00703 Lohnarbeit Eloxal zu FA01603 zurück.
+// A01605: zwei Zeilen desselben Teils, eine Rechnungszeile nicht verknüpft, die Rechnungen decken aber alles (wie A01086).
+// A01606/A01607: Duplikat (gleicher Kunde, gleiche Bestellnummer 4711): Lieferung auf A01607, Rechnung auf A01606 (wie A01233/A01091).
+// A01608: Auftrag über 0 €. A01609: wirklich offen (keine Rechnung).
+if (process.env.MOCK_AUTOMATIK) {
+  for (const k of ["purchase.order", "purchase.order.line", "stock.picking", "account.move", "sale.order.line"]) T[k] = T[k] || [];
+  T["res.partner"].push({ id: 701, name: "Fremdfertiger GmbH" }, { id: 702, name: "Eloxal Müller" }, { id: 703, name: "Kunde Sieben GmbH" });
+  T["product.product"].push({ id: 3201, name: "Welle", default_code: "W-1", product_tmpl_id: 90 }, { id: 3202, name: "Flansch", default_code: "F-2", product_tmpl_id: 91 }, { id: 3203, name: "Eloxieren schwarz", default_code: "LOHN-ELOX", product_tmpl_id: 92 }, { id: 3204, name: "Platte", default_code: "P-4", product_tmpl_id: 93 });
+  T["purchase.order"].push(
+    { id: 701, name: "P00701", origin: "A01601", partner_id: 701, state: "purchase", receipt_status: "full", date_approve: ago(24 * 20), date_planned: day(-3) + " 08:00:00" },
+    { id: 702, name: "P00702", origin: "A01602", partner_id: 701, state: "purchase", receipt_status: "partial", date_approve: ago(24 * 20), date_planned: day(-2) + " 08:00:00" },
+    { id: 703, name: "P00703", origin: "FA01603", partner_id: 702, state: "purchase", receipt_status: "full", date_approve: ago(24 * 5), date_planned: day(-1) + " 08:00:00" }
+  );
+  T["purchase.order.line"].push(
+    { id: 7011, order_id: 701, product_id: 3201, name: "[W-1] Welle", product_qty: 12, qty_received: 12, display_type: false },
+    { id: 7021, order_id: 702, product_id: 3202, name: "[F-2] Flansch", product_qty: 20, qty_received: 12, display_type: false },
+    { id: 7031, order_id: 703, product_id: 3203, name: "[LOHN-ELOX] Eloxieren schwarz", product_qty: 6, qty_received: 6, display_type: false }
+  );
+  M2O["purchase.order"] = { partner_id: "res.partner" };
+  M2O["purchase.order.line"] = { order_id: "purchase.order", product_id: "product.product" };
+  T["stock.picking"].push(
+    { id: 9711, name: "WH/IN/00701", picking_type_code: "incoming", state: "done", date_done: ago(30), purchase_id: 701, origin: "P00701" },
+    { id: 9712, name: "WH/IN/00702", picking_type_code: "incoming", state: "done", date_done: ago(30), purchase_id: 702, origin: "P00702" },
+    { id: 9713, name: "WH/IN/00703", picking_type_code: "incoming", state: "done", date_done: ago(2), purchase_id: 703, origin: "P00703" }
+  );
+  M2O["stock.picking"] = { ...(M2O["stock.picking"] || {}), partner_id: "res.partner", purchase_id: "purchase.order", sale_id: "sale.order", backorder_id: "stock.picking" };
+  T["sale.order"].push(
+    { id: 1605, name: "A01605", state: "sale", partner_id: 703, delivery_status: "full", invoice_status: "to invoice", date_order: ago(300), amount_untaxed: 200, invoice_ids: [8601, 8602], client_order_ref: "KS-1" },
+    { id: 1606, name: "A01606", state: "sale", partner_id: 703, delivery_status: false, invoice_status: "invoiced", date_order: ago(600), amount_untaxed: 300, invoice_ids: [8603], client_order_ref: "4711", origin: "4711" },
+    { id: 1607, name: "A01607", state: "sale", partner_id: 703, delivery_status: "full", invoice_status: "to invoice", date_order: ago(300), amount_untaxed: 300, invoice_ids: [], client_order_ref: false, origin: "4711" },
+    { id: 1608, name: "A01608", state: "sale", partner_id: 703, delivery_status: "full", invoice_status: "to invoice", date_order: ago(300), amount_untaxed: 0, invoice_ids: [], client_order_ref: "KS-8" },
+    { id: 1609, name: "A01609", state: "sale", partner_id: 703, delivery_status: "full", invoice_status: "to invoice", date_order: ago(300), amount_untaxed: 80, invoice_ids: [], client_order_ref: "KS-9" }
+  );
+  T["sale.order.line"].push(
+    { id: 96051, order_id: 1605, product_id: 3204, name: "[P-4] Platte", product_uom_qty: 10, qty_delivered: 10, qty_invoiced: 10, price_unit: 10, display_type: false, product_type: "consu" },
+    { id: 96052, order_id: 1605, product_id: 3204, name: "[P-4] Platte", product_uom_qty: 10, qty_delivered: 10, qty_invoiced: 0, price_unit: 10, display_type: false, product_type: "consu" },
+    { id: 96061, order_id: 1606, product_id: 3204, name: "[P-4] Platte", product_uom_qty: 30, qty_delivered: 0, qty_invoiced: 30, price_unit: 10, display_type: false, product_type: "consu" },
+    { id: 96071, order_id: 1607, product_id: 3204, name: "[P-4] Platte", product_uom_qty: 30, qty_delivered: 30, qty_invoiced: 0, price_unit: 10, display_type: false, product_type: "consu" },
+    { id: 96081, order_id: 1608, product_id: 3204, name: "[P-4] Platte", product_uom_qty: 5, qty_delivered: 5, qty_invoiced: 0, price_unit: 0, display_type: false, product_type: "consu" },
+    { id: 96091, order_id: 1609, product_id: 3204, name: "[P-4] Platte", product_uom_qty: 8, qty_delivered: 8, qty_invoiced: 0, price_unit: 10, display_type: false, product_type: "consu" }
+  );
+  M2O["sale.order.line"] = { order_id: "sale.order", product_id: "product.product" };
+  T["account.move"].push(
+    { id: 8601, name: "INV/2026/09001", move_type: "out_invoice", state: "posted", amount_untaxed: 100 },
+    { id: 8602, name: "INV/2026/09002", move_type: "out_invoice", state: "posted", amount_untaxed: 100 },
+    { id: 8603, name: "INV/2026/09003", move_type: "out_invoice", state: "posted", amount_untaxed: 300 }
+  );
 }
 // Feiertage/Betriebsruhe und Abwesenheiten (nur mit MOCK_ABWESEND=1): Betriebsruhe in 8 und 9 Tagen (UTC wie Odoo), Aurel 3 Tage krank, Nino Urlaub beantragt
 if (process.env.MOCK_ABWESEND) {

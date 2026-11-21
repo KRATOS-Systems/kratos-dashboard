@@ -427,8 +427,9 @@ export default function registerOdooSync(app, db, { isDate, nextPosition }) {
     const byRef = new Map(ext.map((e) => [e.odoo_ref, e]));
     const closing = [];
     inApp.forEach((r, ref) => {
-      // Im Versand schließt server/versand.js, sobald die Lieferung in Odoo bestätigt ist
-      if (r.done !== 0 || r.machine === "versand") return;
+      // Nur solange die Position in „Fertigung extern“ liegt: nach dem Wareneingang schiebt server/automatik.js sie in QS / Versand,
+      // im Versand schließt server/versand.js, sobald die Lieferung in Odoo bestätigt ist
+      if (r.done !== 0 || r.machine !== "extern_fert") return;
       const e = byRef.get(ref);
       if (!e) closing.push({ ref, source: r.source, product: r.product, reason: "Bestellung in Odoo nicht mehr offen (storniert oder zurückgesetzt)" });
       else if (e.received) closing.push({ ref, source: r.source, product: r.product, reason: "Ware vom Lieferanten laut Odoo eingegangen" });
