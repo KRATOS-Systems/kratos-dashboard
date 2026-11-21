@@ -15,7 +15,7 @@ import { deviation, fixInOdoo, useArbeitsplaene } from "./arbeitsplan.js";
 // Zeichnung und 3D-Modell werden erst geladen, wenn eine Zeile aufgeklappt wird (three.js ist groß)
 const FileThumbs = lazy(() => import("./PartDocs.jsx").then((m) => ({ default: m.FileThumbs })));
 
-const LANE_IDS = ["qs", "extern_fert", "extern"];
+const LANE_IDS = ["qs", "extern_fert", "extern", "versand"];
 const groupKey = (o) => o.source || o.order_no || `#${o.id}`;
 const posNo = (o) => (o.order_no || "ohne Nummer") + (o.part_label ? ` · ${o.part_label}` : "");
 const FILTERS = [

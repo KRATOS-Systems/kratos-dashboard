@@ -37,6 +37,7 @@ import registerZeichnung from "./zeichnung.js";
 import registerDatenqualitaet from "./datenqualitaet.js";
 import registerPrio from "./prio.js";
 import registerAvAktionen from "./avAktionen.js";
+import registerVersand from "./versand.js";
 import { registerMaschinenEingang, registerMaschinenLive } from "./maschinenLive.js";
 
 // Lokal dürfen Umgebungsvariablen in einer Datei .env stehen (nicht im Repository). Bei Hostinger gibt es sie nicht.
@@ -51,8 +52,8 @@ const PORT = process.env.PORT || 3001;
 const DIST_PATH = path.join(__dirname, "..", "dist");
 
 const MACHINES = ["dmu40", "dmu50", "m1", "h800u"];
-// Orte neben den Maschinen: QS, Extern Fertigung, Extern Oberfläche ("extern")
-const LANES = ["qs", "extern_fert", "extern"];
+// Orte neben den Maschinen: QS, Extern Fertigung, Extern Oberfläche ("extern"), Versand
+const LANES = ["qs", "extern_fert", "extern", "versand"];
 const DEFAULT_CAPACITY = 40;
 
 // DB_PATH sollte außerhalb des per Git deployten App-Ordners liegen,
@@ -208,6 +209,8 @@ const orderColumns = columnsOf();
   ["after_id", "INTEGER"],
   ["supplier", "TEXT"],
   ["po_id", "INTEGER"],
+  ["shipped_date", "TEXT"], // versendet laut Lieferung in Odoo (oder von Hand), server/versand.js
+  ["ship_info", "TEXT"], // Versandstand kurz, z. B. "20 von 50 geliefert (L00792)"
 ].forEach(([name, type]) => {
   if (!orderColumns.includes(name)) db.exec(`ALTER TABLE orders ADD COLUMN ${name} ${type}`);
 });
@@ -449,6 +452,8 @@ const orderOut = (r) => ({
   extern_start: r.extern_start,
   supplier: r.supplier,
   po_id: r.po_id,
+  shipped_date: r.shipped_date || null,
+  ship_info: r.ship_info || null,
   parent_ref: r.parent_ref || null,
   new_since: r.new_since && /^\d{4}-/.test(r.new_since) ? r.new_since : null,
 });
@@ -500,7 +505,7 @@ async function odooMachineMoves(rows, to) {
 
 app.put("/api/orders/:id", wrap(async (req, res) => {
   const id = Number(req.params.id);
-  const { order_no, hours, done_hours, due, done, machine, extern_tags, extern_days, extern_start, earliest_start, hours_plan, progress_date, qs_required, qs_days, from_machine, produced_date, checked_date, done_date, source, product, quantity, due_reason, pinned, restricted_ok } = req.body || {};
+  const { order_no, hours, done_hours, due, done, machine, extern_tags, extern_days, extern_start, earliest_start, hours_plan, progress_date, qs_required, qs_days, from_machine, produced_date, checked_date, done_date, shipped_date, source, product, quantity, due_reason, pinned, restricted_ok } = req.body || {};
   const sets = [];
   const values = [];
 
@@ -636,6 +641,7 @@ app.put("/api/orders/:id", wrap(async (req, res) => {
     ["produced_date", produced_date],
     ["checked_date", checked_date],
     ["done_date", done_date],
+    ["shipped_date", shipped_date],
   ]) {
     if (value === undefined) continue;
     if (value !== null && !isDate(value)) return res.status(400).json({ error: `invalid ${name}` });
@@ -1246,6 +1252,7 @@ registerBde(app, db, staff);
 registerFreigaben(app, db, { orderOut: (r) => orderOut(r), planSettingsOut: () => planSettingsOut(), odooMachineMoves: (rows, to) => odooMachineMoves(rows, to) });
 registerKennzahlen(app, db);
 registerExtern(app, db, { orderOut: (r) => orderOut(r), planSettingsOut: () => planSettingsOut(), staffName });
+registerVersand(app, db);
 registerLiefertermin(app, db, { orderOut: (r) => orderOut(r), planSettingsOut: () => planSettingsOut() });
 registerAbwesenheit(app, db);
 registerMorgenbericht(app, db);

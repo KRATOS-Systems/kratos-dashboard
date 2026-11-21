@@ -6,7 +6,7 @@
 
 import { avState, avDone, avSummary } from "./avLib.js";
 
-const LANES = ["qs", "extern", "extern_fert"];
+const LANES = ["qs", "extern", "extern_fert", "versand"];
 export const ABLAUF_SCHRITTE = [
   { id: "da", label: "Auftrag da" },
   { id: "zeiten", label: "Zeiten & Stückliste" },
@@ -55,7 +55,19 @@ export function ablaufOf(positions, checks) {
   const laeuft = onMachine.filter((o) => (o.done_hours || 0) > 0 || o.progress_date);
   r.fertigung = { done: !onMachine.length && !pool.length, ids: onMachine.map((o) => o.id), running: laeuft.length > 0, detail: !onMachine.length ? (pool.length ? "noch nicht eingeplant" : "Maschinenarbeit fertig") : laeuft.length ? `läuft: ${ref(laeuft)}` : `${plural(onMachine.length, "Position", "Positionen")} auf der Maschine` };
 
-  r.qs = { done: open.length === 0, ids: inLane.map((o) => o.id), detail: inLane.length ? `${plural(inLane.length, "Position", "Positionen")} in QS oder extern` : open.length ? "nach der Fertigung" : "geliefert" };
+  const imVersand = inLane.filter((o) => o.machine === "versand");
+  r.qs = {
+    done: open.length === 0,
+    ids: inLane.map((o) => o.id),
+    detail:
+      inLane.length && imVersand.length === inLane.length
+        ? `${plural(imVersand.length, "Position", "Positionen")} versandbereit`
+        : inLane.length
+        ? `${plural(inLane.length - imVersand.length, "Position", "Positionen")} in QS oder extern${imVersand.length ? `, ${imVersand.length} versandbereit` : ""}`
+        : open.length
+        ? "nach der Fertigung"
+        : "geliefert",
+  };
 
   let nowSet = false;
   const steps = ABLAUF_SCHRITTE.map((s) => {

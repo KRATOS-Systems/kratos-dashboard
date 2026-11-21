@@ -2041,3 +2041,18 @@ html .callout.u::before { left: 18px; top: -6px; transform: rotate(135deg); }
 .mj-v-leg i.off { background: repeating-linear-gradient(135deg, var(--sunken) 0 2px, var(--line-strong) 2px 4px); border: 1px solid var(--line); }
 .mj-v-note { display: block; margin-top: 6px; color: var(--muted); font-size: 12px; font-style: italic; }
 @media (max-width: 640px) { .mj-v-row { grid-template-columns: 58px minmax(0, 1fr) 40px; gap: 8px; font-size: 12.5px; } .mj-v-axis small { font-size: 0; } .mj-v-achse .minor { display: none; } }
+
+/* Versand und Erledigt (src/Versand.jsx, src/Erledigt.jsx) */
+.vs-list { display: grid; gap: 10px; padding: 14px 18px 18px; }
+.vs-pos { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; border-top: 1px dashed var(--line); padding-top: 6px; }
+.vs-main { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; background: none; border: 0; padding: 4px 0; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.vs-main:hover .mono { color: var(--brand); }
+.vs-prod { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 46ch; }
+.vs-card .tablewrap { overflow-x: auto; }
+.vs-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.vs-table th { text-align: left; font: 600 11px var(--f-display); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); padding: 10px 12px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+.vs-table td { padding: 9px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.vs-table tbody tr { cursor: pointer; }
+.vs-table tbody tr:hover, .vs-table tbody tr:focus-visible { background: var(--sunken); outline: none; }
+.vs-art { max-width: 34ch; color: var(--muted); }
+.lane-info { display: grid; gap: 4px; font-size: 13px; margin-bottom: 8px; }

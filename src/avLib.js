@@ -44,7 +44,7 @@ export const avDone = (status) => status === "bereit" || status === "entfaellt";
 // Startklar: Kann die Position auf der Maschine wirklich anfangen? Eingeplant heißt das noch nicht.
 // Fehlt etwas, gibt es die Liste zurück (leer = startklar). Laufende oder erledigte Positionen und Extern/QS: null (keine Aussage).
 export function startklar(o, checks) {
-  if (!o || o.done || !o.machine || ["qs", "extern", "extern_fert"].includes(o.machine)) return null;
+  if (!o || o.done || !o.machine || ["qs", "extern", "extern_fert", "versand"].includes(o.machine)) return null;
   if ((o.done_hours || 0) > 0 || o.progress_date) return null;
   const fehlt = [];
   if (!(o.hours > 0)) fehlt.push("Stunden");

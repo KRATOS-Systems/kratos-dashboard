@@ -417,7 +417,7 @@ export default function registerOdooSync(app, db, { isDate, nextPosition }) {
   function computeExternal(ext) {
     const seenKey = (e) => EXT_OFFSET + e.line_id;
     const seen = new Set(db.prepare("SELECT odoo_id FROM odoo_seen WHERE odoo_id >= ?").all(EXT_OFFSET).map((r) => r.odoo_id));
-    const inApp = new Map(db.prepare("SELECT odoo_ref, done, source, product FROM orders WHERE odoo_ref LIKE 'P%-%'").all().map((r) => [r.odoo_ref, r]));
+    const inApp = new Map(db.prepare("SELECT odoo_ref, done, source, product, machine FROM orders WHERE odoo_ref LIKE 'P%-%'").all().map((r) => [r.odoo_ref, r]));
     const manual = db.prepare("SELECT id FROM orders WHERE source = ? AND product = ? AND done = 0 AND odoo_ref IS NULL");
     const baseline = getState("ext_baseline_done") !== "1";
     const cutoff = Date.now() - FRESH_DAYS * 24 * 3600 * 1000;
@@ -427,7 +427,8 @@ export default function registerOdooSync(app, db, { isDate, nextPosition }) {
     const byRef = new Map(ext.map((e) => [e.odoo_ref, e]));
     const closing = [];
     inApp.forEach((r, ref) => {
-      if (r.done !== 0) return;
+      // Im Versand schließt server/versand.js, sobald die Lieferung in Odoo bestätigt ist
+      if (r.done !== 0 || r.machine === "versand") return;
       const e = byRef.get(ref);
       if (!e) closing.push({ ref, source: r.source, product: r.product, reason: "Bestellung in Odoo nicht mehr offen (storniert oder zurückgesetzt)" });
       else if (e.received) closing.push({ ref, source: r.source, product: r.product, reason: "Ware vom Lieferanten laut Odoo eingegangen" });
@@ -481,7 +482,7 @@ export default function registerOdooSync(app, db, { isDate, nextPosition }) {
   // Abgleich nur als "bekannt" gemerkt wurde, wird einmalig ergänzt, wenn sein Auftrag dort offen steht.
   function computePlan(items, wanted = new Map(), force = null) {
     const seen = new Set(db.prepare("SELECT odoo_id FROM odoo_seen").all().map((r) => r.odoo_id));
-    const inApp = new Map(db.prepare("SELECT id, odoo_ref, odoo_id, done, source, product FROM orders WHERE odoo_ref LIKE 'FA%'").all().map((r) => [r.odoo_ref, r]));
+    const inApp = new Map(db.prepare("SELECT id, odoo_ref, odoo_id, done, source, product, machine FROM orders WHERE odoo_ref LIKE 'FA%'").all().map((r) => [r.odoo_ref, r]));
     const openIds = new Set(items.map((i) => i.odoo_ref));
     const byRef = new Map(items.map((i) => [i.odoo_ref, i]));
     let gapDone = new Set();
@@ -502,7 +503,8 @@ export default function registerOdooSync(app, db, { isDate, nextPosition }) {
     const updated = items.filter((i) => inApp.has(i.odoo_ref) && inApp.get(i.odoo_ref).done === 0);
     const closing = [];
     inApp.forEach((r, ref) => {
-      if (r.done !== 0) return;
+      // Im Versand: der Fertigungsauftrag ist in Odoo meist schon erledigt; geschlossen wird erst nach der Lieferung (server/versand.js)
+      if (r.done !== 0 || r.machine === "versand") return;
       const i = byRef.get(ref);
       if (!openIds.has(ref)) closing.push({ ref, source: r.source, product: r.product, reason: "In Odoo nicht mehr offen (erledigt, storniert oder zurück im Entwurf)" });
       else if (i.test) closing.push({ ref, source: r.source, product: r.product, reason: "Testauftrag (Herkunft oder Artikel beginnt mit TEST)" });
