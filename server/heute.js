@@ -10,6 +10,8 @@ import { MACHINES } from "../src/lib.js";
 import { liveStand } from "./maschinenLive.js";
 
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+// Punkte, die in der Planung (für alle) stehen; alles andere steht nur in der Steuerung (Leitung)
+export const WERKSTATT = ["stoerung", "still", "ohneStunden", "einplanen", "avLate", "avSoon", "material", "muster"];
 
 export function heuteListe(inp, { fw, vollst, closing = 0, muster = 0, freigaben = null, extern = null, versand = null, automatik = null } = {}) {
   const today = inp.today;
@@ -140,5 +142,11 @@ export default function registerHeute(app, db, helpers) {
     return heuteListe(inp, { fw, vollst: odoo.vollst || null, closing: odoo.closing || 0, muster: odoo.muster || 0, freigaben, extern, versand, automatik });
   };
   app.locals.heuteListe = liste;
-  app.get("/api/heute", (req, res) => res.json(liste()));
+  // Bereich „planung“: nur was die Werkstatt betrifft; „steuerung“ (Standard): alles. Talos, Morgenbericht und KI-Planer lesen immer alles.
+  app.get("/api/heute", (req, res) => {
+    const l = liste();
+    if (req.query.bereich !== "planung") return res.json(l);
+    const items = l.items.filter((i) => WERKSTATT.includes(i.id));
+    res.json({ ...l, items, alles: !items.some((i) => i.tone !== "mute") });
+  });
 }

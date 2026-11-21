@@ -10,7 +10,7 @@ import Fruehwarnung from "./Fruehwarnung.jsx";
 const TONE = { bad: "var(--bad)", warn: "var(--warn)", mute: "var(--faint)" };
 const INLINE = { freigaben: "freigaben", kunden: "kunden" };
 
-export default function Arbeitskorb({ reloadKey, onJump, onChanged, onHighlight, onCounts }) {
+export default function Arbeitskorb({ reloadKey, onJump, onChanged, onHighlight, onCounts, bereich = "steuerung" }) {
   const [d, setD] = useState(null);
   const [open, setOpen] = useState(null); // aufgeklappte Zeile
   const [mute, setMute] = useState(false); // graue Hinweise zeigen
@@ -18,7 +18,7 @@ export default function Arbeitskorb({ reloadKey, onJump, onChanged, onHighlight,
   useEffect(() => {
     let stop = false;
     const load = () =>
-      fetch("/api/heute")
+      fetch("/api/heute?bereich=" + bereich)
         .then((r) => (r.ok ? r.json() : null))
         .then((j) => {
           if (stop || !j) return;
@@ -76,14 +76,14 @@ export default function Arbeitskorb({ reloadKey, onJump, onChanged, onHighlight,
   return (
     <div id="arbeitskorb" className={`arbeitskorb card rise${rot ? " bad" : ""}`} style={{ "--i": 1 }}>
       <div className="ak-top">
-        <b>Heute</b>
+        <b>{bereich === "steuerung" ? "Heute entscheiden" : "Heute"}</b>
         {wichtig.length ? (
           <span className="ak-sum">
             {rot > 0 && <span className="ak-pill bad">{rot} heute handeln</span>}
             {wichtig.length - rot > 0 && <span className="ak-pill warn">{wichtig.length - rot} diese Woche</span>}
           </span>
         ) : (
-          <span className="ak-ok">Alles erledigt ✓ Planung und Arbeitsvorbereitung sind auf Stand.</span>
+          <span className="ak-ok">{bereich === "steuerung" ? "Alles erledigt ✓ Nichts zu entscheiden." : "Alles erledigt ✓ Planung und Arbeitsvorbereitung sind auf Stand."}</span>
         )}
         {info.length > 0 && (
           <button type="button" className="ak-info" onClick={() => setMute((v) => !v)}>

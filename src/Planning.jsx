@@ -211,6 +211,9 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
   const [docsFor, setDocsFor] = useState(null); // Position, deren Zeichnung und 3D-Modell gerade offen sind
   const [pvOpen, setPvOpen] = useState(false); // "Plan verbessern" aufgeklappt
   const [korb, setKorb] = useState([]); // Zeilen aus "Heute" (für die Zähler an den Reitern)
+  const [sTab, setSTab] = useState("versand"); // Reiter im Bereich „Steuerung“
+  const pendingSTab = useRef(null); // Reiter der Steuerung, der nach dem Seitenwechsel geöffnet werden soll
+  const pendingJump = useRef(null); // Sprungziel in der Planung nach dem Seitenwechsel (aus der Steuerung)
   const [dqN, setDqN] = useState(null); // offene Punkte der Datenqualität
   const [vorschlagIds, setVorschlagIds] = useState([]); // Positionen, die der Planvorschlag ändert (Vorschau im Zeitstrahl)
   useEffect(() => {
@@ -221,12 +224,24 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
   }, [fwKey]); // eslint-disable-line react-hooks/exhaustive-deps
   // Sprung aus "Heute zu tun" an die Stelle, wo man es erledigt
   const scrollTo = (id) => setTimeout(() => document.getElementById(id)?.scrollIntoView({ block: "start", behavior: "smooth" }), 80);
+  // Reiter der Steuerung öffnen (aus der Planung: Seite wechseln)
+  const openSteuerung = (t) => {
+    if (section === "steuerung") return setSTab(t);
+    pendingSTab.current = t;
+    if (goTo) goTo("steuerung");
+  };
   const jump = (ziel) => {
     if (ziel === "av") return goTo && goTo("av");
     if (ziel === "sync") return openSync();
+    if (["versand", "extern", "erledigt", "dq", "kz"].includes(ziel)) return openSteuerung(ziel);
+    if (ziel === "freigaben" || ziel === "fruehwarnung") return scrollTo("arbeitskorb");
+    if (section !== "planung") {
+      // aus der Steuerung: in die Planung wechseln und dort springen
+      if (typeof ziel === "string" && ziel.startsWith("pos:")) pendingOpen.current = Number(ziel.slice(4));
+      else pendingJump.current = ziel;
+      return goTo && goTo("planung");
+    }
     setTab("zeit");
-    if (ziel === "extern") return setTab("extern");
-    if (ziel === "versand") return setTab("versand");
     if (ziel === "freigaben" || ziel === "fruehwarnung") {
       scrollTo("arbeitskorb");
     } else if (ziel === "planverbessern") {
@@ -1158,6 +1173,11 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
     setLaneDetail(null);
   };
   const showInTimeline = () => {
+    if (section !== "planung") {
+      pendingOpen.current = detailId;
+      if (goTo) goTo("planung");
+      return;
+    }
     wantScroll.current = true;
     setTab("zeit");
     setScrollReq((n) => n + 1);
@@ -1165,6 +1185,15 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
   useEffect(() => {
     setDetailId(null);
     setLaneDetail(null);
+    if (pendingSTab.current && section === "steuerung") {
+      setSTab(pendingSTab.current);
+      pendingSTab.current = null;
+    }
+    if (pendingJump.current && section === "planung") {
+      const z = pendingJump.current;
+      pendingJump.current = null;
+      setTimeout(() => jump(z), 0);
+    }
     if (pendingOpen.current != null && section === "planung") {
       const id = pendingOpen.current;
       pendingOpen.current = null;
@@ -1800,10 +1829,10 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
             {o.odoo_bom === "none" && <span className="pill warn" title="In Odoo hat der Fertigungsauftrag keine Stückliste, damit auch keine Arbeitsgänge.">keine Stückliste</span>}
             {o.odoo_bom === "leer" && <span className="pill warn" title="Die Stückliste in Odoo hat keine Arbeitsgänge.">keine Arbeitsgänge</span>}
           </div>
-          {(o.odoo_id || o.po_id || goTo || ((onMachine || inLane) && section === "planung")) && (
+          {(o.odoo_id || o.po_id || goTo || ((onMachine || inLane) && section !== "av")) && (
             <div style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap" }}>
               {(o.odoo_id || o.po_id) && <OdooLink o={o} btn />}
-              {(onMachine || inLane) && section === "planung" && (
+              {(onMachine || inLane) && section !== "av" && (
                 <button type="button" className="btn" onClick={showInTimeline} title="Zum Balken im Zeitstrahl springen">
                   Im Zeitstrahl zeigen
                 </button>
@@ -2482,6 +2511,8 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
       {section === "planung" && positionDrawer()}
       {section === "planung" && laneDrawer()}
       {section === "av" && positionDrawer()}
+      {section === "steuerung" && positionDrawer()}
+      {section === "steuerung" && laneDrawer()}
       {opsDialog()}
       {splitDialog()}
       {splitGroupDialog()}
@@ -2518,6 +2549,113 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
           orderGroup={groupKeyOf}
           onReload={() => fetch("/api/orders").then((r) => r.json()).then((d) => setOrders(d.orders)).catch(() => {})}
         />
+        {layer}
+      </>
+    );
+  }
+
+  // ---------- Bereich „Steuerung“ (Leitung): vom Auftragseingang bis zur Rechnung ----------
+  if (section === "steuerung") {
+    const kopf = new Date(`${today}T00:00:00Z`);
+    const tag = ["Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"][kopf.getUTCDay()];
+    const ex = korb.filter((i) => ["lieferant", "bestellungFehlt", "lieferantVorab"].includes(i.id));
+    const exN = ex.reduce((s, i) => s + i.n, 0);
+    const vN = new Set(orders.filter((o) => o.machine === "versand" && !o.done).map((o) => o.source || "#" + o.id)).size;
+    const rN = (korb.find((i) => i.id === "rechnung") || {}).n || 0;
+    return (
+      <>
+        <div className="page-head rise" style={{ "--i": 0 }}>
+          <div>
+            <h1>Produktionssteuerung</h1>
+            <p>
+              {tag}, {fmtShort(today)}
+              {today.slice(0, 4)} · vom Auftragseingang bis zur Rechnung: was heute zu entscheiden ist
+            </p>
+          </div>
+          <div className="actions">
+            <DiensteStatus />
+            {odooStatus && odooStatus.enabled && (
+              <button className="sync" type="button" onClick={openSync} title="Jetzt mit Odoo abgleichen">
+                <span className={"ok" + (odooStatus.lastError ? " err" : "")} />
+                {odooStatus.lastSync ? "Odoo · vor " + (Math.max(0, Math.round((Date.now() - Date.parse(odooStatus.lastSync)) / 60000)) || "<1") + " Min." : "Odoo abgleichen"}
+                {odooStatus.pendingClosing && odooStatus.pendingClosing.length > 0 && <b className="tag warn" style={{ fontStyle: "normal" }}>{odooStatus.pendingClosing.length} zu schließen</b>}
+                <Ico n="refresh" s={15} />
+              </button>
+            )}
+          </div>
+        </div>
+
+        <Arbeitskorb
+          bereich="steuerung"
+          reloadKey={fwKey}
+          onJump={jump}
+          onCounts={setKorb}
+          onChanged={reloadOrders}
+          onHighlight={(ids) => {
+            setVorschlagIds(ids);
+            setHl("vorschlag");
+            setHlSel(ids.length ? { ids, anchor: ids[0] } : null);
+            setTab("zeit");
+            pendingJump.current = "planverbessern";
+            if (goTo) goTo("planung");
+          }}
+        />
+
+        <div className="tabs rise" style={{ "--i": 2 }}>
+          <button type="button" className={sTab === "versand" ? "on" : ""} onClick={() => setSTab("versand")} title="Versandbereit nach QS und Extern, zu berechnen, Automatik nach dem Wareneingang">
+            Versand & Rechnung
+            {vN + rN > 0 ? <span className="cnt">{vN + rN}</span> : null}
+          </button>
+          <button type="button" className={sTab === "extern" ? "on" : ""} onClick={() => setSTab("extern")} title="Bestellt, aber noch nicht da: Lieferanten, Wareneingänge, Bestellung fehlt">
+            Extern & Wareneingang
+            {exN > 0 ? <span className={`cnt ${ex.some((i) => i.tone === "bad") ? "bad" : "warn"}`}>{exN}</span> : null}
+          </button>
+          <button type="button" className={sTab === "erledigt" ? "on" : ""} onClick={() => setSTab("erledigt")} title="Versendete und abgeschlossene Aufträge mit Suche">
+            Erledigt
+          </button>
+          <button type="button" className={sTab === "dq" ? "on" : ""} onClick={() => setSTab("dq")} title="Was in Odoo, Kalkulation oder App fehlt und die KI ausbremst">
+            Datenqualität{dqN ? <span className="cnt">{dqN}</span> : null}
+          </button>
+          <button type="button" className={sTab === "kz" ? "on" : ""} onClick={() => setSTab("kz")} title="Liefertreue, Stunden für AV und Planung, Übernahme der KI-Vorschläge">
+            Kennzahlen
+          </button>
+        </div>
+
+      {sTab === "extern" && (
+        <div className="rise" style={{ "--i": 3 }}>
+          <Suspense fallback={<div className="card fg-faint">Extern wird geladen …</div>}>
+            <Extern reloadKey={fwKey} onChanged={() => fetch("/api/orders").then((r) => r.json()).then((d) => setOrders(d.orders)).catch(() => {})} />
+          </Suspense>
+        </div>
+      )}
+      {sTab === "versand" && (
+        <div className="rise" style={{ "--i": 3 }}>
+          <Suspense fallback={<div className="card fg-faint">Versand wird geladen …</div>}>
+            <Versand orders={orders} reloadKey={fwKey} onOpen={openDetail} onChanged={reloadOrders} />
+          </Suspense>
+        </div>
+      )}
+      {sTab === "erledigt" && (
+        <div className="rise" style={{ "--i": 3 }}>
+          <Suspense fallback={<div className="card fg-faint">Erledigt wird geladen …</div>}>
+            <Erledigt reloadKey={fwKey} onOpen={openDetail} />
+          </Suspense>
+        </div>
+      )}
+      {sTab === "dq" && (
+        <div className="rise" style={{ "--i": 3 }}>
+          <Suspense fallback={<div className="card fg-faint">Datenqualität wird geladen …</div>}>
+            <Datenqualitaet reloadKey={fwKey} onCount={setDqN} />
+          </Suspense>
+        </div>
+      )}
+      {sTab === "kz" && (
+        <div className="rise" style={{ "--i": 3 }}>
+          <Suspense fallback={<div className="card fg-faint">Kennzahlen werden geladen …</div>}>
+            <Kennzahlen reloadKey={fwKey} />
+          </Suspense>
+        </div>
+      )}
         {layer}
       </>
     );
@@ -3674,7 +3812,7 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
     if (step.id === "qs") {
       const x = orders.find((y) => y.id === id);
       if (x && x.machine && x.machine !== "qs") {
-        setTab("extern");
+        openSteuerung("extern");
         return;
       }
     }
@@ -4154,6 +4292,7 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
       <PrioLeiste data={prio} setData={setPrio} spaet={prioSpaet} onOpen={(id) => { setTab("zeit"); openDetail(id); }} toast={toast} />
 
       <Arbeitskorb
+        bereich="planung"
         reloadKey={fwKey}
         onJump={jump}
         onCounts={setKorb}
@@ -4217,30 +4356,6 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
         <button type="button" className={tab === "ausl" ? "on" : ""} onClick={() => setTab("ausl")} title="Wie voll sind die Maschinen in den nächsten Wochen?">
           Auslastung
         </button>
-        <button type="button" className={tab === "extern" ? "on" : ""} onClick={() => setTab("extern")} title="Bestellt, aber noch nicht da: Lieferanten, Wareneingänge, Bestellung fehlt">
-          Extern
-          {(() => {
-            const ex = korb.filter((i) => ["lieferant", "bestellungFehlt", "lieferantVorab"].includes(i.id));
-            const n = ex.reduce((a, i) => a + i.n, 0);
-            return n > 0 ? <span className={`cnt ${ex.some((i) => i.tone === "bad") ? "bad" : "warn"}`}>{n}</span> : null;
-          })()}
-        </button>
-        <button type="button" className={tab === "versand" ? "on" : ""} onClick={() => setTab("versand")} title="Versandbereit nach QS und Extern, und was versendet, aber noch nicht berechnet ist">
-          Versand
-          {(() => {
-            const n = new Set(orders.filter((o) => o.machine === "versand" && !o.done).map((o) => o.source || "#" + o.id)).size;
-            return n > 0 ? <span className="cnt">{n}</span> : null;
-          })()}
-        </button>
-        <button type="button" className={tab === "erledigt" ? "on" : ""} onClick={() => setTab("erledigt")} title="Versendete und abgeschlossene Aufträge mit Suche">
-          Erledigt
-        </button>
-        <button type="button" className={tab === "dq" ? "on" : ""} onClick={() => setTab("dq")} title="Was in Odoo, Kalkulation oder App fehlt und die KI ausbremst">
-          Datenqualität{dqN ? <span className="cnt">{dqN}</span> : null}
-        </button>
-        <button type="button" className={tab === "kz" ? "on" : ""} onClick={() => setTab("kz")} title="Liefertreue, Stunden für AV und Planung, Übernahme der KI-Vorschläge">
-          Kennzahlen
-        </button>
         <button type="button" className={tab === "einst" ? "on" : ""} onClick={() => setTab("einst")}>
           Einstellungen
         </button>
@@ -4265,41 +4380,6 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
         </>
       )}
       {tab === "auf" && <div className="rise" style={{ "--i": 3 }}>{ordersCard}</div>}
-      {tab === "extern" && (
-        <div className="rise" style={{ "--i": 3 }}>
-          <Suspense fallback={<div className="card fg-faint">Extern wird geladen …</div>}>
-            <Extern reloadKey={fwKey} onChanged={() => fetch("/api/orders").then((r) => r.json()).then((d) => setOrders(d.orders)).catch(() => {})} />
-          </Suspense>
-        </div>
-      )}
-      {tab === "versand" && (
-        <div className="rise" style={{ "--i": 3 }}>
-          <Suspense fallback={<div className="card fg-faint">Versand wird geladen …</div>}>
-            <Versand orders={orders} reloadKey={fwKey} onOpen={openDetail} onChanged={reloadOrders} />
-          </Suspense>
-        </div>
-      )}
-      {tab === "erledigt" && (
-        <div className="rise" style={{ "--i": 3 }}>
-          <Suspense fallback={<div className="card fg-faint">Erledigt wird geladen …</div>}>
-            <Erledigt reloadKey={fwKey} onOpen={openDetail} />
-          </Suspense>
-        </div>
-      )}
-      {tab === "dq" && (
-        <div className="rise" style={{ "--i": 3 }}>
-          <Suspense fallback={<div className="card fg-faint">Datenqualität wird geladen …</div>}>
-            <Datenqualitaet reloadKey={fwKey} onCount={setDqN} />
-          </Suspense>
-        </div>
-      )}
-      {tab === "kz" && (
-        <div className="rise" style={{ "--i": 3 }}>
-          <Suspense fallback={<div className="card fg-faint">Kennzahlen werden geladen …</div>}>
-            <Kennzahlen reloadKey={fwKey} />
-          </Suspense>
-        </div>
-      )}
       {tab === "ausl" && (
         <div className="rise" style={{ "--i": 3 }}>
           <Suspense fallback={null}>

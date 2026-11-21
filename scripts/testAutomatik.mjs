@@ -121,6 +121,13 @@ try {
   assert.equal(item("automatik")?.n, 4);
   ok("Heute zu tun: Rechnungen, versandbereit und was automatisch weiterging, mit Sprung in den Reiter Versand");
 
+  // Planung (für alle): nur Werkstatt-Punkte; Steuerung (Leitung): alles
+  const hp = await api("GET", "/api/heute?bereich=planung");
+  assert.ok(!hp.items.some((i) => ["rechnung", "versand", "automatik", "lieferant", "kunden", "freigaben"].includes(i.id)), JSON.stringify(hp.items.map((i) => i.id)));
+  const hs = await api("GET", "/api/heute?bereich=steuerung");
+  assert.ok(hs.items.some((i) => i.id === "rechnung"));
+  ok("Heute in der Planung ohne Rechnungen und Versand, in der Steuerung vollständig");
+
   const writes = (await odooLog()).filter((l) => /\.(write|create|unlink|button_|action_|message_post|activity_schedule)\(/.test(l.call));
   assert.deepEqual(writes, [], "Automatik und Abrechnung schreiben nichts in Odoo (A01609 ohne Lieferdatum: keine Aufgabe)");
   ok("In Odoo wurde nichts geändert");

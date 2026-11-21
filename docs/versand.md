@@ -69,3 +69,12 @@ ohne Preis zählen nicht.
 
 Neue Punkte: versandbereit (gelb ab 2 Tagen), geliefert aber nicht berechnet (mit Summe), was seit gestern automatisch weiterging.
 Talos (Werkzeug „heute“), der Morgenbericht um 6:15 und der KI-Planer lesen dieselbe Liste.
+
+## Bereich „Steuerung“ (Stand 21.11.2026 spät)
+
+Linke Leiste: Planung · Arbeitsvorbereitung · **Steuerung** (nur Leitung). Die Planung behält Zeitstrahl, Aufträge, Auslastung,
+Einstellungen; „Heute“ zeigt dort nur Werkstatt-Punkte (`WERKSTATT` in server/heute.js, GET /api/heute?bereich=planung).
+Die Steuerung („Produktionssteuerung“) hat „Heute entscheiden“ (vollständige Liste mit Freigaben und Kunde informieren) und die Reiter
+Versand & Rechnung, Extern & Wareneingang, Erledigt, Datenqualität, Kennzahlen; das große Fenster gibt es dort auch, „Im Zeitstrahl
+zeigen“ wechselt in die Planung. Sichtbar für Leitung (PIN-Anmeldung, `BDE_LEITUNG`); hat sich die Leitung auf einem Gerät einmal
+angemeldet, bleibt der Eintrag dort (localStorage `kratos-steuerung`). Es ist Übersicht, kein Schutz: #steuerung ist für alle erreichbar.
