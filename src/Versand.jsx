@@ -156,7 +156,7 @@ export default function Versand({ orders, reloadKey, onOpen, onChanged }) {
                         <span className="mono">{posNo(o)}</span>
                         <span className="vs-prod">{o.product || ""}</span>
                         {o.quantity != null && <span className="fg-faint">{fmtH(o.quantity)} Stück</span>}
-                        {info && <span className={`pill ${/Teillieferung/.test(info) ? "warn" : "mute"}`}>{info}</span>}
+                        {info && <span className={`vs-info${/Teillieferung/.test(info) ? " warn" : ""}`}>{info}</span>}
                       </button>
                       <button type="button" className="btn sm" disabled={busy === o.id} onClick={() => versendet(o)} title="Ohne bestätigte Lieferung in Odoo, z. B. Abholung: von Hand als versendet melden">
                         <Ico n="check" s={14} /> Versendet

@@ -4,7 +4,7 @@
    Farbe: kühles Stahlgrau als Grund, Maschinenfarben nur getönt, Rot/Gelb/Grün nur für Zustände. */
 :root {
   --bg: #EDEFF2; --surface: #FFFFFF; --sunken: #F4F5F7; --line: #DFE3E8; --line-strong: #C9CFD7;
-  --ink: #14181D; --muted: #5B6672; --faint: #8C95A1;
+  --ink: #14181D; --muted: #5B6672; --faint: #6E7884;
   --side: #14181D; --side-ink: #E8EBEF; --side-muted: #8B95A2; --side-active: #232A33; --brand: #E5323B;
   --ok: #168A52; --ok-soft: #E2F3EA; --warn: #A86B00; --warn-soft: #FBF0D6; --bad: #D12C3A; --bad-soft: #FBE4E6;
   --dmu: #2F6FDE; --m1: #D99A00; --pos: #E5323B; --qs: #168A52; --ext: #6B7685; --teal: #14899A; --iris: #6E62E6; --slate: #3B4757; --mag: #C23B8A; --org: #D9622B;
@@ -17,7 +17,7 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     --bg: #0D1014; --surface: #151A20; --sunken: #1B2128; --line: #262D36; --line-strong: #36404B;
-    --ink: #E9ECF0; --muted: #9AA4B0; --faint: #6F7A87;
+    --ink: #E9ECF0; --muted: #9AA4B0; --faint: #8994A1;
     --side: #0A0D10; --side-active: #1A2028;
     --ok: #34C27A; --ok-soft: #12301F; --warn: #E8B03A; --warn-soft: #33280F; --bad: #FF6B76; --bad-soft: #3A161A;
     --dmu: #5B93F5; --m1: #F2BC2E; --pos: #FF6A73; --qs: #34C27A; --ext: #8B95A2; --teal: #2BB5C8; --iris: #8F85F5; --slate: #5D7088; --mag: #F06FB0; --org: #FF8A4C;
@@ -28,7 +28,7 @@
 }
 :root[data-theme="dark"] {
   --bg: #0D1014; --surface: #151A20; --sunken: #1B2128; --line: #262D36; --line-strong: #36404B;
-  --ink: #E9ECF0; --muted: #9AA4B0; --faint: #6F7A87;
+  --ink: #E9ECF0; --muted: #9AA4B0; --faint: #8994A1;
   --side: #0A0D10; --side-active: #1A2028;
   --ok: #34C27A; --ok-soft: #12301F; --warn: #E8B03A; --warn-soft: #33280F; --bad: #FF6B76; --bad-soft: #3A161A;
   --dmu: #5B93F5; --m1: #F2BC2E; --pos: #FF6A73; --qs: #34C27A; --ext: #8B95A2; --teal: #2BB5C8; --iris: #8F85F5; --slate: #5D7088; --mag: #F06FB0; --org: #FF8A4C;
@@ -2062,3 +2062,11 @@ html .callout.u::before { left: 18px; top: -6px; transform: rotate(135deg); }
 .vs-loglink { background: none; border: 0; padding: 0; color: inherit; font: inherit; text-align: left; cursor: pointer; }
 .vs-loglink:hover { color: var(--brand); }
 .lab-txt .lane-over { margin-top: 4px; color: var(--bad); }
+
+/* Lesbarkeit (21.11.2026): Hinweise und Zusatzzeilen mindestens 12,5 px, mehr Kontrast für die blasse Hinweisfarbe */
+.ak-t small, .heute .ht-t small, .tmeta, .avcell small, .olink, .ochip small, .ex-log, .ex-art, .lt-form label, .ausl-t th small, .ausl-t td small,
+.duelate, .dueorig, .neuord .no-was, .repeat, .sugg, .fruehwarn .fw-mail label, .ringbox .cn > span { font-size: 12.5px; }
+.kz-lbl, .lztag, .mk, .tag { font-size: 12px; }
+.sec-head p { font-size: 13.5px; line-height: 1.45; }
+.vs-info { font-size: 12.5px; color: var(--muted); }
+.vs-info.warn { color: var(--warn); font-weight: 600; }

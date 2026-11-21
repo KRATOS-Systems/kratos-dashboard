@@ -93,7 +93,7 @@ function LaneInfo({ o }) {
     return (
       <div className="lane-info">
         {o.ship_info ? (
-          <span className={`pill ${/Teillieferung/.test(o.ship_info) ? "warn" : "mute"}`}>{o.ship_info}</span>
+          <span className={`vs-info${/Teillieferung/.test(o.ship_info) ? " warn" : ""}`}>{o.ship_info}</span>
         ) : (
           <span className="fg-faint">Noch keine Lieferung in Odoo bestätigt. Sobald sie bestätigt ist, gilt die Position als versendet.</span>
         )}
@@ -102,12 +102,12 @@ function LaneInfo({ o }) {
   if (!isExt)
     return o.machine === "qs" && o.ext_info ? (
       <div className="lane-info">
-        <span className="pill mute">{o.ext_info}</span>
+        <span className="vs-info">{o.ext_info}</span>
       </div>
     ) : null;
   return (
     <div className="lane-info">
-      {o.ext_info && <span className={`pill ${/Teil-Wareneingang/.test(o.ext_info) ? "warn" : "mute"}`}>{o.ext_info}</span>}
+      {o.ext_info && <span className={`vs-info${/Teil-Wareneingang/.test(o.ext_info) ? " warn" : ""}`}>{o.ext_info}</span>}
       {o.supplier && (
         <div>
           Lieferant: <b>{o.supplier}</b>

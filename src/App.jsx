@@ -258,7 +258,7 @@ export default function App() {
           <nav className="nav" ref={navRef} aria-label="Hauptnavigation">
             <i className="navind" style={{ transform: `translateY(${indY}px)` }} />
             {PAGES.filter((p) => !p.leitung || steuerungSichtbar || page === p.id).map((p) => (
-              <button key={p.id} type="button" className={page === p.id ? "on" : ""} onClick={() => goTo(p.id)}>
+              <button key={p.id} type="button" className={page === p.id ? "on" : ""} onClick={() => goTo(p.id)} title={p.label}>
                 <Ico n={p.icon} />
                 <span>{p.label}</span>
                 {(() => {
