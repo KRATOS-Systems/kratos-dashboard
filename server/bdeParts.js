@@ -89,7 +89,7 @@ export default function registerBdeParts(app, db, ctx, staff) {
 
   function avList(data, name) {
     return data.orders
-      .filter((o) => o.machine !== "extern" && o.machine !== "extern_fert" && o.machine !== "qs")
+      .filter((o) => o.machine !== "extern" && o.machine !== "extern_fert" && o.machine !== "qs" && o.machine !== "versand")
       .sort(queueOrder)
       .map((o) => ({ o, ...avFor(o, data, name) }))
       .filter((x) => x.mine.length)

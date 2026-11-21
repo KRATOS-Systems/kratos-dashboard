@@ -83,3 +83,5 @@ jobs:
         run: node scripts/testQsBridge.mjs
       - name: Live-Ampel (Maschinen-Dienst)
         run: node scripts/testMaschinenLive.mjs
+      - name: Versand und Abrechnung (versendet laut Odoo, Zu berechnen, Aufgabe Rechnung stellen, Erledigt)
+        run: node scripts/testVersand.mjs

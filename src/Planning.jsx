@@ -13,6 +13,8 @@ import Laufkarte, { AblaufBar } from "./Laufkarte.jsx";
 import { ablaufOf, ABLAUF_SCHRITTE } from "./ablauf.js";
 const Kennzahlen = lazy(() => import("./Kennzahlen.jsx"));
 const Extern = lazy(() => import("./Extern.jsx"));
+const Versand = lazy(() => import("./Versand.jsx"));
+const Erledigt = lazy(() => import("./Erledigt.jsx"));
 const Datenqualitaet = lazy(() => import("./Datenqualitaet.jsx"));
 const LieferterminAnfrage = lazy(() => import("./LieferterminAnfrage.jsx"));
 const Abwesend = lazy(() => import("./Abwesend.jsx"));
@@ -57,6 +59,7 @@ import {
   fmtDuration,
   laneDaysOnMove,
   daysIn,
+  needsShipping,
   applyLaneMove,
   buildGroups,
 } from "./planLogic.js";
@@ -69,6 +72,59 @@ const stat = (g) => (g ? g.status : "ok");
 const ampel = (g) => (!g || g.dueEnd == null || g.end == null ? "none" : g.status);
 
 // Öffnet den Fertigungsauftrag in Odoo (nur wenn der Export die ID enthielt)
+// Zusatzinfos an einem Ort: Extern (Bestellung und Termin laut Lieferant, aus server/extern.js), Versand (Lieferstand laut Odoo)
+function LaneInfo({ o }) {
+  const [ex, setEx] = useState(null);
+  const isExt = o.machine === "extern" || o.machine === "extern_fert";
+  useEffect(() => {
+    if (!isExt) return undefined;
+    let off = false;
+    fetch("/api/extern")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (!off && d && Array.isArray(d.offen)) setEx(d.offen.filter((x) => (x.betroffen || []).some((b) => b.id === o.id)));
+      })
+      .catch(() => {});
+    return () => {
+      off = true;
+    };
+  }, [o.id, isExt]);
+  if (o.machine === "versand")
+    return (
+      <div className="lane-info">
+        {o.ship_info ? (
+          <span className={`pill ${/Teillieferung/.test(o.ship_info) ? "warn" : "mute"}`}>{o.ship_info}</span>
+        ) : (
+          <span className="fg-faint">Noch keine Lieferung in Odoo bestätigt. Sobald sie bestätigt ist, gilt die Position als versendet.</span>
+        )}
+      </div>
+    );
+  if (!isExt) return null;
+  return (
+    <div className="lane-info">
+      {o.supplier && (
+        <div>
+          Lieferant: <b>{o.supplier}</b>
+        </div>
+      )}
+      {(ex || []).map((x) => (
+        <div key={x.po}>
+          Bestellung <b className="mono">{x.po}</b>
+          {x.lieferant && !o.supplier ? ` bei ${x.lieferant}` : ""} · Termin {x.termin ? fmtShort(x.termin) : "–"}
+          {x.neuerTermin ? " (neu vereinbart)" : ""}
+          {x.angefragt ? ` · angefragt ${fmtShort(x.angefragt)}` : ""}
+          {x.status === "ueberfaellig" ? (
+            <span className="pill bad" style={{ marginLeft: 6 }}>
+              überfällig
+            </span>
+          ) : null}
+        </div>
+      ))}
+      {ex && ex.length === 0 && !o.supplier && <div className="fg-faint">Keine offene Bestellung in Odoo gefunden.</div>}
+    </div>
+  );
+}
+
 function OdooLink({ o, btn }) {
   if (!o.odoo_id && !o.po_id) return null;
   const po = !o.odoo_id;
@@ -180,6 +236,10 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
   const lastChangeSeen = useRef(null);
   const [avFocus, setAvFocus] = useState(null); // Position, die in der Arbeitsvorbereitung aufgeklappt werden soll
   const pendingOpen = useRef(null); // Position, die nach dem Seitenwechsel in der Planung geöffnet werden soll
+  // Zum Balken im Zeitstrahl springen nur auf ausdrücklichen Wunsch (Suche, Arbeitsvorbereitung, Knopf „Im Zeitstrahl zeigen“),
+  // nicht beim Klick in die Listen unter dem Zeitstrahl: dort will man bleiben
+  const wantScroll = useRef(false);
+  const [scrollReq, setScrollReq] = useState(0);
   const [hlSel, setHlSel] = useState(null); // aus der Kennzahlen-Liste gewählt: { ids, anchor }
   const [hoverStrip, setHoverStrip] = useState(null); // Positionen der Terminlinie, über der die Maus steht
   const [fresh, setFresh] = useState(null);
@@ -592,8 +652,13 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
       if (!i.active) {
         if (i.toggle) setExpanded((prev) => ({ ...prev, [i.toggle]: !prev[i.toggle] }));
         if (i.laneSelect) {
-          setLaneDetail(i.laneSelect);
-          setDetailId(null);
+          if (i.laneSelect.length === 1) {
+            setDetailId(i.laneSelect[0]);
+            setLaneDetail(null);
+          } else {
+            setLaneDetail(i.laneSelect);
+            setDetailId(null);
+          }
         }
         if (i.select != null) {
           setLaneDetail(null);
@@ -921,10 +986,26 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
       const extra = { ...patch, from_machine: o.machine };
       setOrders((prev) => applyLaneMove(prev, [o.id], today, qs).map((x) => (x.id === o.id ? { ...x, ...extra } : x)));
       send(`/api/orders/${o.id}`, "PUT", { machine: qs.id, extern_start: today, ...extra });
+    } else if (needsShipping(o)) {
+      toVersand(o, patch);
     } else {
       patchOrder(o.id, { ...patch, done: true, done_date: today });
     }
-    toast(`${posNo(o)} ist fertig produziert${hasNext ? "" : o.qs_required !== false ? " und geht in die QS" : ""}`);
+    toast(`${posNo(o)} ist fertig produziert${hasNext ? "" : o.qs_required !== false ? " und geht in die QS" : needsShipping(o) ? " und geht in den Versand" : ""}`);
+  }
+
+  // Nach QS / Extern: Positionen eines Kundenauftrags gehen in den Versand (versendet = Lieferung in Odoo bestätigt, server/versand.js)
+  function toVersand(o, extra = {}) {
+    const lane = laneOf("versand");
+    setOrders((prev) => applyLaneMove(prev, [o.id], today, lane).map((x) => (x.id === o.id ? { ...x, ...extra } : x)));
+    send(`/api/orders/${o.id}`, "PUT", { machine: lane.id, extern_start: today, ...extra });
+  }
+  async function markShipped(o) {
+    const r = await fetch(`/api/versand/${o.id}/versendet`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" }).catch(() => null);
+    if (!r || !r.ok) return toast("Versendet melden hat nicht geklappt");
+    setDetailId((cur) => (cur === o.id ? null : cur));
+    reloadOrders();
+    toast(`${posNo(o)} versendet`);
   }
 
   function markChecked(o) {
@@ -933,6 +1014,9 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
       const lane = laneOf(EXTERN);
       setOrders((prev) => applyLaneMove(prev, [o.id], today, lane).map((x) => (x.id === o.id ? { ...x, ...patch } : x)));
       send(`/api/orders/${o.id}`, "PUT", { machine: lane.id, extern_start: today, ...laneDaysOnMove(o, lane), ...patch });
+    } else if (needsShipping(o)) {
+      toVersand(o, patch);
+      toast(`${posNo(o)} geprüft, geht in den Versand`);
     } else {
       patchOrder(o.id, { ...patch, done: true, done_date: today });
     }
@@ -1058,16 +1142,18 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
   }
 
   // ---------- Öffnen von außen (Suche, Hinweise) ----------
+  // Von außen öffnen (Suche, Hinweise, AV, Versand, Erledigt): immer dasselbe Fenster, auch für QS, Extern und Versand
   const openDetail = (id) => {
     const o = orders.find((x) => x.id === id);
     if (!o) return;
-    if (LANE_IDS.includes(o.machine) && !o.done) {
-      setLaneDetail([id]);
-      setDetailId(null);
-    } else {
-      setDetailId(id);
-      setLaneDetail(null);
-    }
+    wantScroll.current = !o.done;
+    setDetailId(id);
+    setLaneDetail(null);
+  };
+  const showInTimeline = () => {
+    wantScroll.current = true;
+    setTab("zeit");
+    setScrollReq((n) => n + 1);
   };
   useEffect(() => {
     setDetailId(null);
@@ -1369,15 +1455,16 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
     return () => clearTimeout(t);
   }, [hlSel, viewOffset, viewMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Gewählte Position im Zeitstrahl ins Bild holen (auch beim Sprung aus der Arbeitsvorbereitung oder der Suche)
+  // Gewählte Position im Zeitstrahl ins Bild holen – nur beim Sprung aus der Arbeitsvorbereitung, der Suche oder per Knopf
   useEffect(() => {
-    if (detailId == null || section !== "planung" || tab !== "zeit") return undefined;
+    if (detailId == null || section !== "planung" || tab !== "zeit" || !wantScroll.current) return undefined;
     const t = setTimeout(() => {
-      const el = document.querySelector(`.bar.sel:not(.wait)`);
+      wantScroll.current = false;
+      const el = document.querySelector(`.bar.sel:not(.wait)`) || document.querySelector(`.bar[data-ids~="i${detailId}"]:not(.wait)`);
       if (el) el.scrollIntoView({ behavior: "smooth", block: "center", inline: "nearest" });
     }, 250);
     return () => clearTimeout(t);
-  }, [detailId, section, tab]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [detailId, section, tab, scrollReq]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ---------- Verbindungslinien zwischen Arbeitsgängen und Erklärungen zur Hervorhebung ----------
   const layoutKey = `${tab}|${viewMode}|${viewOffset}|${viewWeeks}|${hl}|${hlSel ? hlSel.anchor : ""}|${Object.keys(expanded).join(",")}|${section}`;
@@ -1571,11 +1658,35 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
 
   // Schaltflächen einer Position, die an einem Ort liegt (QS: Geprüft / Nacharbeit, sonst Erledigt)
   const laneButtons = (o) => {
+    if (o.machine === "versand") {
+      return (
+        <>
+          <button type="button" className="btn sm" onClick={() => markShipped(o)} title="Ohne bestätigte Lieferung in Odoo, z. B. Abholung: von Hand als versendet melden">
+            <Ico n="check" s={14} />
+            Versendet
+          </button>
+          <span style={{ fontSize: 12, color: "var(--muted)" }}>sonst automatisch, sobald die Lieferung in Odoo bestätigt ist</span>
+        </>
+      );
+    }
     if (o.machine !== "qs") {
       return (
-        <button type="button" className="btn sm" onClick={() => { patchOrder(o.id, { done: true, done_date: today }); toast(`${posNo(o)} erledigt`); }}>
+        <button
+          type="button"
+          className="btn sm"
+          title={needsShipping(o) ? "Zurück vom Lieferanten: geht in den Versand" : "Erledigt"}
+          onClick={() => {
+            if (needsShipping(o)) {
+              toVersand(o);
+              toast(`${posNo(o)} zurück, geht in den Versand`);
+            } else {
+              patchOrder(o.id, { done: true, done_date: today });
+              toast(`${posNo(o)} erledigt`);
+            }
+          }}
+        >
           <Ico n="check" s={14} />
-          Erledigt
+          {needsShipping(o) ? "Zurück, in den Versand" : "Erledigt"}
         </button>
       );
     }
@@ -1597,14 +1708,14 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
     }
     return (
       <>
-        <button type="button" className="btn sm primary" onClick={() => markChecked(o)} title={tagsOf(o).length ? "Geprüft: weiter zu OBERFLÄCHE EXTERN" : "Geprüft: Position ist erledigt"}>
+        <button type="button" className="btn sm primary" onClick={() => markChecked(o)} title={tagsOf(o).length ? "Geprüft: weiter zu OBERFLÄCHE EXTERN" : needsShipping(o) ? "Geprüft: weiter in den Versand" : "Geprüft: Position ist erledigt"}>
           <Ico n="check" s={14} />
           Geprüft
         </button>
         <button type="button" className="btn sm" onClick={() => { setReworkId(o.id); setReworkText(""); }} title="Nicht in Ordnung: zurück an die Maschine">
           Nacharbeit
         </button>
-        <span style={{ fontSize: 12, color: "var(--muted)" }}>{tagsOf(o).length > 0 ? `danach: ${tagsOf(o).join(", ")} (OBERFLÄCHE EXTERN)` : "danach: erledigt"}</span>
+        <span style={{ fontSize: 12, color: "var(--muted)" }}>{tagsOf(o).length > 0 ? `danach: ${tagsOf(o).join(", ")} (OBERFLÄCHE EXTERN)` : needsShipping(o) ? "danach: Versand" : "danach: erledigt"}</span>
       </>
     );
   };
@@ -1631,6 +1742,8 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
     const pred = o.after_id ? orders.find((x) => x.id === o.after_id && !x.done) : null;
     const pm = pred ? MACHINES.find((m) => m.id === pred.machine) : null;
     const wt = waitText(it);
+    const inLane = LANE_IDS.includes(o.machine) && !o.done;
+    const laneNow = inLane ? laneOf(o.machine) : null;
     return (
       <>
         <div className={`scrim${section === "planung" && tab === "zeit" ? " lite" : ""}`} onClick={closeDrawer} />
@@ -1654,6 +1767,10 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
             {pl ? (
               <span className="pill mute"><i className="dot" style={{ "--c": pl.m.c }} />{pl.m.name}</span>
+            ) : laneNow ? (
+              <span className="pill mute"><i className="dot" style={{ "--c": laneNow.c }} />{laneNow.name}</span>
+            ) : o.done ? (
+              <span className="pill ok">{o.shipped_date ? `versendet ${fmtShort(o.shipped_date)}` : `erledigt${o.done_date ? " " + fmtShort(o.done_date) : ""}`}</span>
             ) : (
               <span className="pill mute">noch keine Maschine</span>
             )}
@@ -1673,9 +1790,14 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
             {o.odoo_bom === "none" && <span className="pill warn" title="In Odoo hat der Fertigungsauftrag keine Stückliste, damit auch keine Arbeitsgänge.">keine Stückliste</span>}
             {o.odoo_bom === "leer" && <span className="pill warn" title="Die Stückliste in Odoo hat keine Arbeitsgänge.">keine Arbeitsgänge</span>}
           </div>
-          {(o.odoo_id || goTo) && (
+          {(o.odoo_id || o.po_id || goTo || ((onMachine || inLane) && section === "planung")) && (
             <div style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap" }}>
-              {o.odoo_id && <OdooLink o={o} btn />}
+              {(o.odoo_id || o.po_id) && <OdooLink o={o} btn />}
+              {(onMachine || inLane) && section === "planung" && (
+                <button type="button" className="btn" onClick={showInTimeline} title="Zum Balken im Zeitstrahl springen">
+                  Im Zeitstrahl zeigen
+                </button>
+              )}
               {goTo && (
                 <button
                   type="button"
@@ -1711,6 +1833,13 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
             );
           })()}
 
+          {inLane ? (
+            <div className="dsec">
+              <h4>{laneNow.name}</h4>
+              {laneSection(o)}
+              <Terminverlauf o={o} />
+            </div>
+          ) : (
           <div className="dsec">
             <h4>Plan</h4>
             <div style={{ fontSize: 13, marginBottom: 10 }}>
@@ -1791,6 +1920,7 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
             {metaLine(o) && <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 10 }}>{metaLine(o)}</div>}
             <Terminverlauf o={o} />
           </div>
+          )}
 
           <div className="dsec">
             <h4>Zuständig</h4>
@@ -1878,6 +2008,7 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
             )}
           </div>
 
+          {!inLane && !o.done && (
           <div className="dact">
             {onMachine && (
               <button type="button" className="btn primary" title="Fertig produziert: die Position geht in die QS (ohne QS-Prüfung ist sie damit erledigt)" onClick={() => finishProduced(o)}>
@@ -1940,44 +2071,22 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
             <span style={{ flex: 1 }} />
             {deleteButton(o)}
           </div>
+          )}
         </aside>
       </>
     );
   };
 
-  // ---------- Schublade: Positionen in QS / Extern ----------
-  const laneDrawer = () => {
-    if (!laneDetail) return null;
-    const list = laneDetail.map((id) => orders.find((x) => x.id === id)).filter((x) => x && !x.done);
-    if (list.length === 0) return null;
-    const lane = laneOf(list[0].machine);
+  // ---------- Inhalt einer Position an einem Ort (QS, Extern, Versand): Termine, Knöpfe ----------
+  const laneSection = (o) => {
+    const lane = laneOf(o.machine);
     if (!lane) return null;
+    const start = o.extern_start ? daysBetween(monday0, o.extern_start) : null;
+    const end = start != null ? start + daysIn(o) : null;
+    const g = groupByKey.get(groupKeyOf(o));
     return (
       <>
-        <div className="scrim" onClick={closeDrawer} />
-        <aside className="drawer" role="dialog" aria-label={lane.name}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
-            <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
-              <LaneTile id={lane.id} c={lane.c} />
-              <div>
-                <h3 style={{ fontFamily: "var(--f-display)" }}>{lane.name}</h3>
-                <div style={{ color: "var(--muted)", fontSize: 13 }}>{lane.cap}</div>
-              </div>
-            </div>
-            <button type="button" className="btn icon quiet" aria-label="Schließen" onClick={closeDrawer}>
-              <Ico n="x" />
-            </button>
-          </div>
-          {list.map((o) => {
-            const start = o.extern_start ? daysBetween(monday0, o.extern_start) : null;
-            const end = start != null ? start + daysIn(o) : null;
-            const g = groupByKey.get(groupKeyOf(o));
-            return (
-              <div className="dsec" key={o.id}>
-                <div style={{ display: "flex", gap: 10, alignItems: "baseline", flexWrap: "wrap" }}>
-                  {o.odoo_ref ? <b className="mono" style={{ fontSize: 15 }}>{posNo(o)}</b> : <input type="text" placeholder="Nummer / Bezeichnung" maxLength={40} value={o.order_no} onChange={(ev) => patchOrder(o.id, { order_no: ev.target.value })} style={{ width: 170 }} />}
-                  <OdooLink o={o} />
-                </div>
+                <LaneInfo o={o} />
                 <div style={{ color: "var(--muted)", fontSize: 12.5, marginTop: 4 }}>
                   {o.source ? `Auftrag ${o.source} · ` : ""}
                   {start != null ? `seit ${fmtShort(o.extern_start)}, ${fmtDuration(daysIn(o))} (bis ca. ${fmtShort(endDateOf(start + daysIn(o)))})` : "ohne Beginn"}
@@ -1989,7 +2098,7 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
                     Beginn
                     <input type="date" title={`Beginn in ${lane.name}`} value={o.extern_start || ""} onChange={(ev) => patchOrder(o.id, { extern_start: ev.target.value || null })} />
                   </label>
-                  {lane.id !== "qs" && end != null && (
+                  {lane.id !== "qs" && lane.id !== "versand" && end != null && (
                     <label className="f">
                       Rückkehr
                       <input
@@ -2025,7 +2134,7 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
                     </label>
                   </div>
                 )}
-                {externEditor(o)}
+                {lane.id !== "versand" && externEditor(o)}
                 <div className="dact" style={{ marginTop: 14 }}>
                   {laneButtons(o)}
                   {o.odoo_id && (
@@ -2039,10 +2148,47 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
                 <div style={{ marginTop: 8 }}>
                   <FehlerMelden o={o} />
                 </div>
-                <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 8 }}>{end != null ? `${lane.id === "qs" ? "fertig" : "zurück"} ca. ${fmtShort(endDateOf(end))}` : "Beginn eintragen"}</div>
+                <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 8 }}>{lane.id === "versand" ? (o.extern_start ? `versandbereit seit ${fmtShort(o.extern_start)}` : "") : end != null ? `${lane.id === "qs" ? "fertig" : "zurück"} ca. ${fmtShort(endDateOf(end))}` : "Beginn eintragen"}</div>
+      </>
+    );
+  };
+
+  // ---------- Schublade: Positionen in QS / Extern / Versand ----------
+  const laneDrawer = () => {
+    if (!laneDetail) return null;
+    const list = laneDetail.map((id) => orders.find((x) => x.id === id)).filter((x) => x && !x.done);
+    if (list.length === 0) return null;
+    const lane = laneOf(list[0].machine);
+    if (!lane) return null;
+    return (
+      <>
+        <div className="scrim" onClick={closeDrawer} />
+        <aside className="drawer" role="dialog" aria-label={lane.name}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+            <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+              <LaneTile id={lane.id} c={lane.c} />
+              <div>
+                <h3 style={{ fontFamily: "var(--f-display)" }}>{lane.name}</h3>
+                <div style={{ color: "var(--muted)", fontSize: 13 }}>{lane.cap}</div>
               </div>
-            );
-          })}
+            </div>
+            <button type="button" className="btn icon quiet" aria-label="Schließen" onClick={closeDrawer}>
+              <Ico n="x" />
+            </button>
+          </div>
+          {list.map((o) => (
+            <div className="dsec" key={o.id}>
+                <div style={{ display: "flex", gap: 10, alignItems: "baseline", flexWrap: "wrap" }}>
+                  {o.odoo_ref ? <b className="mono" style={{ fontSize: 15 }}>{posNo(o)}</b> : <input type="text" placeholder="Nummer / Bezeichnung" maxLength={40} value={o.order_no} onChange={(ev) => patchOrder(o.id, { order_no: ev.target.value })} style={{ width: 170 }} />}
+                  <OdooLink o={o} />
+                  <span style={{ flex: 1 }} />
+                  <button type="button" className="btn sm" onClick={() => { setDetailId(o.id); setLaneDetail(null); }} title="Alle Infos zu dieser Position">
+                    Details <Ico n="right" s={13} />
+                  </button>
+                </div>
+                {laneSection(o)}
+              </div>
+          ))}
         </aside>
       </>
     );
@@ -2784,7 +2930,7 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
               tabIndex={0}
               style={{ "--mc": overdue ? "var(--bad)" : lane.c, top: 5 + b.row * 44, left: `${posPct(cs)}%`, width: `calc(${((ce - cs) / total) * 100}% - 2px)`, minWidth: MIN_BAR_PX }}
               onPointerDown={(e) => startDrag(e, { ids: b.ids, label: b.label, sub: `${b.ids.length} Pos.`, toggle: null, laneSelect: b.ids })}
-              onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), setLaneDetail(b.ids), setDetailId(null))}
+              onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), b.ids.length === 1 ? (setDetailId(b.ids[0]), setLaneDetail(null)) : (setLaneDetail(b.ids), setDetailId(null)))}
               onMouseMove={(e) => onBarMove(e, tipHtml)}
               onMouseLeave={hideTip}
             >
@@ -4051,6 +4197,16 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
             return n > 0 ? <span className={`cnt ${ex.some((i) => i.tone === "bad") ? "bad" : "warn"}`}>{n}</span> : null;
           })()}
         </button>
+        <button type="button" className={tab === "versand" ? "on" : ""} onClick={() => setTab("versand")} title="Versandbereit nach QS und Extern, und was versendet, aber noch nicht berechnet ist">
+          Versand
+          {(() => {
+            const n = new Set(orders.filter((o) => o.machine === "versand" && !o.done).map((o) => o.source || "#" + o.id)).size;
+            return n > 0 ? <span className="cnt">{n}</span> : null;
+          })()}
+        </button>
+        <button type="button" className={tab === "erledigt" ? "on" : ""} onClick={() => setTab("erledigt")} title="Versendete und abgeschlossene Aufträge mit Suche">
+          Erledigt
+        </button>
         <button type="button" className={tab === "dq" ? "on" : ""} onClick={() => setTab("dq")} title="Was in Odoo, Kalkulation oder App fehlt und die KI ausbremst">
           Datenqualität{dqN ? <span className="cnt">{dqN}</span> : null}
         </button>
@@ -4085,6 +4241,20 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
         <div className="rise" style={{ "--i": 3 }}>
           <Suspense fallback={<div className="card fg-faint">Extern wird geladen …</div>}>
             <Extern reloadKey={fwKey} onChanged={() => fetch("/api/orders").then((r) => r.json()).then((d) => setOrders(d.orders)).catch(() => {})} />
+          </Suspense>
+        </div>
+      )}
+      {tab === "versand" && (
+        <div className="rise" style={{ "--i": 3 }}>
+          <Suspense fallback={<div className="card fg-faint">Versand wird geladen …</div>}>
+            <Versand orders={orders} reloadKey={fwKey} onOpen={openDetail} onChanged={reloadOrders} />
+          </Suspense>
+        </div>
+      )}
+      {tab === "erledigt" && (
+        <div className="rise" style={{ "--i": 3 }}>
+          <Suspense fallback={<div className="card fg-faint">Erledigt wird geladen …</div>}>
+            <Erledigt reloadKey={fwKey} onOpen={openDetail} />
           </Suspense>
         </div>
       )}

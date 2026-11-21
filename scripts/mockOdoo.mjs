@@ -350,6 +350,36 @@ if (process.env.MOCK_ENTWURF && process.env.MOCK_EXTERN) {
   T["mrp.workcenter"].push({ id: 3, name: "OBERFLÄCHENBEHANDLUNG (EXTERN)" });
   T["mrp.workorder"].push({ id: 8000, name: "Strahlen extern", sequence: 3, production_id: 1122, workcenter_id: 3, product_id: 2902, state: "blocked", duration_expected: 0, duration: 0 });
 }
+// Versand und Abrechnung (nur mit MOCK_VERSAND=1): A01501 teilweise geliefert (4 von 10 Halter, heute), A01502 vollständig geliefert (heute),
+// davon 2 von 5 Deckeln berechnet, EMPB-Zeile mit „3 von 1 geliefert“ (darf nicht als offen zählen), A01503 vor 40 Tagen geliefert und nie berechnet,
+// A01504 komplett berechnet. Lieferung L00902 hängt nur über die Herkunft am Auftrag (sale_id leer, wie im echten Odoo).
+if (process.env.MOCK_VERSAND) {
+  T["product.product"].push({ id: 3101, name: "Halter", default_code: "V-100", product_tmpl_id: 80 }, { id: 3102, name: "Deckel", default_code: "V-200", product_tmpl_id: 81 }, { id: 3103, name: "Erstmusterprüfbericht", default_code: "EMPB", product_tmpl_id: 82 }, { id: 3104, name: "Lasche", default_code: "V-300", product_tmpl_id: 83 });
+  T["sale.order"].push(
+    { id: 1501, name: "A01501", state: "sale", delivery_status: "partial", invoice_status: "to invoice", date_order: ago(240), commitment_date: day(5) + " 08:00:00" },
+    { id: 1502, name: "A01502", state: "sale", delivery_status: "full", invoice_status: "to invoice", date_order: ago(240), commitment_date: day(-1) + " 08:00:00" },
+    { id: 1503, name: "A01503", state: "sale", delivery_status: "full", invoice_status: "to invoice", date_order: ago(1500), commitment_date: day(-45) + " 08:00:00" },
+    { id: 1504, name: "A01504", state: "sale", delivery_status: "full", invoice_status: "invoiced", date_order: ago(1500), commitment_date: day(-30) + " 08:00:00" }
+  );
+  T["sale.order.line"] = T["sale.order.line"] || [];
+  T["sale.order.line"].push(
+    { id: 95001, order_id: 1501, product_id: 3101, name: "[V-100] Halter", product_uom_qty: 10, qty_delivered: 4, qty_invoiced: 0, price_unit: 12.5, display_type: false, product_type: "consu" },
+    { id: 95002, order_id: 1502, product_id: 3102, name: "[V-200] Deckel", product_uom_qty: 5, qty_delivered: 5, qty_invoiced: 2, price_unit: 40, display_type: false, product_type: "consu" },
+    { id: 95003, order_id: 1502, product_id: 3103, name: "[EMPB] Erstmusterprüfbericht", product_uom_qty: 1, qty_delivered: 3, qty_invoiced: 1, price_unit: 150, display_type: false, product_type: "consu" },
+    { id: 95004, order_id: 1503, product_id: 3104, name: "[V-300] Lasche", product_uom_qty: 20, qty_delivered: 20, qty_invoiced: 0, price_unit: 3, display_type: false, product_type: "consu" },
+    { id: 95005, order_id: 1504, product_id: 3104, name: "[V-300] Lasche", product_uom_qty: 8, qty_delivered: 8, qty_invoiced: 8, price_unit: 3, display_type: false, product_type: "consu" }
+  );
+  M2O["sale.order.line"] = { order_id: "sale.order", product_id: "product.product" };
+  T["stock.picking"] = T["stock.picking"] || [];
+  T["stock.picking"].push(
+    { id: 9901, name: "L00901", picking_type_code: "outgoing", state: "done", date_done: ago(1), sale_id: 1501, origin: "A01501", backorder_id: false },
+    { id: 9903, name: "L00903", picking_type_code: "outgoing", state: "assigned", date_done: false, sale_id: 1501, origin: "A01501", backorder_id: 9901 },
+    { id: 9902, name: "L00902", picking_type_code: "outgoing", state: "done", date_done: ago(1), sale_id: false, origin: "A01502", backorder_id: false },
+    { id: 9904, name: "L00904", picking_type_code: "outgoing", state: "done", date_done: ago(40 * 24), sale_id: 1503, origin: "A01503", backorder_id: false },
+    { id: 9905, name: "L00905", picking_type_code: "outgoing", state: "done", date_done: ago(30 * 24), sale_id: 1504, origin: "A01504", backorder_id: false }
+  );
+  M2O["stock.picking"] = { ...(M2O["stock.picking"] || {}), sale_id: "sale.order", backorder_id: "stock.picking" };
+}
 // Feiertage/Betriebsruhe und Abwesenheiten (nur mit MOCK_ABWESEND=1): Betriebsruhe in 8 und 9 Tagen (UTC wie Odoo), Aurel 3 Tage krank, Nino Urlaub beantragt
 if (process.env.MOCK_ABWESEND) {
   T["resource.calendar.leaves"] = [

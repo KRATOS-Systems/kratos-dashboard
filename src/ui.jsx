@@ -145,6 +145,7 @@ const LANE_ICON = {
   qs: '<circle cx="14" cy="14" r="7.5"/><path d="M20 20l6.5 6.5"/><path d="M10.6 14.2l2.6 2.6 4.4-5"/>',
   extern_fert: '<path d="M4 26.5V14l8 4.2V14l8 4.2V6.5h6.5v20z"/><path d="M8.5 26.5v-3.5M14.5 26.5v-3.5M21 26.5v-3.5"/>',
   extern: '<path d="M16 5l11.5 6.2L16 17.4 4.5 11.2z"/><path d="M4.5 16.4L16 22.6l11.5-6.2"/><path d="M4.5 21.4L16 27.6l11.5-6.2"/>',
+  versand: '<path d="M3.5 9h15v13h-15z"/><path d="M18.5 13h5l4 4.5V22h-9"/><circle cx="9" cy="23.5" r="2.5"/><circle cx="22.5" cy="23.5" r="2.5"/>',
 };
 
 // Großes Symbol einer Station (QS, Extern) für ausgefüllte Köpfe

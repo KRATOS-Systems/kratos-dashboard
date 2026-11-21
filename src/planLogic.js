@@ -26,6 +26,7 @@ export const metaLine = (o, withSource = true) =>
     .join(" · ");
 export const ODOO_URL = "https://kratosdata.odoo.com/odoo/manufacturing";
 export const ODOO_PO_URL = "https://kratosdata.odoo.com/odoo/purchase-orders";
+export const ODOO_SALE_URL = "https://kratosdata.odoo.com/odoo/sales";
 export const round1 = (x) => Math.round(x * 10) / 10;
 // Nummer einer Position, bei Teillieferungen mit "Teil 1" bzw. "Rest"
 export const posNo = (o) => (o.order_no || "ohne Nummer") + (o.part_label ? ` · ${o.part_label}` : "");
@@ -217,6 +218,8 @@ export const LANES = [
   { id: "qs", name: "QS", colorKey: "green", c: "var(--qs)", cap: "Prüfung", defaultDays: 2, tags: false },
   { id: "extern_fert", name: "FERTIGUNG EXTERN", c: "var(--ext)", cap: "Fremdfertigung", defaultDays: 7, tags: false },
   { id: EXTERN, name: "OBERFLÄCHE EXTERN", c: "var(--ext)", cap: "Eloxieren, Pulvern", defaultDays: 7, tags: true },
+  // Nach QS / Extern: verpacken, Lieferschein, raus. Versendet ist die Position, sobald die Lieferung in Odoo bestätigt ist (server/versand.js).
+  { id: "versand", name: "VERSAND", c: "var(--teal)", cap: "Verpacken, Lieferschein", defaultDays: 1, tags: false },
 ];
 export const LANE_IDS = LANES.map((l) => l.id);
 export const laneOf = (id) => LANES.find((l) => l.id === id);
@@ -227,12 +230,14 @@ export const fmtDuration = (days) =>
 // Neue Dauer beim Wechsel an einen Ort: aus einem anderen Ort kommend (und beim Weg in die QS) gilt die
 // Standarddauer des Ziels, damit eine Dauer nicht von einem Ort in den nächsten mitwandert
 export function laneDaysOnMove(o, lane) {
-  if (o.machine === lane.id || lane.id === "qs") return {};
+  if (o.machine === lane.id || lane.id === "qs" || lane.id === "versand") return {};
   if (LANE_IDS.includes(o.machine) && o.machine !== "qs") return { extern_days: lane.defaultDays };
   return {};
 }
 // Dauer der Position an ihrem Ort (QS: eigene Dauer, sonst die Dauer der externen Bearbeitung)
-export const daysIn = (o) => (o.machine === "qs" ? o.qs_days || 2 : o.extern_days || 7);
+export const daysIn = (o) => (o.machine === "qs" ? o.qs_days || 2 : o.machine === "versand" ? 1 : o.extern_days || 7);
+// Muss die Position nach QS / Extern noch versendet werden? Ja, wenn sie zu einem Kundenauftrag (A-Nummer) gehört.
+export const needsShipping = (o) => !!o && typeof o.source === "string" && /^A\d{3,}/.test(o.source.trim());
 
 // Legt Positionen an einen Ort (QS, Extern …), Beginn am angegebenen Tag
 export function applyLaneMove(orders, ids, date, lane) {

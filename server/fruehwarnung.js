@@ -61,7 +61,7 @@ export default function registerFruehwarnung(app, db, helpers) {
     );
     CREATE INDEX IF NOT EXISTS delay_contact_source ON delay_contact (source);
   `);
-  const ORT = { qs: "QS", extern: "Oberfläche extern", extern_fert: "Fertigung extern", "": "nicht eingeplant" };
+  const ORT = { qs: "QS", extern: "Oberfläche extern", extern_fert: "Fertigung extern", versand: "Versand", "": "nicht eingeplant" };
   const ortOf = (m) => (m in ORT ? ORT[m] : (MACHINES.find((x) => x.id === m) || {}).short || m);
   // Was hilft gegen den jeweiligen Grund (kurz, als Hinweis fürs Gespräch und für danach)
   const HILFT = [
