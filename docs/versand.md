@@ -40,3 +40,41 @@ pünktlich/später, Anzahl Lieferungen und Rechnung (berechnet / offen mit Wert)
 `server/versand.js` (GET /api/versand, POST /api/versand/:id/versendet, GET /api/erledigt), `src/Versand.jsx`, `src/Erledigt.jsx`,
 Spur `versand` in `src/planLogic.js`, Spalten `orders.shipped_date`, `orders.ship_info`, Tabelle `versand_rechnung`.
 Test: `node scripts/testVersand.mjs` (Test-Odoo mit `MOCK_VERSAND=1`).
+
+## Automatik nach dem Wareneingang (Stand 21.11.2026 abends, `server/automatik.js`)
+
+Was Odoo eindeutig weiß, übernimmt die App selbst (alle 10 Minuten, `AUTOMATIK_AUTO=0` schaltet ab, Knopf über POST /api/automatik/lauf):
+
+- **Fertigung extern** (Position mit Einkaufsbestellung `po_id`): Wareneingang gebucht (Bestellung komplett eingegangen oder die
+  Zeile mit demselben Artikel vollständig) → weiter, Standard **QS** (Wareneingangsprüfung). Teil-Wareneingang: „12 von 20
+  eingegangen“ an der Position (`orders.ext_info`), sie bleibt.
+- **Oberfläche extern**: Lohnarbeit-Bestellung, deren Herkunft die FA-Nummer nennt, eingegangen → weiter, Standard **Versand**.
+- Ziel umstellbar im Reiter Versand („Automatisch nach dem Wareneingang“, `plan_settings.auto_nach_fremd` / `auto_nach_oberflaeche`).
+  Ohne Kundenauftrag statt Versand: erledigt.
+- **Vollständig ausgeliefert** (Schließvorschlag des Odoo-Abgleichs mit diesem Grund): schließt die App selbst. Storno usw. bleiben Vorschläge.
+- Schließvorschläge der Fremdfertigung gibt es nur noch, solange die Position in „Fertigung extern“ liegt.
+- Protokoll: Tabelle `automatik_log`, sichtbar im Reiter Versand und in „Heute zu tun“.
+
+Darstellung: Überfällige Balken (QS, Fertigung extern, Oberfläche extern) werden bis heute durchgezogen und rot mit „x Tage über
+Termin“, sonst „bis TT.MM.“ bzw. der Teil-Wareneingang; im Kopf der Zeile stehen Anzahl und „x überfällig“ getrennt.
+
+## Zu berechnen, genauer (gleicher Stand)
+
+Zusätzlich zu den Mengen je Zeile vergleicht die App den Wert des Gelieferten mit den gebuchten Rechnungsbeträgen (Rechnungen minus
+Gutschriften) – auch über Duplikate hinweg (gleicher Kunde und gleiche Bestellnummer des Kunden, z. B. A01233/A01091). Decken die
+Rechnungen das Gelieferte, fällt der Auftrag heraus (z. B. A01086 mit unverknüpfter Rechnungszeile). Aufträge über 0 € und Zeilen
+ohne Preis zählen nicht.
+
+## Heute zu tun / Morgenrunde
+
+Neue Punkte: versandbereit (gelb ab 2 Tagen), geliefert aber nicht berechnet (mit Summe), was seit gestern automatisch weiterging.
+Talos (Werkzeug „heute“), der Morgenbericht um 6:15 und der KI-Planer lesen dieselbe Liste.
+
+## Bereich „Steuerung“ (Stand 21.11.2026 spät)
+
+Linke Leiste: Planung · Arbeitsvorbereitung · **Steuerung** (nur Leitung). Die Planung behält Zeitstrahl, Aufträge, Auslastung,
+Einstellungen; „Heute“ zeigt dort nur Werkstatt-Punkte (`WERKSTATT` in server/heute.js, GET /api/heute?bereich=planung).
+Die Steuerung („Produktionssteuerung“) hat „Heute entscheiden“ (vollständige Liste mit Freigaben und Kunde informieren) und die Reiter
+Versand & Rechnung, Extern & Wareneingang, Erledigt, Datenqualität, Kennzahlen; das große Fenster gibt es dort auch, „Im Zeitstrahl
+zeigen“ wechselt in die Planung. Sichtbar für Leitung (PIN-Anmeldung, `BDE_LEITUNG`); hat sich die Leitung auf einem Gerät einmal
+angemeldet, bleibt der Eintrag dort (localStorage `kratos-steuerung`). Es ist Übersicht, kein Schutz: #steuerung ist für alle erreichbar.

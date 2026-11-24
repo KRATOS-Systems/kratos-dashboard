@@ -49,6 +49,7 @@ const IC = {
   av: '<rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4V3h6v1M9 13l2 2 4-4"/>',
   dash: '<path d="M4 18a8 8 0 1 1 16 0"/><path d="M12 18l4-6"/>',
   plus: '<path d="M12 5v14M5 12h14"/>',
+  steuer: '<circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="2.5"/><path d="M12 3.5v6M4.6 15.8l5.2-2.6M19.4 15.8l-5.2-2.6"/>',
   x: '<path d="M6 6l12 12M18 6L6 18"/>',
   trash: '<path d="M5 7h14M10 7V4h4v3M7 7l1 13h8l1-13"/>',
   left: '<path d="M14 6l-6 6 6 6"/>',

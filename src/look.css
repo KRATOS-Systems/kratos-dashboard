@@ -299,3 +299,14 @@ html[data-look="neu"] .app.assist-open .main { margin-right: 372px; }
 @media (prefers-reduced-transparency: reduce) {
   html[data-look="neu"] .card, html[data-look="neu"] .stats, html[data-look="neu"] .kpi, html[data-look="neu"] .side-in { backdrop-filter: none; }
 }
+
+/* ---------- 9 Lesbarkeit (21.11.2026) ----------
+   Großbuchstaben und Schreibmaschinenschrift nur für kurze Beschriftungen (KPI-Namen, Tage, Ortsnamen). Ganze Sätze (Erklärzeilen,
+   Legende, Hinweise, Pillen mit Text) in normaler Schrift, mindestens 12,5 px, normaler Buchstabenabstand. */
+html[data-look="neu"] .sec-head p { font: 400 13.5px/1.45 var(--f-body); letter-spacing: 0; text-transform: none; color: var(--muted); }
+html[data-look="neu"] .tl-foot { font: 400 12.5px/1.5 var(--f-body); letter-spacing: 0; text-transform: none; }
+html[data-look="neu"] .stat .k, html[data-look="neu"] .stat .k span, html[data-look="neu"] .kpi .lab, html[data-look="neu"] .mcard .lab { font-size: 12px; letter-spacing: .08em; }
+html[data-look="neu"] .days .d { font-size: 11px; }
+html[data-look="neu"] .lane .lab small { font-size: 11.5px; letter-spacing: .05em; }
+html[data-look="neu"] .pill { font-size: 12px; letter-spacing: .01em; text-transform: none; }
+html[data-look="neu"] .ap-tile small { font-size: 11.5px; }

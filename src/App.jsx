@@ -12,11 +12,13 @@ import { MiniProvider } from "./MiniWindow.jsx";
 import { Palette, Alerts, alertsList } from "./Overlays.jsx";
 import { BrandMark, WordMark, Ico, SparkIcon, SvgDefs, ToastProvider } from "./ui.jsx";
 import Assist from "./Assist.jsx";
+import { useBdeSession } from "./bdeLib.js";
 
 // Die Planung ist die erste Seite und öffnet beim Start
 const PAGES = [
   { id: "planung", label: "Produktionsplanung", icon: "plan" },
   { id: "av", label: "Arbeitsvorbereitung", icon: "av" },
+  { id: "steuerung", label: "Steuerung", icon: "steuer", leitung: true },
   { id: "dashboard", label: "Dashboard", icon: "dash" },
   { id: "team", label: "Team", icon: "team" },
   { id: "platz", label: "Mein Arbeitsplatz", icon: "user" },
@@ -36,7 +38,7 @@ const lsSet = (k, v) => {
     /* ohne Speicher gilt die Standardansicht */
   }
 };
-const PLAN_PAGES = ["planung", "av"];
+const PLAN_PAGES = ["planung", "av", "steuerung"];
 // "#team/vollbild" = Team-Tafel ohne Seitenleiste (Tablet an der Maschine), "#kiosk" = Terminal für Kommen und Gehen
 const readHash = () => window.location.hash.replace(/^#/, "");
 const readPage = () => {
@@ -116,6 +118,16 @@ export default function App() {
   };
 
   const [page, setPage] = useState(readPage);
+  // Steuerung nur für die Leitung (mit PIN angemeldet). Hat sich die Leitung auf diesem Gerät einmal angemeldet, bleibt der Eintrag
+  // in der Leiste, auch wenn die Anmeldung abläuft (es geht um Übersicht, nicht um Schutz: die Daten sind dieselben).
+  const bdeSession = useBdeSession(page);
+  const [steuerungSichtbar, setSteuerungSichtbar] = useState(() => lsGet("kratos-steuerung") === "1");
+  useEffect(() => {
+    if (bdeSession && bdeSession.leitung && !steuerungSichtbar) {
+      setSteuerungSichtbar(true);
+      lsSet("kratos-steuerung", "1");
+    }
+  }, [bdeSession, steuerungSichtbar]);
   const [kiosk, setKiosk] = useState(readKiosk);
   const [anim, setAnim] = useState(true);
   useEffect(() => {
@@ -245,8 +257,8 @@ export default function App() {
           </div>
           <nav className="nav" ref={navRef} aria-label="Hauptnavigation">
             <i className="navind" style={{ transform: `translateY(${indY}px)` }} />
-            {PAGES.map((p) => (
-              <button key={p.id} type="button" className={page === p.id ? "on" : ""} onClick={() => goTo(p.id)}>
+            {PAGES.filter((p) => !p.leitung || steuerungSichtbar || page === p.id).map((p) => (
+              <button key={p.id} type="button" className={page === p.id ? "on" : ""} onClick={() => goTo(p.id)} title={p.label}>
                 <Ico n={p.icon} />
                 <span>{p.label}</span>
                 {(() => {

@@ -10,8 +10,10 @@ import { MACHINES } from "../src/lib.js";
 import { liveStand } from "./maschinenLive.js";
 
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+// Punkte, die in der Planung (für alle) stehen; alles andere steht nur in der Steuerung (Leitung)
+export const WERKSTATT = ["stoerung", "still", "ohneStunden", "einplanen", "avLate", "avSoon", "material", "muster"];
 
-export function heuteListe(inp, { fw, vollst, closing = 0, muster = 0, freigaben = null, extern = null } = {}) {
+export function heuteListe(inp, { fw, vollst, closing = 0, muster = 0, freigaben = null, extern = null, versand = null, automatik = null } = {}) {
   const today = inp.today;
   const open = inp.orders.filter((o) => !o.done);
   const pool = open.filter((o) => o.machine === "");
@@ -60,6 +62,21 @@ export function heuteListe(inp, { fw, vollst, closing = 0, muster = 0, freigaben
     add("lieferant", extern.anfragen, `${plural(extern.anfragen, "Lieferung ist", "Lieferungen sind")} überfällig, Lieferant anfragen`, "bad", "extern", extern.kundeGefahr ? `davon ${extern.kundeGefahr} mit Kundentermin in Gefahr` : "Wareneingang noch nicht validiert");
     add("bestellungFehlt", extern.fehltDringend, `${plural(extern.fehltDringend, "externer Arbeitsgang", "externe Arbeitsgänge")} ohne Bestellung`, "warn", "extern", "Maschine ist in 7 Tagen fertig, Lohnarbeit bestellen");
     add("lieferantVorab", extern.vorab, `${plural(extern.vorab, "Lieferung", "Lieferungen")} in 2 Werktagen fällig`, "warn", "extern", "beim Lieferanten vorab nachfragen");
+  }
+  // Versand und Abrechnung (server/versand.js): versandbereit, geliefert aber nicht berechnet
+  const imVersand = open.filter((o) => o.machine === "versand");
+  if (imVersand.length) {
+    const auftraege = new Set(imVersand.map((o) => o.source || o.id)).size;
+    const alt = imVersand.filter((o) => o.extern_start && daysBetween(o.extern_start, today) >= 2).length;
+    add("versand", auftraege, `${plural(auftraege, "Auftrag ist", "Aufträge sind")} versandbereit`, alt ? "warn" : "mute", "versand", alt ? `${plural(alt, "Position wartet", "Positionen warten")} seit 2 Tagen oder länger – Lieferung in Odoo bestätigen` : "Lieferung in Odoo bestätigen, dann gilt es als versendet");
+  }
+  if (versand && versand.zuBerechnen) {
+    const zb = versand.zuBerechnen;
+    const summe = zb.reduce((t, z) => t + (z.wert || 0), 0);
+    add("rechnung", zb.length, `${plural(zb.length, "Auftrag", "Aufträge")} geliefert, aber nicht berechnet`, "warn", "versand", `ca. ${summe.toLocaleString("de-DE", { style: "currency", currency: "EUR", maximumFractionDigits: 0 })} netto – Rechnung in Odoo stellen`);
+  }
+  if (automatik && automatik.length) {
+    add("automatik", automatik.length, `${plural(automatik.length, "Position", "Positionen")} seit gestern automatisch weiter`, "mute", "versand", automatik.slice(0, 3).map((a) => a.text).join(" · "));
   }
   if (vollst) add("fehlt", vollst.fehlt.length, `${plural(vollst.fehlt.length, "Kundenauftrag fehlt", "Kundenaufträge fehlen")} in der App`, "bad", "av", "In der Arbeitsvorbereitung übernehmen");
   add("avLate", avLate, `${plural(avLate, "Position ist", "Positionen sind")} in der AV überfällig`, "bad", "av", "„Muss bis“ ist überschritten, die Maschine wartet sonst");
@@ -114,8 +131,22 @@ export default function registerHeute(app, db, helpers) {
     } catch {
       extern = null;
     }
-    return heuteListe(inp, { fw, vollst: odoo.vollst || null, closing: odoo.closing || 0, muster: odoo.muster || 0, freigaben, extern });
+    let versand = null;
+    let automatik = null;
+    try {
+      versand = app.locals.versand && app.locals.versand.cached ? app.locals.versand.cached() : null;
+      automatik = app.locals.automatik ? app.locals.automatik.letzte24() : null;
+    } catch {
+      versand = null;
+    }
+    return heuteListe(inp, { fw, vollst: odoo.vollst || null, closing: odoo.closing || 0, muster: odoo.muster || 0, freigaben, extern, versand, automatik });
   };
   app.locals.heuteListe = liste;
-  app.get("/api/heute", (req, res) => res.json(liste()));
+  // Bereich „planung“: nur was die Werkstatt betrifft; „steuerung“ (Standard): alles. Talos, Morgenbericht und KI-Planer lesen immer alles.
+  app.get("/api/heute", (req, res) => {
+    const l = liste();
+    if (req.query.bereich !== "planung") return res.json(l);
+    const items = l.items.filter((i) => WERKSTATT.includes(i.id));
+    res.json({ ...l, items, alles: !items.some((i) => i.tone !== "mute") });
+  });
 }
