@@ -8,6 +8,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import assert from "node:assert/strict";
+import { DatabaseSync } from "node:sqlite";
 
 const dir = mkdtempSync(path.join(tmpdir(), "bedienung-"));
 const env = {
@@ -67,14 +68,22 @@ try {
   ok("Planvorschlag: „neu eingeplant, davon schon zu spät“ getrennt vom Umstellen; Positionen für die Vorschau im Zeitstrahl");
 
   // 2. Datenqualität: Gruppen mit Zahlen und Einträgen
+  // Widerspruch Material: FA01334 in der AV als bereit abgehakt, laut Odoo nicht verfügbar
+  {
+    const d = new DatabaseSync(env.DB_PATH);
+    d.prepare("UPDATE orders SET component_status = 'Nicht verfügbar' WHERE odoo_ref = 'FA01334'").run();
+    d.prepare("INSERT INTO av_checks (order_id, item, status) VALUES (?, 'material', 'bereit') ON CONFLICT (order_id, item) DO UPDATE SET status = 'bereit'").run(row("FA01334").id);
+    d.close();
+  }
   const dq = await api("GET", "/api/datenqualitaet");
   assert.equal(dq.status, 200, JSON.stringify(dq));
   const g = (id) => dq.gruppen.find((x) => x.id === id);
-  for (const id of ["stueckliste", "zeichnung", "kalkulation", "stunden", "schliessen", "einkauf", "stempel"]) assert.ok(g(id), id);
+  for (const id of ["stueckliste", "zeichnung", "kalkulation", "material", "stunden", "schliessen", "einkauf", "stempel"]) assert.ok(g(id), id);
+  assert.deepEqual(g("material").items.map((x) => x.ref), ["FA01334"], JSON.stringify(g("material")));
   assert.ok(g("stunden").items.some((x) => x.ref === "FA01309"), JSON.stringify(g("stunden")));
   assert.deepEqual(g("einkauf").items.map((x) => x.ref).sort(), ["P00557", "WH/IN/00296"]);
   assert.equal(dq.gesamt, dq.gruppen.reduce((s, x) => s + x.n, 0));
-  ok("Datenqualität: Arbeitsliste nach Art (Stückliste, Zeichnung, Kalkulation, Stunden, Schließen, Einkauf, Stempel)");
+  ok("Datenqualität: Arbeitsliste nach Art (Stückliste, Zeichnung, Kalkulation, Material-Widerspruch, Stunden, Schließen, Einkauf, Stempel)");
 
   // 3. Extern: angefragt (z. B. beim Öffnen der Mail) lässt sich zurücknehmen
   await api("GET", "/api/extern?neu=1");

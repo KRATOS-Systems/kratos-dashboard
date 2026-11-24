@@ -21,7 +21,7 @@ const Abwesend = lazy(() => import("./Abwesend.jsx"));
 import FehlerMelden from "./FehlerMelden.jsx";
 // Zeichnung und 3D erst laden, wenn jemand sie öffnet (three.js ist groß)
 const DocsDialog = lazy(() => import("./PartDocs.jsx").then((m) => ({ default: m.DocsDialog })));
-import { AV_ITEMS, AV_STATUS, AV_TEAM, isNewAv, avKey, avState, avSummary, startklar } from "./avLib.js";
+import { AV_ITEMS, AV_STATUS, AV_TEAM, isNewAv, avKey, avState, avSummary, startklar, materialStand } from "./avLib.js";
 import { STAFF, ACTIVITIES, STAFF_DEFAULTS, responsible, avResponsible, sharedMachine } from "./staffLib.js";
 import Avatar from "./Avatar.jsx";
 import { AppTile, Ico, LaneIcon, LaneTile, MTile, Thumb, useToast, partImg } from "./ui.jsx";
@@ -147,15 +147,13 @@ function OdooLink({ o, btn }) {
     </a>
   );
 }
-// Material laut Odoo (Spalte "Komponentenstatus" im Export): nicht verfügbar = rot, erwartet = gelb, verfügbar = grün
-function MaterialBadge({ o }) {
-  const text = o.component_status;
-  if (!text) return null;
-  const low = text.toLowerCase();
-  const cls = /nicht verf/.test(low) ? "bad" : /verf|reserv/.test(low) ? "ok" : "warn";
+// Material: eine Aussage aus AV und Odoo (avLib.materialStand); Widerspruch gelb mit Erklärung
+function MaterialBadge({ o, checks }) {
+  const m = materialStand(o, checks);
+  if (!m || m.st === "entfaellt") return null;
   return (
-    <span className={`pill ${cls}`} title={`Materialstatus laut Odoo: ${text}`}>
-      {/nicht verf/.test(low) ? "Material fehlt" : text}
+    <span className={`pill ${m.cls}`} title={m.title}>
+      {m.text}
     </span>
   );
 }
@@ -1405,6 +1403,7 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
           urgent: !!sched && ps && daysBetween(today, ps.start) <= 7 && !av.ready,
           materialOpen: avState(checks, o.id, "material").status === "offen",
           materialMissing: /nicht verf/i.test(o.component_status || ""),
+          materialWiderspruch: (materialStand(o, checks) || {}).st === "widerspruch",
           waitText: waitText(found && found.it),
         });
       });
@@ -1834,7 +1833,7 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
             {o.pinned && <span className="pill mute" title="Plan neu ordnen verschiebt diese Position nicht">fixiert</span>}
             {wt && <span className="pill warn">{it.waitReason === "dep" ? "wartet auf Arbeitsgang" : it.waitReason === "av" ? "wartet auf AV" : it.waitReason === "material" ? "wartet auf Material" : "wartet auf Start"}</span>}
             <span className={`pill ${sum.ready ? "ok" : "mute"}`} title="Arbeitsvorbereitung: erledigte Punkte von allen">{sum.ready ? "AV fertig" : `AV: ${avDone} von ${sum.states.length} erledigt`}</span>
-            <MaterialBadge o={o} />
+            <MaterialBadge o={o} checks={checks} />
             {o.odoo_draft && <span className="pill warn" title="Der Fertigungsauftrag ist in Odoo noch im Entwurf. Freigegeben wird er in Odoo.">nicht freigegeben</span>}
             {o.due_shifts > 0 && o.due_original && <span className="pill warn" title={`Ursprünglicher Liefertermin: ${fmtShort(o.due_original)}${o.due_original.slice(0, 4)}`}>Termin {o.due_shifts}× verschoben</span>}
             {(startklar(o, checks) || []).length > 0 && (

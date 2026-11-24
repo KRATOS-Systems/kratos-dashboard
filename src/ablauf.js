@@ -4,7 +4,7 @@
 // „als Nächstes zu tun“ (now), spätere nicht erledigte sind offen (open). Laufende und erledigte Positionen zählen bei den
 // Vorbereitungs-Schritten nicht mehr mit (was schon gefräst wird, braucht kein Material mehr).
 
-import { avState, avDone, avSummary } from "./avLib.js";
+import { avState, avDone, avSummary, materialStand } from "./avLib.js";
 
 const LANES = ["qs", "extern", "extern_fert", "versand"];
 export const ABLAUF_SCHRITTE = [
@@ -36,10 +36,12 @@ export function ablaufOf(positions, checks) {
   const mat = vor.filter((o) => !avDone(avState(checks, o.id, "material").status));
   const nb = mat.filter((o) => /noch nicht bestellt/.test(o.material_info || ""));
   const unterwegs = mat.filter((o) => o.material_date && !/noch nicht bestellt/.test(o.material_info || ""));
+  // Widerspruch AV ↔ Odoo: nicht als erledigt zählen, sondern zum Klären melden (gleiche Regel wie das Etikett oben im Fenster)
+  const wider = vor.filter((o) => (materialStand(o, checks) || {}).st === "widerspruch");
   r.material = {
-    done: !mat.length,
-    ids: mat.map((o) => o.id),
-    detail: !mat.length ? "Material da" : nb.length ? `${plural(nb.length, "Position", "Positionen")}: nur Anfrage in Odoo, Material klären` : unterwegs.length ? `bestellt, kommt ${unterwegs.map((o) => o.material_date).sort()[0].split("-").reverse().join(".").slice(0, 6)}` : `${ref(mat)}: Material anlegen oder bestellen`,
+    done: !mat.length && !wider.length,
+    ids: (wider.length ? wider : mat).map((o) => o.id),
+    detail: wider.length ? `${ref(wider)}: AV sagt da, Odoo sagt fehlt, bitte klären` : !mat.length ? "Material da" : nb.length ? `${plural(nb.length, "Position", "Positionen")}: nur Anfrage in Odoo, Material klären` : unterwegs.length ? `bestellt, kommt ${unterwegs.map((o) => o.material_date).sort()[0].split("-").reverse().join(".").slice(0, 6)}` : `${ref(mat)}: Material anlegen oder bestellen`,
   };
 
   const fa = vor.filter((o) => o.odoo_draft);

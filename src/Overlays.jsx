@@ -25,7 +25,7 @@ export function alertsList(shared) {
     .map((p) => ({ id: p.id, title: p.no, text: `${p.source} · startet ${fmtShort(p.start)}, fehlt: ${p.av.open.map((s) => s.label).join(", ")}` }));
   const mat = pos
     .filter((p) => p.start && p.startIn <= 14 && p.materialMissing)
-    .map((p) => ({ id: p.id, title: p.no, text: `${p.source} · Material fehlt laut Odoo, Start ${fmtShort(p.start)}` }));
+    .map((p) => ({ id: p.id, title: p.no, text: p.materialWiderspruch ? `${p.source} · AV sagt da, Odoo sagt fehlt: bitte klären, Start ${fmtShort(p.start)}` : `${p.source} · Material fehlt laut Odoo, Start ${fmtShort(p.start)}` }));
   return [
     { title: "Liefertermin gefährdet", color: "var(--bad)", items: late },
     { title: "Startet bald, nicht bereit", color: "var(--warn)", items: soon },

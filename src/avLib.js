@@ -56,6 +56,32 @@ export function startklar(o, checks) {
   return fehlt;
 }
 
+// Material: EINE Aussage aus AV-Checkliste und Odoo (Komponentenstatus des Fertigungsauftrags).
+// Widerspruch: in der AV als bereit abgehakt, in Odoo nicht verfügbar (meist: Ware liegt da, ist aber nicht gebucht/reserviert).
+// Rückgabe { st, cls, text, title } oder null (keine Aussage: AV offen und Odoo meldet nichts).
+export function materialStand(o, checks) {
+  if (!o) return null;
+  const odoo = String(o.component_status || "").toLowerCase();
+  const odooFehlt = /nicht verf/.test(odoo);
+  const odooDa = !odooFehlt && /verf|reserv/.test(odoo);
+  const status = avState(checks, o.id, "material").status;
+  if (status === "entfaellt") return { st: "entfaellt", cls: "mute", text: "Material nicht nötig", title: "In der AV als nicht nötig markiert" };
+  const avDa = status === "bereit";
+  if (avDa && odooFehlt)
+    return {
+      st: "widerspruch",
+      cls: "warn",
+      text: "Material: AV sagt da, Odoo sagt fehlt",
+      title: "In der AV ist das Material als bereit abgehakt, in Odoo ist es nicht verfügbar (kein Bestand gebucht oder nicht reserviert). Bitte klären: Wareneingang bzw. Bestand in Odoo buchen, oder in der AV zurücksetzen, wenn es doch fehlt.",
+    };
+  if (avDa && odooDa) return { st: "da", cls: "ok", text: "Material da", title: "In der AV abgehakt und in Odoo verfügbar" };
+  if (avDa) return { st: "da", cls: "ok", text: "Material da", title: "In der AV als bereit abgehakt" };
+  if (odooDa) return { st: "da_odoo", cls: "ok", text: "Material da (Odoo)", title: "In Odoo verfügbar, in der AV noch nicht abgehakt" };
+  if (odooFehlt) return { st: "fehlt", cls: "bad", text: "Material fehlt", title: `Laut Odoo: ${o.component_status}` };
+  if (odoo) return { st: "erwartet", cls: "warn", text: "Material erwartet", title: `Laut Odoo: ${o.component_status}` };
+  return null;
+}
+
 // offen -> in Arbeit -> bereit -> offen (ein nicht nötiger Punkt wird mit einem Klick offen)
 export const avCycle = (status) => (status === "offen" ? "in_arbeit" : status === "in_arbeit" ? "bereit" : "offen");
 
