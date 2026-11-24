@@ -21,6 +21,7 @@ import { afterStop, LaufzeitOffen, LaufzeitNachtragen } from "./Laufzeit.jsx";
 import RechnungBereit from "./Rechnung.jsx";
 import { AmpelLeiste } from "./Ampel.jsx";
 import { pollEvery } from "./poll.js";
+import { HilfeKnopf, SucheKnopf } from "./Bedienhilfe.jsx";
 
 // Werkerprüfung in QS (DYNAMIS) zum gestempelten Fertigungsauftrag: eigenes, wiederverwendetes Fenster,
 // damit das Dashboard offen bleibt. Am Maschinen-PC ist dort ein QS-Terminal-Konto angemeldet; der Werker
@@ -648,7 +649,7 @@ function Login({ onDone }) {
     <div className="bde">
       <div className="page-head">
         <div>
-          <h1>Mein Arbeitsplatz</h1>
+          <h1>Mein Arbeitsplatz <HilfeKnopf thema="arbeitsplatz" /></h1>
           <p>{who ? `PIN für ${who.name}` : "Wer bist du?"}</p>
         </div>
       </div>

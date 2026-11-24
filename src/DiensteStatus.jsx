@@ -28,7 +28,9 @@ export default function DiensteStatus() {
   if (!d) return null;
   const schlecht = d.dienste.filter((x) => x.stufe !== "ok");
   const stufe = schlecht.some((x) => x.stufe === "bad") ? "bad" : schlecht.length ? "warn" : "ok";
-  const text = stufe === "ok" ? "Dienste ok" : schlecht.map((x) => x.label.split(" ")[0]).join(", ") + (stufe === "bad" ? " gestört" : " prüfen");
+  // Klarer Satz statt Kürzel: alles gut, oder welche Verbindung ein Problem hat (Klick zeigt Details)
+  const namen = schlecht.map((x) => x.label.split(" ")[0]).join(", ");
+  const text = stufe === "ok" ? "Alle Verbindungen laufen" : `${stufe === "bad" ? "Gestört" : "Bitte prüfen"}: ${namen}`;
   const tip = d.dienste.map((x) => `${x.label}: ${x.stufe === "ok" ? "läuft" : x.grund || "unbekannt"}`).join("\n");
 
   return (

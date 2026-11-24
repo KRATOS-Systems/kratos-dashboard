@@ -26,6 +26,7 @@ import { STAFF, ACTIVITIES, STAFF_DEFAULTS, responsible, avResponsible, sharedMa
 import Avatar from "./Avatar.jsx";
 import { AppTile, Ico, LaneIcon, LaneTile, MTile, Thumb, useToast, partImg } from "./ui.jsx";
 import DiensteStatus from "./DiensteStatus.jsx";
+import { SucheKnopf, HilfeKnopf } from "./Bedienhilfe.jsx";
 import { pollEvery } from "./poll.js";
 import {
   DEFAULT_TIGHT_DAYS,
@@ -147,6 +148,42 @@ function OdooLink({ o, btn }) {
     </a>
   );
 }
+// Aufklappbarer Abschnitt im Fenster einer Position; was zu- oder aufgeklappt wurde, merkt sich das Gerät
+const FOLD_KEY = "kratos-fenster-abschnitte";
+const FOLD_DEFAULT = { zustaendig: false }; // standardmäßig zu; alle anderen offen
+function foldRead() {
+  try {
+    return JSON.parse(localStorage.getItem(FOLD_KEY) || "{}");
+  } catch {
+    return {};
+  }
+}
+function Fold({ id, title, extra, children }) {
+  const [open, setOpen] = useState(() => {
+    const m = foldRead();
+    return id in m ? !!m[id] : FOLD_DEFAULT[id] !== false;
+  });
+  const toggle = () => {
+    const next = !open;
+    setOpen(next);
+    try {
+      localStorage.setItem(FOLD_KEY, JSON.stringify({ ...foldRead(), [id]: next }));
+    } catch {}
+  };
+  return (
+    <div className={`dsec fold${open ? " open" : ""}`}>
+      <button type="button" className="fold-head" aria-expanded={open} onClick={toggle} title={open ? "Zuklappen" : "Aufklappen"}>
+        <h4>{title}</h4>
+        {extra}
+        <span className="fold-ch" aria-hidden="true">
+          <Ico n="chevd" s={18} />
+        </span>
+      </button>
+      {open && <div className="fold-body">{children}</div>}
+    </div>
+  );
+}
+
 // Material: eine Aussage aus AV und Odoo (avLib.materialStand); Widerspruch gelb mit Erklärung
 function MaterialBadge({ o, checks }) {
   const m = materialStand(o, checks);
@@ -209,6 +246,20 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
   const [docsFor, setDocsFor] = useState(null); // Position, deren Zeichnung und 3D-Modell gerade offen sind
   const [pvOpen, setPvOpen] = useState(false); // "Plan verbessern" aufgeklappt
   const [korb, setKorb] = useState([]); // Zeilen aus "Heute" (für die Zähler an den Reitern)
+  // Planung: Prio-Leiste und Heute-Liste aufgeklappt? (gemerkt je Gerät; zu = Zeitstrahl rückt nach oben)
+  const [ovOpen, setOvOpenRaw] = useState(() => {
+    try {
+      return localStorage.getItem("kratos-ueberblick") === "1";
+    } catch {
+      return false;
+    }
+  });
+  const setOvOpen = (v) => {
+    setOvOpenRaw(v);
+    try {
+      localStorage.setItem("kratos-ueberblick", v ? "1" : "0");
+    } catch {}
+  };
   const [sTab, setSTab] = useState("versand"); // Reiter im Bereich „Steuerung“
   const pendingSTab = useRef(null); // Reiter der Steuerung, der nach dem Seitenwechsel geöffnet werden soll
   const pendingJump = useRef(null); // Sprungziel in der Planung nach dem Seitenwechsel (aus der Steuerung)
@@ -232,7 +283,10 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
     if (ziel === "av") return goTo && goTo("av");
     if (ziel === "sync") return openSync();
     if (["versand", "extern", "erledigt", "dq", "kz"].includes(ziel)) return openSteuerung(ziel);
-    if (ziel === "freigaben" || ziel === "fruehwarnung") return scrollTo("arbeitskorb");
+    if (ziel === "freigaben" || ziel === "fruehwarnung") {
+      if (section === "planung") setOvOpen(true);
+      return scrollTo("arbeitskorb");
+    }
     if (section !== "planung") {
       // aus der Steuerung: in die Planung wechseln und dort springen
       if (typeof ziel === "string" && ziel.startsWith("pos:")) pendingOpen.current = Number(ziel.slice(4));
@@ -994,7 +1048,33 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
   // QS-Ablauf: "Fertig produziert" schiebt die Position in die QS (Beginn heute), ohne QS-Pflicht ist sie damit erledigt.
   // In der QS bestätigt "Geprüft" den Abschluss (mit Stichpunkten geht es weiter zur Oberfläche) oder "Nacharbeit"
   // schickt die Position mit dem noch nötigen Rest zurück an ihre Maschine.
+  // Rückgängig nach einem Klick (Fertig produziert, Geprüft, Versendet, Zurück/Erledigt): Zustand vorher merken und zurückschreiben,
+  // auf einer Maschine auch den alten Platz in der Reihenfolge
+  function undoFor(o) {
+    const snap = {
+      machine: o.machine || "",
+      done: !!o.done,
+      done_date: o.done_date || null,
+      extern_start: o.extern_start || null,
+      done_hours: Number(o.done_hours) || 0,
+      produced_date: o.produced_date || null,
+      progress_date: o.progress_date || null,
+      checked_date: o.checked_date || null,
+      shipped_date: o.shipped_date || null,
+    };
+    const onMachine = MACHINES.some((m) => m.id === o.machine);
+    const seq = onMachine ? orders.filter((x) => x.machine === o.machine && !x.done).sort((a, b) => a.position - b.position).map((x) => x.id) : null;
+    return async () => {
+      setOrders((prev) => prev.map((x) => (x.id === o.id ? { ...x, ...snap } : x)));
+      await send(`/api/orders/${o.id}`, "PUT", snap);
+      if (seq) await send("/api/orders/reorder", "POST", { machine: o.machine, ids: seq });
+      reloadOrders();
+      toast(`${posNo(o)}: rückgängig gemacht`);
+    };
+  }
+
   function finishProduced(o) {
+    const undo = undoFor(o);
     const patch = { done_hours: o.hours, produced_date: today, progress_date: today };
     const hasNext = orders.some((x) => x.after_id === o.id && !x.done);
     setDetailId(null);
@@ -1011,7 +1091,7 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
     } else {
       patchOrder(o.id, { ...patch, done: true, done_date: today });
     }
-    toast(`${posNo(o)} ist fertig produziert${hasNext ? "" : o.qs_required !== false ? " und geht in die QS" : needsShipping(o) ? " und geht in den Versand" : ""}`);
+    toast(`${posNo(o)} ist fertig produziert${hasNext ? "" : o.qs_required !== false ? " und geht in die QS" : needsShipping(o) ? " und geht in den Versand" : ""}`, undo);
   }
 
   // Nach QS / Extern: Positionen eines Kundenauftrags gehen in den Versand (versendet = Lieferung in Odoo bestätigt, server/versand.js)
@@ -1021,11 +1101,12 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
     send(`/api/orders/${o.id}`, "PUT", { machine: lane.id, extern_start: today, ...extra });
   }
   async function markShipped(o) {
+    const undo = undoFor(o);
     const r = await fetch(`/api/versand/${o.id}/versendet`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" }).catch(() => null);
     if (!r || !r.ok) return toast("Versendet melden hat nicht geklappt");
     setDetailId((cur) => (cur === o.id ? null : cur));
     reloadOrders();
-    toast(`${posNo(o)} versendet`);
+    toast(`${posNo(o)} versendet`, undo);
   }
 
   // Versand: Lieferungen jetzt in Odoo prüfen (sonst alle 10 Minuten); bestätigte Lieferungen gehen nach „Erledigt“
@@ -1046,16 +1127,19 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
   }
 
   function markChecked(o) {
+    const undo = undoFor(o);
     const patch = { checked_date: today };
     if (tagsOf(o).length > 0) {
       const lane = laneOf(EXTERN);
       setOrders((prev) => applyLaneMove(prev, [o.id], today, lane).map((x) => (x.id === o.id ? { ...x, ...patch } : x)));
       send(`/api/orders/${o.id}`, "PUT", { machine: lane.id, extern_start: today, ...laneDaysOnMove(o, lane), ...patch });
+      toast(`${posNo(o)} geprüft, geht zur Oberfläche extern`, undo);
     } else if (needsShipping(o)) {
       toVersand(o, patch);
-      toast(`${posNo(o)} geprüft, geht in den Versand`);
+      toast(`${posNo(o)} geprüft, geht in den Versand`, undo);
     } else {
       patchOrder(o.id, { ...patch, done: true, done_date: today });
+      toast(`${posNo(o)} geprüft und erledigt`, undo);
     }
   }
 
@@ -1731,12 +1815,13 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
           className="btn sm"
           title={needsShipping(o) ? "Zurück vom Lieferanten: geht in den Versand" : "Erledigt"}
           onClick={() => {
+            const undo = undoFor(o);
             if (needsShipping(o)) {
               toVersand(o);
-              toast(`${posNo(o)} zurück, geht in den Versand`);
+              toast(`${posNo(o)} zurück, geht in den Versand`, undo);
             } else {
               patchOrder(o.id, { done: true, done_date: today });
-              toast(`${posNo(o)} erledigt`);
+              toast(`${posNo(o)} erledigt`, undo);
             }
           }}
         >
@@ -1807,6 +1892,7 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
             <div style={{ display: "flex", gap: 14, alignItems: "flex-start", minWidth: 0 }}>
               <Thumb src={partImg(o)} size={88} />
               <div style={{ minWidth: 0 }}>
+                <div className="eyebrow">Position</div>
                 <h3>{posNo(o)}</h3>
                 <div style={{ color: "var(--muted)", marginTop: 4 }}>
                   {o.source ? `Auftrag ${o.source}` : "ohne Auftrag"}
@@ -1836,17 +1922,40 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
             <MaterialBadge o={o} checks={checks} />
             {o.odoo_draft && <span className="pill warn" title="Der Fertigungsauftrag ist in Odoo noch im Entwurf. Freigegeben wird er in Odoo.">nicht freigegeben</span>}
             {o.due_shifts > 0 && o.due_original && <span className="pill warn" title={`Ursprünglicher Liefertermin: ${fmtShort(o.due_original)}${o.due_original.slice(0, 4)}`}>Termin {o.due_shifts}× verschoben</span>}
-            {(startklar(o, checks) || []).length > 0 && (
-              <span className="pill bad" title="Eingeplant heißt noch nicht startklar: Das fehlt, bevor die Position auf der Maschine anfangen kann">
-                nicht startklar: {startklar(o, checks).join(", ")}
-              </span>
-            )}
+            {/* „nicht startklar: …“ steht jetzt im Satz darunter („Es fehlt noch: …“) */}
             {o.odoo_bom === "muster" && <span className="pill warn" title="Die Stückliste in Odoo hat nur Musterwerte (Referenz MUSTER oder jeder Arbeitsgang genau 60 Minuten). Maschine und Zeit sind nicht geprüft: Zeiten aus der Kalkulation oder Erfahrung in Odoo eintragen.">Zeit ungeprüft (Muster)</span>}
             {o.odoo_bom === "none" && <span className="pill warn" title="In Odoo hat der Fertigungsauftrag keine Stückliste, damit auch keine Arbeitsgänge.">keine Stückliste</span>}
             {o.odoo_bom === "leer" && <span className="pill warn" title="Die Stückliste in Odoo hat keine Arbeitsgänge.">keine Arbeitsgänge</span>}
           </div>
-          {(o.odoo_id || o.po_id || goTo || ((onMachine || inLane) && section !== "av") || (prio && prio.darf && !o.done)) && (
+          {(() => {
+            // Ein Satz in normaler Sprache: wo steht die Position, wann geht es los, was fehlt
+            const fehlt = startklar(o, checks) || [];
+            const fehltTxt = fehlt.length ? ` Es fehlt noch: ${fehlt.join(", ")}.` : "";
+            let satz;
+            let ton = "";
+            // fmtShort endet schon auf einen Punkt („25.11.“), daher dort keinen zweiten anhängen
+            if (o.done) satz = o.shipped_date ? `Versendet am ${fmtShort(o.shipped_date)}` : o.done_date ? `Erledigt am ${fmtShort(o.done_date)}` : "Erledigt.";
+            else if (inLane) satz = `Liegt in ${laneNow.name}${o.extern_start ? " seit " + fmtShort(o.extern_start) : "."}`;
+            else if (it && it.scheduled) {
+              const laeuft = it.pastStart != null;
+              satz = `${laeuft ? "Läuft seit" : "Startet am"} ${fmtShort(dateOf(it.pastStart ?? it.start))} auf der ${pl.m.short}, fertig ca. ${fmtShort(endDateOf(it.end))}${laeuft ? "" : fehltTxt}`;
+              if (!laeuft && fehlt.length) ton = " warn";
+            } else if (onMachine) satz = `Auf der ${pl.m.short}, ${!(o.hours > 0) ? "aber Stunden fehlen noch." : "noch nicht eingeplant."}`;
+            else satz = `Noch keiner Maschine zugewiesen.${fehltTxt}`;
+            if (g && g.status === "late" && !o.done) {
+              satz += ` Der Auftrag wird ${g.lateDays} ${g.lateDays === 1 ? "Tag" : "Tage"} nach dem Liefertermin fertig.`;
+              ton = " bad";
+            }
+            return <p className={`status-satz${ton}`}>{satz}</p>;
+          })()}
+          {(o.odoo_id || o.po_id || goTo || ((onMachine || inLane) && section !== "av") || (prio && prio.darf && !o.done) || (onMachine && !o.done)) && (
             <div style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {onMachine && !o.done && (
+                <button type="button" className="btn primary" title="Fertig produziert: die Position geht in die QS (ohne QS-Prüfung ist sie damit erledigt)" onClick={() => finishProduced(o)}>
+                  <Ico n="check" s={16} />
+                  Fertig produziert
+                </button>
+              )}
               {prio && prio.darf && !o.done && (
                 <button
                   type="button"
@@ -1890,13 +1999,9 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
             const k = groupKeyOf(o);
             const ab = ablaufOf(orders.filter((x) => groupKeyOf(x) === k), checks);
             return (
-              <div className="dsec">
-                <h4 style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  Laufkarte {groupLabelOf(o)}
-                  <AblaufBar steps={ab.steps} />
-                </h4>
+              <Fold id="laufkarte" title={`Laufkarte Auftrag ${groupLabelOf(o)}`} extra={<AblaufBar steps={ab.steps} />}>
                 <Laufkarte ablauf={ab} onAction={(s) => ablaufAction(s, o)} />
-              </div>
+              </Fold>
             );
           })()}
 
@@ -1908,9 +2013,8 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
               <Terminverlauf o={o} />
             </div>
           ) : (
-          <div className="dsec">
-            <h4>Plan</h4>
-            <div style={{ fontSize: 14, marginBottom: 10 }}>
+          <Fold id="plan" title="Plan und Zeiten">
+            <div style={{ fontSize: 15, marginBottom: 10 }}>
               {it && it.scheduled
                 ? `${it.pastStart != null ? "Seit " : "Start "}${fmtShort(dateOf(it.pastStart ?? it.start))} · Ende ca. ${fmtShort(endDateOf(it.end))}`
                 : onMachine
@@ -1987,11 +2091,10 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
             {externEditor(o)}
             {metaLine(o) && <div style={{ fontSize: 13, color: "var(--muted)", marginTop: 10 }}>{metaLine(o)}</div>}
             <Terminverlauf o={o} />
-          </div>
+          </Fold>
           )}
 
-          <div className="dsec">
-            <h4>Zuständig</h4>
+          <Fold id="zustaendig" title="Zuständig">
             <div className="staffgrid">
               {ACTIVITIES.map((a) => {
                 const own = staff.overrides.get(`${o.id}|${a.id}`) || "";
@@ -2013,10 +2116,9 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
                 );
               })}
             </div>
-          </div>
+          </Fold>
 
-          <div className="dsec">
-            <h4>Arbeitsvorbereitung</h4>
+          <Fold id="av" title="Arbeitsvorbereitung" extra={<span className={`pill ${sum.ready ? "ok" : "mute"}`}>{sum.ready ? "fertig" : `${avDone} von ${sum.states.length}`}</span>}>
             {repeatOf.get(o.id) && (
               <div className="note" style={{ marginBottom: 12 }}>
                 <b>Wiederholteil:</b> Das gleiche Teil wurde schon als {posNo(repeatOf.get(o.id))} vorbereitet. Programm, Werkzeuge, Spannmittel, Prüfplan und EMPB samt Zuständigem können übernommen werden.
@@ -2074,16 +2176,11 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
                 {sum.readyDate ? ` · bereit ab ${fmtShort(sum.readyDate)}` : ""}. Das ist nur eine Warnung, einplanen geht trotzdem.
               </div>
             )}
-          </div>
+          </Fold>
 
           {!inLane && !o.done && (
           <div className="dact">
-            {onMachine && (
-              <button type="button" className="btn primary" title="Fertig produziert: die Position geht in die QS (ohne QS-Prüfung ist sie damit erledigt)" onClick={() => finishProduced(o)}>
-                <Ico n="check" s={16} />
-                Fertig produziert
-              </button>
-            )}
+            <span className="dact-lab">Weitere Aktionen</span>
             <label className="chk" title="Muss die Position durch die QS-Prüfung?">
               <input type="checkbox" checked={o.qs_required !== false} onChange={(ev) => patchOrder(o.id, { qs_required: ev.target.checked })} />
               QS-Prüfung
@@ -2596,7 +2693,7 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
       <>
         <div className="page-head rise" style={{ "--i": 0 }}>
           <div>
-            <h1>Produktionssteuerung</h1>
+            <h1>Produktionssteuerung <HilfeKnopf thema="steuerung" /></h1>
             <p>
               {tag}, {fmtShort(today)}
               {today.slice(0, 4)} · vom Auftragseingang bis zur Rechnung: was heute zu entscheiden ist
@@ -2605,13 +2702,18 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
           <div className="actions">
             <DiensteStatus />
             {odooStatus && odooStatus.enabled && (
-              <button className="sync" type="button" onClick={openSync} title="Jetzt mit Odoo abgleichen">
+              <button className="sync" type="button" onClick={openSync} title={odooStatus.lastError ? `Letzter Abgleich mit Fehler: ${odooStatus.lastError}. Klicken: neu abgleichen` : "Jetzt mit Odoo abgleichen"}>
                 <span className={"ok" + (odooStatus.lastError ? " err" : "")} />
-                {odooStatus.lastSync ? "Odoo · vor " + (Math.max(0, Math.round((Date.now() - Date.parse(odooStatus.lastSync)) / 60000)) || "<1") + " Min." : "Odoo abgleichen"}
+                {odooStatus.lastError
+                  ? "Odoo-Abgleich mit Fehler"
+                  : odooStatus.lastSync
+                  ? `Odoo abgeglichen ${new Date(odooStatus.lastSync).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })} Uhr`
+                  : "Mit Odoo abgleichen"}
                 {odooStatus.pendingClosing && odooStatus.pendingClosing.length > 0 && <b className="tag warn" style={{ fontStyle: "normal" }}>{odooStatus.pendingClosing.length} zu schließen</b>}
                 <Ico n="refresh" s={15} />
               </button>
             )}
+            <SucheKnopf />
           </div>
         </div>
 
@@ -2794,7 +2896,7 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
             pastEnd: it.pastStart != null ? it.start : null,
             end: it.end,
             label: posNo(it.o),
-            sub: `${fmtH(it.remaining)} h${it.percent != null ? ` · ${it.estimated ? "~" : ""}${it.percent} %` : ""}${tagsOf(it.o).length ? " · extern" : ""}`,
+            sub: `noch ${fmtH(it.remaining)} h${it.percent != null ? ` · ${it.estimated ? "~" : ""}${it.percent} % fertig` : ""}${tagsOf(it.o).length ? " · danach extern" : ""}`,
             percent: it.percent,
             toggle: null,
             select: it.o.id,
@@ -2816,7 +2918,7 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
               pastEnd: block.doneEnd,
               end: block.end,
               label: g ? g.label : groupLabelOf(block.items[0].o),
-              sub: `${multi ? `${block.items.length} Pos. · ` : ""}${fmtH(block.remaining)} h${block.percent != null ? ` · ${block.estimated ? "~" : ""}${block.percent} %` : ""}${externCount ? ` · ${externCount} extern` : ""}`,
+              sub: `${multi ? `${block.items.length} Pos. · ` : ""}noch ${fmtH(block.remaining)} h${block.percent != null ? ` · ${block.estimated ? "~" : ""}${block.percent} % fertig` : ""}${externCount ? ` · ${externCount} danach extern` : ""}`,
               percent: block.percent,
               toggle: multi ? toggleKey : null,
               select: multi ? null : block.items[0].o.id,
@@ -2849,7 +2951,7 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
             " · " +
             fmtShort(g.due) +
             " · " +
-            (gap < 0 ? Math.max(1, Math.ceil(-gap)) + " T zu spät" : days0 + " T Puffer") +
+            (gap < 0 ? Math.max(1, Math.ceil(-gap)) + (Math.max(1, Math.ceil(-gap)) === 1 ? " Tag zu spät" : " Tage zu spät") : days0 + (days0 === 1 ? " Tag Puffer" : " Tage Puffer")) +
             (g.dueEnd > viewEnd ? " ▶" : "");
           if (b > a || g.dueEnd < viewStart || g.dueEnd > viewEnd) {
             strips.push({
@@ -4296,7 +4398,7 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
     <>
       <div className="page-head rise" style={{ "--i": 0 }}>
         <div>
-          <h1>Produktionsplanung</h1>
+          <h1>Produktionsplanung <HilfeKnopf thema="planung" /></h1>
           <p>
             {dayName}, {fmtShort(today)}
             {today.slice(0, 4)} · KW {isoWeekOf(today).week} · {shift.label}, {fmtH(shift.hours)} h pro Woche × {utilization} % Nutzung
@@ -4305,13 +4407,18 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
         <div className="actions">
           <DiensteStatus />
           {odooStatus && odooStatus.enabled && (
-            <button className="sync" type="button" onClick={openSync} title="Jetzt mit Odoo abgleichen">
+            <button className="sync" type="button" onClick={openSync} title={odooStatus.lastError ? `Letzter Abgleich mit Fehler: ${odooStatus.lastError}. Klicken: neu abgleichen` : "Jetzt mit Odoo abgleichen"}>
               <span className={"ok" + (odooStatus.lastError ? " err" : "")} />
-              {odooStatus.lastSync ? "Odoo · vor " + (Math.max(0, Math.round((Date.now() - Date.parse(odooStatus.lastSync)) / 60000)) || "<1") + " Min." : "Odoo abgleichen"}
+              {odooStatus.lastError
+                ? "Odoo-Abgleich mit Fehler"
+                : odooStatus.lastSync
+                ? `Odoo abgeglichen ${new Date(odooStatus.lastSync).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })} Uhr`
+                : "Mit Odoo abgleichen"}
               {odooStatus.pendingClosing && odooStatus.pendingClosing.length > 0 && <b className="tag warn" style={{ fontStyle: "normal" }}>{odooStatus.pendingClosing.length} zu schließen</b>}
               <Ico n="refresh" s={15} />
             </button>
           )}
+          <SucheKnopf />
           <input ref={fileInput} type="file" accept=".xlsx" onChange={onImportFile} style={{ display: "none" }} />
           <button className="btn" type="button" onClick={() => fileInput.current.click()} title="Reserve: Fertigungsaufträge aus einer Excel-Datei aus Odoo importieren">
             <Ico n="down" s={16} />
@@ -4320,22 +4427,63 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
         </div>
       </div>
 
-      <PrioLeiste data={prio} setData={setPrio} spaet={prioSpaet} onOpen={(id) => { setTab("zeit"); openDetail(id); }} toast={toast} />
+      {/* Überblick in einer Zeile: Heute, Prio und Kennzahlen; „Details“ klappt Prio-Leiste und Heute-Liste auf (gemerkt je Gerät) */}
+      {(() => {
+        const wichtig = korb.filter((i) => i.tone !== "mute");
+        const rot = wichtig.filter((i) => i.tone === "bad").length;
+        const prioN = ((prio && prio.items) || []).length;
+        const stat = (key, n, label, tone) => (
+          <button type="button" className={`ov-item${tone ? " " + tone : ""}${hl === key ? " active" : ""}`} onClick={() => { setHl(hl === key ? null : key); setHlSel(null); setTab("zeit"); }} title="Im Zeitstrahl hervorheben">
+            <b>{n}</b>
+            <span>{label}</span>
+          </button>
+        );
+        return (
+          <div className="ov-strip card rise" style={{ "--i": 1 }}>
+            <button type="button" className={`ov-item heute${rot ? " bad" : wichtig.length ? " warn" : " ok"}`} onClick={() => setOvOpen(!ovOpen)} aria-expanded={ovOpen} title="Was heute zu tun ist">
+              <b>{wichtig.length || "✓"}</b>
+              <span>{wichtig.length ? (wichtig.length === 1 ? "Punkt für heute" : "Punkte für heute") : "Heute alles erledigt"}</span>
+            </button>
+            {prioN > 0 && (
+              <button type="button" className="ov-item prio" onClick={() => setOvOpen(true)} title="Prio-Aufträge dieser Woche">
+                <b>{prioN}</b>
+                <span>{prioN === 1 ? "Prio-Auftrag" : "Prio-Aufträge"}</span>
+              </button>
+            )}
+            <i className="ov-sep" aria-hidden="true" />
+            {stat("late", warnings.length, "Liefertermin gefährdet", warnings.length ? "bad" : "")}
+            {stat("pool", poolOrders.length, "noch ohne Maschine", "")}
+            {stat("soon", urgentIds.size, "starten bald, nicht bereit", urgentIds.size ? "warn" : "")}
+            <span className="ov-item static">
+              <span>Nächste freie Maschine</span>
+              <b className="ov-free">{nextFree ? `${nextFree.m.short} ${nextFree.at <= todayOff ? "jetzt frei" : `ab ${fmtShort(dateOf(nextFree.at))}`}` : "–"}</b>
+            </span>
+            <span style={{ flex: 1 }} />
+            <button type="button" className="btn sm" onClick={() => setOvOpen(!ovOpen)} aria-expanded={ovOpen}>
+              {ovOpen ? "Weniger zeigen" : "Heute & Prio zeigen"}
+              <Ico n={ovOpen ? "chevu" : "chevd"} s={15} />
+            </button>
+          </div>
+        );
+      })()}
 
-      <Arbeitskorb
-        bereich="planung"
-        reloadKey={fwKey}
-        onJump={jump}
-        onCounts={setKorb}
-        onChanged={() => fetch("/api/orders").then((r) => r.json()).then((d) => setOrders(d.orders)).catch(() => {})}
-        onHighlight={(ids) => {
-          setVorschlagIds(ids);
-          setHl("vorschlag");
-          setHlSel(ids.length ? { ids, anchor: ids[0] } : null);
-          setTab("zeit");
-          scrollTo("planverbessern");
-        }}
-      />
+      <div hidden={!ovOpen}>
+        <PrioLeiste data={prio} setData={setPrio} spaet={prioSpaet} onOpen={(id) => { setTab("zeit"); openDetail(id); }} toast={toast} />
+        <Arbeitskorb
+          bereich="planung"
+          reloadKey={fwKey}
+          onJump={jump}
+          onCounts={setKorb}
+          onChanged={() => fetch("/api/orders").then((r) => r.json()).then((d) => setOrders(d.orders)).catch(() => {})}
+          onHighlight={(ids) => {
+            setVorschlagIds(ids);
+            setHl("vorschlag");
+            setHlSel(ids.length ? { ids, anchor: ids[0] } : null);
+            setTab("zeit");
+            scrollTo("planverbessern");
+          }}
+        />
+      </div>
 
       {preview && (
         <div className="note warn rise" style={{ "--i": 1 }}>
@@ -4357,25 +4505,6 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
           </div>
         </div>
       )}
-
-      <div className="card stats rise" style={{ "--i": 1 }}>
-        <button className={`stat${hl === "late" ? " active" : ""}`} type="button" onClick={() => { setHl(hl === "late" ? null : "late"); setHlSel(null); setTab("zeit"); }}>
-          <span className="k"><i className="dot" style={{ "--c": "var(--bad)" }} /><span>Liefertermin gefährdet</span></span>
-          <b><span>{warnings.length}</span> {warnings.length === 1 ? "Auftrag" : "Aufträge"}</b>
-        </button>
-        <button className={`stat${hl === "pool" ? " active" : ""}`} type="button" onClick={() => { setHl(hl === "pool" ? null : "pool"); setHlSel(null); setTab("zeit"); }}>
-          <span className="k"><i className="dot" style={{ "--c": "var(--faint)" }} /><span>Noch keine Maschine</span></span>
-          <b><span>{poolOrders.length}</span> Positionen</b>
-        </button>
-        <button className={`stat${hl === "soon" ? " active" : ""}`} type="button" onClick={() => { setHl(hl === "soon" ? null : "soon"); setHlSel(null); setTab("zeit"); }}>
-          <span className="k"><i className="dot" style={{ "--c": "var(--warn)" }} /><span>Starten bald, nicht bereit</span></span>
-          <b><span>{urgentIds.size}</span> Positionen</b>
-        </button>
-        <div className="stat">
-          <span className="k"><i className="dot" style={{ "--c": "var(--ok)" }} /><span>Nächste freie Maschine</span></span>
-          <b>{nextFree ? `${nextFree.m.short} ${nextFree.at <= todayOff ? "jetzt frei" : `ab ${fmtShort(dateOf(nextFree.at))}`}` : "–"}</b>
-        </div>
-      </div>
 
       <div className="tabs rise" style={{ "--i": 2 }}>
         <button type="button" className={tab === "zeit" ? "on" : ""} onClick={() => setTab("zeit")}>

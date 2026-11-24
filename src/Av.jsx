@@ -7,6 +7,7 @@ import BomHinweis from "./BomHinweis.jsx";
 import Vollstaendig from "./Vollstaendig.jsx";
 import Terminverlauf from "./Terminverlauf.jsx";
 import FehlerMelden from "./FehlerMelden.jsx";
+import { HilfeKnopf, SucheKnopf } from "./Bedienhilfe.jsx";
 import AvAktionen from "./AvAktionen.jsx";
 import { AvPaket, useFreigaben, aenderungen } from "./Freigaben.jsx";
 import { ArbeitsplanKette, ArbeitsplanPanel } from "./Arbeitsplan.jsx";
@@ -516,7 +517,7 @@ export default function AvView({ avStdOf = () => null, orders, checks, planStart
     <>
       <div className="page-head rise" style={{ "--i": 0 }}>
         <div>
-          <h1>Arbeitsvorbereitung</h1>
+          <h1>Arbeitsvorbereitung <HilfeKnopf thema="av" /></h1>
           <p>Was ist bereit, was fehlt noch? Die Maschine weist die Planung zu.</p>
           <BomHinweis />
           <Vollstaendig onChanged={onReload} />

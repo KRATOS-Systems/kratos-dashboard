@@ -8,8 +8,39 @@ import { getDashFacts } from "./store.js";
 
 const dayWord = (n) => `${n} ${n === 1 ? "Tag" : "Tage"}`;
 
-export function alertsList(shared) {
+// Ausgeblendete Hinweise: gelten bis zum Ende des Tages, auf diesem Gerät (morgen sind sie wieder da, wenn es sie noch gibt)
+const HIDE_KEY = "kratos-hinweise-aus";
+const todayStr = () => new Date().toLocaleDateString("sv-SE");
+function hiddenMap() {
+  try {
+    const m = JSON.parse(localStorage.getItem(HIDE_KEY) || "{}");
+    const t = todayStr();
+    return Object.fromEntries(Object.entries(m).filter(([, d]) => d === t));
+  } catch {
+    return {};
+  }
+}
+export function hideAlert(key) {
+  try {
+    const m = hiddenMap();
+    m[key] = todayStr();
+    localStorage.setItem(HIDE_KEY, JSON.stringify(m));
+  } catch {}
+  window.dispatchEvent(new Event("kratos-hinweise"));
+}
+export function showAllAlerts() {
+  try {
+    localStorage.removeItem(HIDE_KEY);
+  } catch {}
+  window.dispatchEvent(new Event("kratos-hinweise"));
+}
+
+// Nur, was jetzt Handeln braucht, je Auftrag zusammengefasst:
+//   Liefertermin gefährdet (je Auftrag), startet in 7 Tagen und ist nicht bereit (je Auftrag, mit allem, was fehlt),
+//   Material: Widerspruch AV/Odoo oder Material fehlt bei Start in 7 Tagen (nur, wenn es nicht schon unter „startet bald“ steht)
+export function alertsList(shared, { mitAusgeblendet = false } = {}) {
   const pos = shared?.positions || [];
+  const hidden = mitAusgeblendet ? {} : hiddenMap();
   const late = [];
   const seen = new Set();
   pos
@@ -18,25 +49,43 @@ export function alertsList(shared) {
     .forEach((p) => {
       if (seen.has(p.source)) return;
       seen.add(p.source);
-      late.push({ id: p.id, title: p.source, text: `${dayWord(p.lateDays)} nach dem Liefertermin (${fmtShort(p.due)})${p.endName ? (p.endIsLane ? `, verzögert durch ${p.endName}` : `, letzte Position endet auf ${p.endName}`) : ""}` });
+      late.push({ key: `late:${p.source}`, id: p.id, title: p.source, text: `${dayWord(p.lateDays)} nach dem Liefertermin (${fmtShort(p.due)})${p.endName ? (p.endIsLane ? `, verzögert durch ${p.endName}` : `, letzte Position endet auf ${p.endName}`) : ""}` });
     });
-  const soon = pos
+  const soonBy = new Map();
+  pos
     .filter((p) => p.urgent)
-    .map((p) => ({ id: p.id, title: p.no, text: `${p.source} · startet ${fmtShort(p.start)}, fehlt: ${p.av.open.map((s) => s.label).join(", ")}` }));
+    .sort((a, b) => String(a.start).localeCompare(String(b.start)))
+    .forEach((p) => {
+      const k = p.source || p.no;
+      if (!soonBy.has(k)) soonBy.set(k, { key: `soon:${k}`, id: p.id, title: k, n: 0, start: p.start, fehlt: new Set() });
+      const s = soonBy.get(k);
+      s.n += 1;
+      p.av.open.forEach((x) => s.fehlt.add(x.label));
+    });
+  const soon = [...soonBy.values()].map((s) => ({ key: s.key, id: s.id, title: s.title, text: `${s.n > 1 ? `${s.n} Positionen starten` : "startet"} ab ${fmtShort(s.start)}, fehlt: ${[...s.fehlt].join(", ")}` }));
+  const soonIds = new Set(pos.filter((p) => p.urgent).map((p) => p.id));
   const mat = pos
-    .filter((p) => p.start && p.startIn <= 14 && p.materialMissing)
-    .map((p) => ({ id: p.id, title: p.no, text: p.materialWiderspruch ? `${p.source} · AV sagt da, Odoo sagt fehlt: bitte klären, Start ${fmtShort(p.start)}` : `${p.source} · Material fehlt laut Odoo, Start ${fmtShort(p.start)}` }));
+    .filter((p) => p.start && (p.materialWiderspruch ? p.startIn <= 14 : p.startIn <= 7 && p.materialMissing && !soonIds.has(p.id)))
+    .map((p) => ({ key: `mat:${p.id}`, id: p.id, title: p.no, text: p.materialWiderspruch ? `${p.source} · AV sagt da, Odoo sagt fehlt: bitte klären, Start ${fmtShort(p.start)}` : `${p.source} · Material fehlt laut Odoo, Start ${fmtShort(p.start)}` }));
+  const keep = (list) => list.filter((i) => !hidden[i.key]);
   return [
-    { title: "Liefertermin gefährdet", color: "var(--bad)", items: late },
-    { title: "Startet bald, nicht bereit", color: "var(--warn)", items: soon },
-    { title: "Material fehlt laut Odoo", color: "var(--bad)", items: mat },
+    { title: "Liefertermin gefährdet", color: "var(--bad)", items: keep(late) },
+    { title: "Startet in 7 Tagen, nicht bereit", color: "var(--warn)", items: keep(soon) },
+    { title: "Material klären", color: "var(--warn)", items: keep(mat) },
   ];
 }
 
 export function Alerts({ shared, onClose, onOpenPosition }) {
   const ref = useRef(null);
+  const [, setVer] = useState(0);
+  useEffect(() => {
+    const f = () => setVer((v) => v + 1);
+    window.addEventListener("kratos-hinweise", f);
+    return () => window.removeEventListener("kratos-hinweise", f);
+  }, []);
   const groups = shared ? alertsList(shared) : [];
   const n = groups.reduce((a, g) => a + g.items.length, 0);
+  const total = shared ? alertsList(shared, { mitAusgeblendet: true }).reduce((a, g) => a + g.items.length, 0) : 0;
   useEffect(() => {
     const out = (e) => {
       if (ref.current && !ref.current.contains(e.target) && !e.target.closest("[data-alertbtn]")) onClose();
@@ -51,7 +100,7 @@ export function Alerts({ shared, onClose, onOpenPosition }) {
     <div className="alerts" ref={ref} role="dialog" aria-label="Hinweise">
       <h4>
         Hinweise
-        <span className={`pill ${n ? "bad" : "ok"}`}>{n ? `${n} offen` : "alles ruhig"}</span>
+        <span className={`pill ${n ? "warn" : "ok"}`}>{n ? `${n} offen` : "alles ruhig"}</span>
       </h4>
       <div className="body">
         {groups.map((g) =>
@@ -59,18 +108,28 @@ export function Alerts({ shared, onClose, onOpenPosition }) {
             <div key={g.title}>
               <div className="g">{g.title}</div>
               {g.items.map((i) => (
-                <button className="it" type="button" key={g.title + i.id} onClick={() => onOpenPosition(i.id)}>
-                  <i className="ic" style={{ background: g.color }} />
-                  <div>
-                    <b>{i.title}</b>
-                    <span>{i.text}</span>
-                  </div>
-                </button>
+                <div className="it-row" key={i.key}>
+                  <button className="it" type="button" onClick={() => onOpenPosition(i.id)}>
+                    <i className="ic" style={{ background: g.color }} />
+                    <div>
+                      <b>{i.title}</b>
+                      <span>{i.text}</span>
+                    </div>
+                  </button>
+                  <button type="button" className="it-hide" onClick={() => hideAlert(i.key)} title="Für heute ausblenden (morgen wieder da, wenn es noch zutrifft)" aria-label={`${i.title} für heute ausblenden`}>
+                    <Ico n="x" s={14} />
+                  </button>
+                </div>
               ))}
             </div>
           ) : null
         )}
-        {n === 0 && <div style={{ padding: "10px 16px 16px", color: "var(--muted)", fontSize: 14 }}>Es gibt zurzeit nichts, was Aufmerksamkeit braucht.</div>}
+        {n === 0 && <div style={{ padding: "10px 16px 16px", color: "var(--muted)", fontSize: 15 }}>Es gibt zurzeit nichts, was Aufmerksamkeit braucht.</div>}
+        {total > n && (
+          <button type="button" className="btn quiet sm" style={{ margin: "4px 12px 12px" }} onClick={showAllAlerts}>
+            {total - n} ausgeblendete wieder zeigen
+          </button>
+        )}
       </div>
     </div>
   );

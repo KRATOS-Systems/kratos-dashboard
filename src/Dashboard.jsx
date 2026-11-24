@@ -13,6 +13,7 @@ import {
 import { Ico, MTile, SparkIcon, useToast } from "./ui.jsx";
 import { setDashFacts } from "./store.js";
 import MaschinenJetzt from "./MaschinenJetzt.jsx";
+import { HilfeKnopf, SucheKnopf } from "./Bedienhilfe.jsx";
 
 const TREND_WEEKS = 8;
 
@@ -542,7 +543,7 @@ export default function Dashboard({ weekCap, saveCapacity, today, openTalos }) {
     <>
       <div className="page-head rise" style={{ "--i": 0 }}>
         <div>
-          <h1>Produktionsdashboard</h1>
+          <h1>Produktionsdashboard <HilfeKnopf thema="dashboard" /></h1>
           <p>{selected ? `Auswertung ${selected.label} aus den Zählerständen vom ${fmtShort(period.to)}` : "Noch keine Auswertung"}</p>
           {selected && (
             <div className="pills">
@@ -553,6 +554,7 @@ export default function Dashboard({ weekCap, saveCapacity, today, openTalos }) {
           )}
         </div>
         <div className="actions">
+          <SucheKnopf />
           <select value={selectedKey || ""} onChange={(ev) => setPickedWeek(ev.target.value)} disabled={!weekOptions.length} aria-label="Woche">
             {!weekOptions.length && <option value="">Keine Daten</option>}
             {weekOptions.map((w) => (

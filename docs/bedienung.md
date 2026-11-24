@@ -40,4 +40,22 @@ Jetzt gilt eine Regel für Etikett, Laufkarte und Hinweise:
 Alle Widersprüche stehen in der Steuerung unter „Datenqualität“ (Gruppe `material`). Lösen: Liegt die Ware da, in Odoo Wareneingang
 bzw. Bestand buchen; fehlt sie, in der AV den Punkt Material zurücksetzen. Test: `scripts/testBedienung.mjs`.
 
-Stufe 2 (später, nur nach Freigabe): Planungsseite und Positionsfenster neu ordnen (Zeitstrahl nach oben, eine Hauptaktion je Fenster).
+# Bedienung, Stufe 2 (24.11.2026, gleicher PR)
+
+- **Hinweise** (Glocke): nur, was jetzt Handeln braucht, je Auftrag zusammengefasst (Liefertermin gefährdet; startet in 7 Tagen und
+  ist nicht bereit; Material klären). Jeder Eintrag lässt sich **für heute ausblenden** (×, je Gerät, `localStorage kratos-hinweise-aus`),
+  morgen ist er wieder da, wenn er noch zutrifft. Zähler in der Leiste ohne Ausgeblendete. `Overlays.alertsList`.
+- **Planungsseite**: Prio-Leiste, Heute-Liste und die vier Kennzahlen sind eine Zeile (`.ov-strip`); „Heute & Prio zeigen“ klappt
+  die beiden Listen auf (gemerkt, `kratos-ueberblick`). Der Zeitstrahl steht damit direkt oben. Klick auf eine Kennzahl hebt wie bisher hervor.
+- **Positionsfenster**: oben „Position“ + Nummer, darunter **ein Satz** (wo, wann, was fehlt, ggf. „wird x Tage nach dem Liefertermin
+  fertig“), dann die Hauptknöpfe (**Fertig produziert**, Prio setzen, Im Zeitstrahl, AV, Zeichnung). Abschnitte Laufkarte, Plan und Zeiten,
+  Zuständig (standardmäßig zu) und Arbeitsvorbereitung lassen sich zuklappen (gemerkt, `kratos-fenster-abschnitte`). Das Etikett
+  „nicht startklar“ entfällt, der Satz sagt es.
+- **Rückgängig** (6,5 Sekunden im Hinweis unten): nach Fertig produziert, Geprüft, Versendet, Zurück in den Versand und Erledigt.
+  Schreibt den alten Zustand zurück, auf einer Maschine auch den alten Platz (`undoFor` in Planning.jsx).
+- **Werkstatt**: Auf Touch-Geräten (`pointer: coarse`) sind Knöpfe und Felder mindestens 46 px hoch, Schrift 16 px. Team-Tafel im Vollbild größer.
+- **Begriffe**: Fenster zeigt „Position FA…“ und „Auftrag A…“, die Laufkarte heißt „Laufkarte Auftrag A…“.
+- **Balken**: Kurztext „noch 12 h · 47 % fertig“, Terminlinie „3 Tage zu spät“ / „15 Tage Puffer“.
+- **Kopfzeile**: „Alle Verbindungen laufen“ bzw. „Bitte prüfen: Odoo“; „Odoo abgeglichen 18:05 Uhr“ bzw. „Odoo-Abgleich mit Fehler“.
+- **Suche**: Suchfeld oben auf Planung, Steuerung, Dashboard und Team (öffnet die Suche wie Strg K). `Bedienhilfe.jsx`.
+- **Hilfe**: „?“ neben jedem Seitentitel mit zwei, drei Sätzen und Link zur ausführlichen Hilfe. Texte in `Bedienhilfe.jsx` (`HILFE`).

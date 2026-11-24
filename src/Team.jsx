@@ -6,6 +6,7 @@ import { JobRef } from "./BdeControls.jsx";
 import { askLaufzeit, afterStop } from "./Laufzeit.jsx";
 import { AmpelLeiste } from "./Ampel.jsx";
 import { pollEvery } from "./poll.js";
+import { HilfeKnopf, SucheKnopf } from "./Bedienhilfe.jsx";
 
 // Team-Tafel: eine Karte pro Mitarbeiter, wer ist da und woran wird gerade gearbeitet.
 // Farbe statt Text: grün = da und Buchung läuft, grau = da, nichts gebucht, orange = doppelt gestempelt, rot = Buchung vergessen,
@@ -290,11 +291,12 @@ export default function Team({ kiosk, goTo }) {
     <div className={`bde${kiosk ? " kiosk" : ""}`}>
       <div className="page-head">
         <div>
-          <h1>Team</h1>
+          <h1>Team <HilfeKnopf thema="team" /></h1>
           <p>Wer arbeitet woran{data && data.at ? ` · Stand ${fmtTime(data.at)}` : ""}</p>
         </div>
         <div className="actions">
           {kiosk && <span className="kclock mono">{fmtTime(now)}</span>}
+          {!kiosk && <SucheKnopf />}
           <button type="button" className="btn" onClick={toggleKiosk}>
             <Ico n={kiosk ? "x" : "full"} s={16} />
             {kiosk ? "Vollbild beenden" : "Vollbild"}

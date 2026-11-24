@@ -165,6 +165,81 @@ label.f { font-weight: 600; font-size: 14px; color: var(--muted); min-width: 0; 
 .fgrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 label.f > :is(input, select, textarea) { width: 100%; min-width: 0; }
 
+/* ---------- Planung: Überblick in einer Zeile ---------- */
+.ov-strip { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 8px 10px; margin-bottom: 14px; }
+.ov-item { display: inline-flex; align-items: baseline; gap: 7px; padding: 7px 12px; border-radius: 12px; border: 1px solid transparent; background: transparent; color: var(--ink); font: inherit; font-size: 14.5px; cursor: pointer; white-space: nowrap; }
+.ov-item b { font: 600 20px/1 var(--f-mono); }
+.ov-item span { color: var(--muted); }
+button.ov-item:hover { background: var(--btn-bg-hover); border-color: var(--btn-edge); }
+.ov-item.active { background: var(--btn-bg-hover); border-color: var(--link); }
+.ov-item.bad b { color: var(--bad); }
+.ov-item.warn b { color: var(--warn); }
+.ov-item.ok b { color: var(--ok); }
+.ov-item.heute { border-color: var(--btn-edge); background: var(--btn-bg); }
+.ov-item.heute.bad { border-color: color-mix(in srgb, var(--bad) 55%, transparent); }
+.ov-item.heute.warn { border-color: color-mix(in srgb, var(--warn) 55%, transparent); }
+.ov-item.prio b { color: var(--nl-acc, var(--bad)); }
+.ov-item.static { cursor: default; flex-direction: column; align-items: flex-start; gap: 2px; }
+.ov-item.static span { font-size: 13px; }
+.ov-item .ov-free { font: 600 15px/1.2 var(--f-body); }
+.ov-sep { width: 1px; align-self: stretch; margin: 4px 6px; background: var(--line); }
+@media (max-width: 760px) { .ov-sep { display: none; } }
+
+/* ---------- Positionsfenster: Satz oben, aufklappbare Abschnitte ---------- */
+.drawer .eyebrow { font-size: 12.5px; font-weight: 600; color: var(--muted); letter-spacing: .02em; margin-bottom: 2px; }
+.status-satz { margin: 12px 0 0; padding: 10px 12px; border-radius: 12px; background: var(--btn-bg-hover); font-size: 15px; line-height: 1.45; color: var(--ink); }
+.status-satz.warn { box-shadow: inset 3px 0 0 var(--warn); }
+.status-satz.bad { box-shadow: inset 3px 0 0 var(--bad); }
+.fold-head { display: flex; align-items: center; gap: 10px; width: 100%; padding: 2px 0; margin: 0; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.fold-head h4 { margin: 0 !important; }
+.fold-head .fold-ch { margin-left: auto; color: var(--muted); display: inline-flex; transition: transform .15s; transform: rotate(-90deg); }
+.fold.open .fold-head .fold-ch { transform: none; }
+.fold-head:hover h4, .fold-head:hover .fold-ch { color: var(--link); }
+.fold-body { margin-top: 12px; }
+.dact .dact-lab { flex-basis: 100%; font-size: 13px; font-weight: 600; color: var(--muted); }
+
+/* ---------- Suchfeld und Hilfe oben auf den Seiten ---------- */
+.suche-knopf {
+  display: inline-flex; align-items: center; gap: 8px; min-width: 210px; min-height: 36px; padding: 6px 10px 6px 12px;
+  border-radius: 9px; border: 1px solid var(--field-edge); background: var(--field-bg); box-shadow: var(--field-inset);
+  color: var(--faint); font: inherit; font-size: 14.5px; cursor: text; text-align: left;
+}
+.suche-knopf span { flex: 1; }
+.suche-knopf kbd { font: 500 12px var(--f-mono); color: var(--muted); border: 1px solid var(--field-edge); border-radius: 5px; padding: 1px 6px; }
+.suche-knopf:hover { border-color: var(--field-edge-hover); color: var(--muted); }
+@media (max-width: 760px) { .suche-knopf { min-width: 0; } .suche-knopf kbd { display: none; } }
+.page-head h1 { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.hilfe-knopf { position: relative; display: inline-flex; }
+.hilfe-q { width: 28px; height: 28px; min-height: 0 !important; padding: 0 !important; justify-content: center; border-radius: 50% !important; font: 700 15px/1 var(--f-body) !important; color: var(--muted); }
+.hilfe-pop {
+  position: absolute; z-index: 60; top: calc(100% + 8px); left: 0; width: min(380px, 80vw);
+  padding: 14px 16px; border-radius: 14px; background: var(--surface); border: 1px solid var(--line-strong);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, .35); font: 400 14.5px/1.5 var(--f-body); color: var(--ink); letter-spacing: 0; text-transform: none;
+}
+.hilfe-pop b { display: block; font-size: 15px; margin-bottom: 6px; }
+.hilfe-pop p { margin: 0 0 8px; color: var(--muted); }
+html[data-look="neu"][data-theme="dark"] .hilfe-pop { background: #1C222A; }
+
+/* ---------- Werkstatt: Tablet / Touch (Finger, auch mit Handschuh) ---------- */
+@media (pointer: coarse) {
+  html .btn, html .seg button, .chipf, .ov-item, .ghost-dark, .nav button { min-height: 46px; }
+  html .btn.sm { min-height: 42px; }
+  html .btn { padding-left: 18px; padding-right: 18px; font-size: 16px; }
+  html[data-look][data-look] :is(input[type=text], input[type=number], input[type=date], input[type=time], input[type=search], select, textarea) { min-height: 46px; font-size: 16px; }
+  input[type=checkbox], input[type=radio] { width: 24px; height: 24px; }
+  .hilfe-q { width: 40px; height: 40px; }
+  .alerts .it-hide { padding: 0 18px; }
+}
+/* Team-Tafel im Vollbild (Halle): größer, damit man es aus ein paar Metern lesen kann */
+.app.kiosk .main { font-size: 17px; }
+.app.kiosk .page-head h1 { font-size: 36px; }
+
+/* ---------- Hinweise: je Eintrag „für heute ausblenden“ ---------- */
+.alerts .it-row { display: flex; align-items: stretch; }
+.alerts .it-row .it { flex: 1; min-width: 0; }
+.alerts .it-hide { flex: none; border: 0; background: transparent; color: var(--faint); padding: 0 14px; cursor: pointer; opacity: .7; }
+.alerts .it-hide:hover { opacity: 1; color: var(--ink); background: var(--btn-bg-hover); }
+
 /* ---------- 6 Linke Leiste: „Mehr“ ---------- */
 .side-more { display: flex; flex-direction: column; gap: inherit; padding-top: 6px; border-top: 1px solid rgba(255, 255, 255, .10); }
 html:not([data-theme="dark"]) .side-more { border-top-color: rgba(20, 24, 29, .10); }

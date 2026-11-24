@@ -238,7 +238,28 @@ export default function App() {
       lsSet("kratos-mehr", n ? "1" : "0");
       return n;
     });
-  const alertTotal = useMemo(() => (shared ? alertsList(shared).reduce((a, g) => a + g.items.length, 0) : 0), [shared]);
+  // Suchfeld und Hilfe oben auf den Seiten (Bedienhilfe.jsx) melden sich per Ereignis
+  useEffect(() => {
+    const suche = () => {
+      setTalosQ(null);
+      setShowSearch(true);
+    };
+    const gehe = (e) => e.detail && goTo(e.detail);
+    window.addEventListener("kratos-suche", suche);
+    window.addEventListener("kratos-gehe", gehe);
+    return () => {
+      window.removeEventListener("kratos-suche", suche);
+      window.removeEventListener("kratos-gehe", gehe);
+    };
+  }); // eslint-disable-line react-hooks/exhaustive-deps
+  // Zähler der Hinweise: ohne die heute ausgeblendeten (Overlays.hideAlert meldet Änderungen per Ereignis)
+  const [alertVer, setAlertVer] = useState(0);
+  useEffect(() => {
+    const f = () => setAlertVer((v) => v + 1);
+    window.addEventListener("kratos-hinweise", f);
+    return () => window.removeEventListener("kratos-hinweise", f);
+  }, []);
+  const alertTotal = useMemo(() => (shared ? alertsList(shared).reduce((a, g) => a + g.items.length, 0) : 0), [shared, alertVer]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Markierung der aktiven Seite in der Navigation
   const navRef = useRef(null);

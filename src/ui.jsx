@@ -54,6 +54,8 @@ const IC = {
   trash: '<path d="M5 7h14M10 7V4h4v3M7 7l1 13h8l1-13"/>',
   left: '<path d="M14 6l-6 6 6 6"/>',
   right: '<path d="M10 6l6 6-6 6"/>',
+  chevd: '<path d="M6 9l6 6 6-6"/>',
+  chevu: '<path d="M6 15l6-6 6 6"/>',
   up: '<path d="M12 19V7M6 11l6-6 6 6"/>',
   down: '<path d="M12 4v12M6 12l6 6 6-6"/>',
   search: '<circle cx="11" cy="11" r="6"/><path d="M20 20l-4-4"/>',
