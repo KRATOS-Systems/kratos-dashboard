@@ -4,6 +4,7 @@
 //   stueckliste    Fertigungsauftrag ohne Stückliste, ohne Arbeitsgänge oder auf Musterwerten -> Maschine/Zeit in Odoo pflegen
 //   zeichnung      keine Zeichnung (PDF) am Artikel in Odoo -> anhängen (sonst kann die KI sie nicht lesen)
 //   kalkulation    Teil ist in der Kalkulation nicht kalkuliert -> "In der Kalkulation berechnen" im AV-Paket
+//   material       AV hat Material als bereit abgehakt, Odoo meldet „nicht verfügbar“ -> Bestand buchen oder AV zurücksetzen
 //   stunden        offene Position ohne Stunden (kann nicht eingeplant werden)
 //   schliessen     in Odoo erledigt, in der App noch offen -> beim Odoo-Abgleich schließen
 //   einkauf        Altlasten im Einkauf: Bestellung ohne Wareneingang, Wareneingang ohne Bestellung
@@ -42,6 +43,21 @@ export default function registerDatenqualitaet(app, db) {
       if (d.kalkMoeglich && byRef.has(p.bezug)) nichtKalk.push(pos(byRef.get(p.bezug), { grund: "nicht kalkuliert" }));
     }
     add("kalkulation", "Teil nicht kalkuliert", "Im AV-Paket „In der Kalkulation berechnen“ drücken (legt das Teil an und rechnet es mit der STEP-Datei).", nichtKalk);
+
+    // Material: in der AV als bereit abgehakt, laut Odoo nicht verfügbar (gleiche Regel wie avLib.materialStand)
+    const matWider = db
+      .prepare(
+        `SELECT o.id, o.odoo_ref, o.odoo_id, o.order_no, o.source, o.product, o.customer, o.component_status FROM orders o
+         JOIN av_checks c ON c.order_id = o.id AND c.item = 'material' AND c.status = 'bereit'
+         WHERE o.done = 0 AND lower(COALESCE(o.component_status, '')) LIKE '%nicht verf%'`
+      )
+      .all();
+    add(
+      "material",
+      "Material: AV sagt da, Odoo sagt fehlt",
+      "Liegt die Ware da, in Odoo den Wareneingang bzw. Bestand buchen (dann ist sie reserviert). Fehlt sie doch, in der AV den Punkt Material zurücksetzen.",
+      matWider.map((o) => pos(o, { grund: `Odoo: ${o.component_status}` }))
+    );
 
     add(
       "stunden",

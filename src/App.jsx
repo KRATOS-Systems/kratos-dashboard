@@ -230,7 +230,36 @@ export default function App() {
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, []);
-  const alertTotal = useMemo(() => (shared ? alertsList(shared).reduce((a, g) => a + g.items.length, 0) : 0), [shared]);
+  // „Mehr“ in der Leiste: auf diesem Gerät gemerkt
+  const [moreOpen, setMoreOpenRaw] = useState(() => lsGet("kratos-mehr") === "1");
+  const setMoreOpen = (f) =>
+    setMoreOpenRaw((v) => {
+      const n = typeof f === "function" ? f(v) : f;
+      lsSet("kratos-mehr", n ? "1" : "0");
+      return n;
+    });
+  // Suchfeld und Hilfe oben auf den Seiten (Bedienhilfe.jsx) melden sich per Ereignis
+  useEffect(() => {
+    const suche = () => {
+      setTalosQ(null);
+      setShowSearch(true);
+    };
+    const gehe = (e) => e.detail && goTo(e.detail);
+    window.addEventListener("kratos-suche", suche);
+    window.addEventListener("kratos-gehe", gehe);
+    return () => {
+      window.removeEventListener("kratos-suche", suche);
+      window.removeEventListener("kratos-gehe", gehe);
+    };
+  }); // eslint-disable-line react-hooks/exhaustive-deps
+  // Zähler der Hinweise: ohne die heute ausgeblendeten (Overlays.hideAlert meldet Änderungen per Ereignis)
+  const [alertVer, setAlertVer] = useState(0);
+  useEffect(() => {
+    const f = () => setAlertVer((v) => v + 1);
+    window.addEventListener("kratos-hinweise", f);
+    return () => window.removeEventListener("kratos-hinweise", f);
+  }, []);
+  const alertTotal = useMemo(() => (shared ? alertsList(shared).reduce((a, g) => a + g.items.length, 0) : 0), [shared, alertVer]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Markierung der aktiven Seite in der Navigation
   const navRef = useRef(null);
@@ -306,6 +335,22 @@ export default function App() {
                 </span>
               )}
             </button>
+            <button type="button" className={`ghost-dark assist-sw${assistOpen ? " on" : ""}`} aria-label="Assistent" onClick={toggleAssist}>
+              <SparkIcon s={18} />
+              <span className="lbl">Assistent</span>
+            </button>
+            {/* Selten gebraucht: unter „Mehr“, damit die Leiste ruhig bleibt */}
+            <button type="button" className={`ghost-dark more-sw${moreOpen ? " on" : ""}`} aria-expanded={moreOpen} aria-label="Mehr" onClick={() => setMoreOpen((v) => !v)} title="Hilfe, Feedback, Datensicherung, Hell/Dunkel, Ansicht">
+              <Ico n="more" />
+              <span className="lbl">{moreOpen ? "Weniger" : "Mehr"}</span>
+              {!moreOpen && fbNew > 0 && (
+                <span className="cnt2" key={fbNew}>
+                  {fbNew}
+                </span>
+              )}
+            </button>
+            {moreOpen && (
+            <div className="side-more">
             <button type="button" className={`ghost-dark${page === "hilfe" ? " on" : ""}`} aria-label="Hilfe" onClick={() => goTo("hilfe")}>
               <Ico n="help" />
               <span className="lbl">Hilfe</span>
@@ -327,10 +372,6 @@ export default function App() {
               <Ico n={mode === "dark" ? "sun" : "moon"} />
               <span className="lbl">{mode === "dark" ? "Hell" : "Dunkel"}</span>
             </button>
-            <button type="button" className={`ghost-dark assist-sw${assistOpen ? " on" : ""}`} aria-label="Assistent" onClick={toggleAssist}>
-              <SparkIcon s={18} />
-              <span className="lbl">Assistent</span>
-            </button>
             {!touch && (
               <button
                 type="button"
@@ -348,6 +389,8 @@ export default function App() {
               <Ico n="spark" />
               <span className="lbl">{look === "neu" ? "Alter Look" : "Neuer Look"}</span>
             </button>
+            </div>
+            )}
           </div>
           </div>
         </aside>}

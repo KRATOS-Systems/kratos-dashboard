@@ -21,11 +21,12 @@ const Abwesend = lazy(() => import("./Abwesend.jsx"));
 import FehlerMelden from "./FehlerMelden.jsx";
 // Zeichnung und 3D erst laden, wenn jemand sie öffnet (three.js ist groß)
 const DocsDialog = lazy(() => import("./PartDocs.jsx").then((m) => ({ default: m.DocsDialog })));
-import { AV_ITEMS, AV_STATUS, AV_TEAM, isNewAv, avKey, avState, avSummary, startklar } from "./avLib.js";
+import { AV_ITEMS, AV_STATUS, AV_TEAM, isNewAv, avKey, avState, avSummary, startklar, materialStand } from "./avLib.js";
 import { STAFF, ACTIVITIES, STAFF_DEFAULTS, responsible, avResponsible, sharedMachine } from "./staffLib.js";
 import Avatar from "./Avatar.jsx";
 import { AppTile, Ico, LaneIcon, LaneTile, MTile, Thumb, useToast, partImg } from "./ui.jsx";
 import DiensteStatus from "./DiensteStatus.jsx";
+import { SucheKnopf, HilfeKnopf } from "./Bedienhilfe.jsx";
 import { pollEvery } from "./poll.js";
 import {
   DEFAULT_TIGHT_DAYS,
@@ -95,7 +96,7 @@ function LaneInfo({ o }) {
         {o.ship_info ? (
           <span className={`vs-info${/Teillieferung/.test(o.ship_info) ? " warn" : ""}`}>{o.ship_info}</span>
         ) : (
-          <span className="fg-faint">Noch keine Lieferung in Odoo bestätigt. Sobald sie bestätigt ist, gilt die Position als versendet.</span>
+          <span className="fg-faint">Noch keine Lieferung in Odoo bestätigt.</span>
         )}
       </div>
     );
@@ -147,15 +148,49 @@ function OdooLink({ o, btn }) {
     </a>
   );
 }
-// Material laut Odoo (Spalte "Komponentenstatus" im Export): nicht verfügbar = rot, erwartet = gelb, verfügbar = grün
-function MaterialBadge({ o }) {
-  const text = o.component_status;
-  if (!text) return null;
-  const low = text.toLowerCase();
-  const cls = /nicht verf/.test(low) ? "bad" : /verf|reserv/.test(low) ? "ok" : "warn";
+// Aufklappbarer Abschnitt im Fenster einer Position; was zu- oder aufgeklappt wurde, merkt sich das Gerät
+const FOLD_KEY = "kratos-fenster-abschnitte";
+const FOLD_DEFAULT = { zustaendig: false }; // standardmäßig zu; alle anderen offen
+function foldRead() {
+  try {
+    return JSON.parse(localStorage.getItem(FOLD_KEY) || "{}");
+  } catch {
+    return {};
+  }
+}
+function Fold({ id, title, extra, children }) {
+  const [open, setOpen] = useState(() => {
+    const m = foldRead();
+    return id in m ? !!m[id] : FOLD_DEFAULT[id] !== false;
+  });
+  const toggle = () => {
+    const next = !open;
+    setOpen(next);
+    try {
+      localStorage.setItem(FOLD_KEY, JSON.stringify({ ...foldRead(), [id]: next }));
+    } catch {}
+  };
   return (
-    <span className={`pill ${cls}`} title={`Materialstatus laut Odoo: ${text}`}>
-      {/nicht verf/.test(low) ? "Material fehlt" : text}
+    <div className={`dsec fold${open ? " open" : ""}`}>
+      <button type="button" className="fold-head" aria-expanded={open} onClick={toggle} title={open ? "Zuklappen" : "Aufklappen"}>
+        <h4>{title}</h4>
+        {extra}
+        <span className="fold-ch" aria-hidden="true">
+          <Ico n="chevd" s={18} />
+        </span>
+      </button>
+      {open && <div className="fold-body">{children}</div>}
+    </div>
+  );
+}
+
+// Material: eine Aussage aus AV und Odoo (avLib.materialStand); Widerspruch gelb mit Erklärung
+function MaterialBadge({ o, checks }) {
+  const m = materialStand(o, checks);
+  if (!m || m.st === "entfaellt") return null;
+  return (
+    <span className={`pill ${m.cls}`} title={m.title}>
+      {m.text}
     </span>
   );
 }
@@ -211,6 +246,20 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
   const [docsFor, setDocsFor] = useState(null); // Position, deren Zeichnung und 3D-Modell gerade offen sind
   const [pvOpen, setPvOpen] = useState(false); // "Plan verbessern" aufgeklappt
   const [korb, setKorb] = useState([]); // Zeilen aus "Heute" (für die Zähler an den Reitern)
+  // Planung: Prio-Leiste und Heute-Liste aufgeklappt? (gemerkt je Gerät; zu = Zeitstrahl rückt nach oben)
+  const [ovOpen, setOvOpenRaw] = useState(() => {
+    try {
+      return localStorage.getItem("kratos-ueberblick") === "1";
+    } catch {
+      return false;
+    }
+  });
+  const setOvOpen = (v) => {
+    setOvOpenRaw(v);
+    try {
+      localStorage.setItem("kratos-ueberblick", v ? "1" : "0");
+    } catch {}
+  };
   const [sTab, setSTab] = useState("versand"); // Reiter im Bereich „Steuerung“
   const pendingSTab = useRef(null); // Reiter der Steuerung, der nach dem Seitenwechsel geöffnet werden soll
   const pendingJump = useRef(null); // Sprungziel in der Planung nach dem Seitenwechsel (aus der Steuerung)
@@ -234,7 +283,10 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
     if (ziel === "av") return goTo && goTo("av");
     if (ziel === "sync") return openSync();
     if (["versand", "extern", "erledigt", "dq", "kz"].includes(ziel)) return openSteuerung(ziel);
-    if (ziel === "freigaben" || ziel === "fruehwarnung") return scrollTo("arbeitskorb");
+    if (ziel === "freigaben" || ziel === "fruehwarnung") {
+      if (section === "planung") setOvOpen(true);
+      return scrollTo("arbeitskorb");
+    }
     if (section !== "planung") {
       // aus der Steuerung: in die Planung wechseln und dort springen
       if (typeof ziel === "string" && ziel.startsWith("pos:")) pendingOpen.current = Number(ziel.slice(4));
@@ -996,7 +1048,33 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
   // QS-Ablauf: "Fertig produziert" schiebt die Position in die QS (Beginn heute), ohne QS-Pflicht ist sie damit erledigt.
   // In der QS bestätigt "Geprüft" den Abschluss (mit Stichpunkten geht es weiter zur Oberfläche) oder "Nacharbeit"
   // schickt die Position mit dem noch nötigen Rest zurück an ihre Maschine.
+  // Rückgängig nach einem Klick (Fertig produziert, Geprüft, Versendet, Zurück/Erledigt): Zustand vorher merken und zurückschreiben,
+  // auf einer Maschine auch den alten Platz in der Reihenfolge
+  function undoFor(o) {
+    const snap = {
+      machine: o.machine || "",
+      done: !!o.done,
+      done_date: o.done_date || null,
+      extern_start: o.extern_start || null,
+      done_hours: Number(o.done_hours) || 0,
+      produced_date: o.produced_date || null,
+      progress_date: o.progress_date || null,
+      checked_date: o.checked_date || null,
+      shipped_date: o.shipped_date || null,
+    };
+    const onMachine = MACHINES.some((m) => m.id === o.machine);
+    const seq = onMachine ? orders.filter((x) => x.machine === o.machine && !x.done).sort((a, b) => a.position - b.position).map((x) => x.id) : null;
+    return async () => {
+      setOrders((prev) => prev.map((x) => (x.id === o.id ? { ...x, ...snap } : x)));
+      await send(`/api/orders/${o.id}`, "PUT", snap);
+      if (seq) await send("/api/orders/reorder", "POST", { machine: o.machine, ids: seq });
+      reloadOrders();
+      toast(`${posNo(o)}: rückgängig gemacht`);
+    };
+  }
+
   function finishProduced(o) {
+    const undo = undoFor(o);
     const patch = { done_hours: o.hours, produced_date: today, progress_date: today };
     const hasNext = orders.some((x) => x.after_id === o.id && !x.done);
     setDetailId(null);
@@ -1013,7 +1091,7 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
     } else {
       patchOrder(o.id, { ...patch, done: true, done_date: today });
     }
-    toast(`${posNo(o)} ist fertig produziert${hasNext ? "" : o.qs_required !== false ? " und geht in die QS" : needsShipping(o) ? " und geht in den Versand" : ""}`);
+    toast(`${posNo(o)} ist fertig produziert${hasNext ? "" : o.qs_required !== false ? " und geht in die QS" : needsShipping(o) ? " und geht in den Versand" : ""}`, undo);
   }
 
   // Nach QS / Extern: Positionen eines Kundenauftrags gehen in den Versand (versendet = Lieferung in Odoo bestätigt, server/versand.js)
@@ -1023,24 +1101,45 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
     send(`/api/orders/${o.id}`, "PUT", { machine: lane.id, extern_start: today, ...extra });
   }
   async function markShipped(o) {
+    const undo = undoFor(o);
     const r = await fetch(`/api/versand/${o.id}/versendet`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" }).catch(() => null);
     if (!r || !r.ok) return toast("Versendet melden hat nicht geklappt");
     setDetailId((cur) => (cur === o.id ? null : cur));
     reloadOrders();
-    toast(`${posNo(o)} versendet`);
+    toast(`${posNo(o)} versendet`, undo);
+  }
+
+  // Versand: Lieferungen jetzt in Odoo prüfen (sonst alle 10 Minuten); bestätigte Lieferungen gehen nach „Erledigt“
+  const [versandBusy, setVersandBusy] = useState(false);
+  async function versandPruefen() {
+    setVersandBusy(true);
+    try {
+      const r = await fetch("/api/versand?neu=1");
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j.error || "Odoo nicht erreichbar");
+      reloadOrders();
+      toast(j.versendet ? `${j.versendet} Position${j.versendet === 1 ? "" : "en"} versendet, jetzt unter „Erledigt“` : "Geprüft: noch keine neue Lieferung in Odoo bestätigt");
+    } catch (err) {
+      toast(`Prüfen hat nicht geklappt: ${err.message}`);
+    } finally {
+      setVersandBusy(false);
+    }
   }
 
   function markChecked(o) {
+    const undo = undoFor(o);
     const patch = { checked_date: today };
     if (tagsOf(o).length > 0) {
       const lane = laneOf(EXTERN);
       setOrders((prev) => applyLaneMove(prev, [o.id], today, lane).map((x) => (x.id === o.id ? { ...x, ...patch } : x)));
       send(`/api/orders/${o.id}`, "PUT", { machine: lane.id, extern_start: today, ...laneDaysOnMove(o, lane), ...patch });
+      toast(`${posNo(o)} geprüft, geht zur Oberfläche extern`, undo);
     } else if (needsShipping(o)) {
       toVersand(o, patch);
-      toast(`${posNo(o)} geprüft, geht in den Versand`);
+      toast(`${posNo(o)} geprüft, geht in den Versand`, undo);
     } else {
       patchOrder(o.id, { ...patch, done: true, done_date: today });
+      toast(`${posNo(o)} geprüft und erledigt`, undo);
     }
   }
 
@@ -1388,6 +1487,7 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
           urgent: !!sched && ps && daysBetween(today, ps.start) <= 7 && !av.ready,
           materialOpen: avState(checks, o.id, "material").status === "offen",
           materialMissing: /nicht verf/i.test(o.component_status || ""),
+          materialWiderspruch: (materialStand(o, checks) || {}).st === "widerspruch",
           waitText: waitText(found && found.it),
         });
       });
@@ -1704,7 +1804,7 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
             <Ico n="check" s={14} />
             Versendet
           </button>
-          <span style={{ fontSize: 12, color: "var(--muted)" }}>sonst automatisch, sobald die Lieferung in Odoo bestätigt ist</span>
+          <span className="hint-txt">z. B. bei Abholung</span>
         </>
       );
     }
@@ -1715,12 +1815,13 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
           className="btn sm"
           title={needsShipping(o) ? "Zurück vom Lieferanten: geht in den Versand" : "Erledigt"}
           onClick={() => {
+            const undo = undoFor(o);
             if (needsShipping(o)) {
               toVersand(o);
-              toast(`${posNo(o)} zurück, geht in den Versand`);
+              toast(`${posNo(o)} zurück, geht in den Versand`, undo);
             } else {
               patchOrder(o.id, { done: true, done_date: today });
-              toast(`${posNo(o)} erledigt`);
+              toast(`${posNo(o)} erledigt`, undo);
             }
           }}
         >
@@ -1733,9 +1834,9 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
       const n = Number(String(reworkText).replace(",", "."));
       return (
         <>
-          <span style={{ fontSize: 13 }}>Noch nötig:</span>
+          <span style={{ fontSize: 14 }}>Noch nötig:</span>
           <input type="number" min={0} step="any" autoFocus value={reworkText} onChange={(ev) => setReworkText(ev.target.value)} onKeyDown={(ev) => ev.key === "Enter" && Number.isFinite(n) && n > 0 && sendRework(o, n)} style={{ width: 80 }} aria-label="Noch nötige Stunden" />
-          <span style={{ fontSize: 13 }}>h</span>
+          <span style={{ fontSize: 14 }}>h</span>
           <button type="button" className="btn sm primary" disabled={!(Number.isFinite(n) && n > 0)} onClick={() => sendRework(o, n)}>
             Zurück an {MACHINES.find((m) => m.id === (o.from_machine || MACHINES[0].id))?.short}
           </button>
@@ -1754,7 +1855,7 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
         <button type="button" className="btn sm" onClick={() => { setReworkId(o.id); setReworkText(""); }} title="Nicht in Ordnung: zurück an die Maschine">
           Nacharbeit
         </button>
-        <span style={{ fontSize: 12, color: "var(--muted)" }}>{tagsOf(o).length > 0 ? `danach: ${tagsOf(o).join(", ")} (OBERFLÄCHE EXTERN)` : needsShipping(o) ? "danach: Versand" : "danach: erledigt"}</span>
+        <span style={{ fontSize: 13, color: "var(--muted)" }}>{tagsOf(o).length > 0 ? `danach: ${tagsOf(o).join(", ")} (OBERFLÄCHE EXTERN)` : needsShipping(o) ? "danach: Versand" : "danach: erledigt"}</span>
       </>
     );
   };
@@ -1791,6 +1892,7 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
             <div style={{ display: "flex", gap: 14, alignItems: "flex-start", minWidth: 0 }}>
               <Thumb src={partImg(o)} size={88} />
               <div style={{ minWidth: 0 }}>
+                <div className="eyebrow">Position</div>
                 <h3>{posNo(o)}</h3>
                 <div style={{ color: "var(--muted)", marginTop: 4 }}>
                   {o.source ? `Auftrag ${o.source}` : "ohne Auftrag"}
@@ -1816,21 +1918,56 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
             {pp && <span className={`pill ${pp.cls}`}>{pp.text}</span>}
             {o.pinned && <span className="pill mute" title="Plan neu ordnen verschiebt diese Position nicht">fixiert</span>}
             {wt && <span className="pill warn">{it.waitReason === "dep" ? "wartet auf Arbeitsgang" : it.waitReason === "av" ? "wartet auf AV" : it.waitReason === "material" ? "wartet auf Material" : "wartet auf Start"}</span>}
-            <span className={`pill ${sum.ready ? "ok" : "mute"}`}>AV {avDone}/{sum.states.length}</span>
-            <MaterialBadge o={o} />
+            <span className={`pill ${sum.ready ? "ok" : "mute"}`} title="Arbeitsvorbereitung: erledigte Punkte von allen">{sum.ready ? "AV fertig" : `AV: ${avDone} von ${sum.states.length} erledigt`}</span>
+            <MaterialBadge o={o} checks={checks} />
             {o.odoo_draft && <span className="pill warn" title="Der Fertigungsauftrag ist in Odoo noch im Entwurf. Freigegeben wird er in Odoo.">nicht freigegeben</span>}
             {o.due_shifts > 0 && o.due_original && <span className="pill warn" title={`Ursprünglicher Liefertermin: ${fmtShort(o.due_original)}${o.due_original.slice(0, 4)}`}>Termin {o.due_shifts}× verschoben</span>}
-            {(startklar(o, checks) || []).length > 0 && (
-              <span className="pill bad" title="Eingeplant heißt noch nicht startklar: Das fehlt, bevor die Position auf der Maschine anfangen kann">
-                nicht startklar: {startklar(o, checks).join(", ")}
-              </span>
-            )}
+            {/* „nicht startklar: …“ steht jetzt im Satz darunter („Es fehlt noch: …“) */}
             {o.odoo_bom === "muster" && <span className="pill warn" title="Die Stückliste in Odoo hat nur Musterwerte (Referenz MUSTER oder jeder Arbeitsgang genau 60 Minuten). Maschine und Zeit sind nicht geprüft: Zeiten aus der Kalkulation oder Erfahrung in Odoo eintragen.">Zeit ungeprüft (Muster)</span>}
             {o.odoo_bom === "none" && <span className="pill warn" title="In Odoo hat der Fertigungsauftrag keine Stückliste, damit auch keine Arbeitsgänge.">keine Stückliste</span>}
             {o.odoo_bom === "leer" && <span className="pill warn" title="Die Stückliste in Odoo hat keine Arbeitsgänge.">keine Arbeitsgänge</span>}
           </div>
-          {(o.odoo_id || o.po_id || goTo || ((onMachine || inLane) && section !== "av")) && (
+          {(() => {
+            // Ein Satz in normaler Sprache: wo steht die Position, wann geht es los, was fehlt
+            const fehlt = startklar(o, checks) || [];
+            const fehltTxt = fehlt.length ? ` Es fehlt noch: ${fehlt.join(", ")}.` : "";
+            let satz;
+            let ton = "";
+            // fmtShort endet schon auf einen Punkt („25.11.“), daher dort keinen zweiten anhängen
+            if (o.done) satz = o.shipped_date ? `Versendet am ${fmtShort(o.shipped_date)}` : o.done_date ? `Erledigt am ${fmtShort(o.done_date)}` : "Erledigt.";
+            else if (inLane) satz = `Liegt in ${laneNow.name}${o.extern_start ? " seit " + fmtShort(o.extern_start) : "."}`;
+            else if (it && it.scheduled) {
+              const laeuft = it.pastStart != null;
+              satz = `${laeuft ? "Läuft seit" : "Startet am"} ${fmtShort(dateOf(it.pastStart ?? it.start))} auf der ${pl.m.short}, fertig ca. ${fmtShort(endDateOf(it.end))}${laeuft ? "" : fehltTxt}`;
+              if (!laeuft && fehlt.length) ton = " warn";
+            } else if (onMachine) satz = `Auf der ${pl.m.short}, ${!(o.hours > 0) ? "aber Stunden fehlen noch." : "noch nicht eingeplant."}`;
+            else satz = `Noch keiner Maschine zugewiesen.${fehltTxt}`;
+            if (g && g.status === "late" && !o.done) {
+              satz += ` Der Auftrag wird ${g.lateDays} ${g.lateDays === 1 ? "Tag" : "Tage"} nach dem Liefertermin fertig.`;
+              ton = " bad";
+            }
+            return <p className={`status-satz${ton}`}>{satz}</p>;
+          })()}
+          {(o.odoo_id || o.po_id || goTo || ((onMachine || inLane) && section !== "av") || (prio && prio.darf && !o.done) || (onMachine && !o.done)) && (
             <div style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {onMachine && !o.done && (
+                <button type="button" className="btn primary" title="Fertig produziert: die Position geht in die QS (ohne QS-Prüfung ist sie damit erledigt)" onClick={() => finishProduced(o)}>
+                  <Ico n="check" s={16} />
+                  Fertig produziert
+                </button>
+              )}
+              {prio && prio.darf && !o.done && (
+                <button
+                  type="button"
+                  className={`btn prio-btn${prioKeys.has(groupKeyOf(o)) ? " on" : ""}`}
+                  aria-pressed={prioKeys.has(groupKeyOf(o))}
+                  onClick={() => togglePrio(o)}
+                  title="Prio gilt für den ganzen Auftrag: steht oben in der Planung und bei „Mein Arbeitsplatz“, rotes Zeichen auf den Karten. Den Plan schiebt der Schalter nicht um."
+                >
+                  <Ico n="flag" s={15} />
+                  {prioKeys.has(groupKeyOf(o)) ? "Prio ✓" : "Prio setzen"}
+                </button>
+              )}
               {(o.odoo_id || o.po_id) && <OdooLink o={o} btn />}
               {(onMachine || inLane) && section !== "av" && (
                 <button type="button" className="btn" onClick={showInTimeline} title="Zum Balken im Zeitstrahl springen">
@@ -1862,26 +1999,22 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
             const k = groupKeyOf(o);
             const ab = ablaufOf(orders.filter((x) => groupKeyOf(x) === k), checks);
             return (
-              <div className="dsec">
-                <h4 style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  Laufkarte {groupLabelOf(o)}
-                  <AblaufBar steps={ab.steps} />
-                </h4>
+              <Fold id="laufkarte" title={`Laufkarte Auftrag ${groupLabelOf(o)}`} extra={<AblaufBar steps={ab.steps} />}>
                 <Laufkarte ablauf={ab} onAction={(s) => ablaufAction(s, o)} />
-              </div>
+              </Fold>
             );
           })()}
 
           {inLane ? (
             <div className="dsec">
               <h4>{laneNow.name}</h4>
+              {o.machine === "versand" && versandHint()}
               {laneSection(o)}
               <Terminverlauf o={o} />
             </div>
           ) : (
-          <div className="dsec">
-            <h4>Plan</h4>
-            <div style={{ fontSize: 13, marginBottom: 10 }}>
+          <Fold id="plan" title="Plan und Zeiten">
+            <div style={{ fontSize: 15, marginBottom: 10 }}>
               {it && it.scheduled
                 ? `${it.pastStart != null ? "Seit " : "Start "}${fmtShort(dateOf(it.pastStart ?? it.start))} · Ende ca. ${fmtShort(endDateOf(it.end))}`
                 : onMachine
@@ -1893,14 +2026,14 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
                 : "Noch nicht eingeplant. Stunden eintragen, dann eine Maschine wählen."}
               {g && g.end != null && ` · Auftrag fertig ca. ${fmtShort(endDateOf(g.end))} (${g.endMachine})`}
             </div>
-            {wt && <div style={{ fontSize: 12.5, color: "var(--warn)", marginBottom: 10 }}>{wt}</div>}
+            {wt && <div style={{ fontSize: 13.5, color: "var(--warn)", marginBottom: 10 }}>{wt}</div>}
             {planStart.get(o.id) && (
-              <div style={{ fontSize: 12.5, marginBottom: 10, color: sum.ready ? "var(--ok)" : addDays(planStart.get(o.id).start, -avLead) < today ? "var(--bad)" : "var(--muted)", fontWeight: sum.ready ? 600 : addDays(planStart.get(o.id).start, -avLead) < today ? 600 : 400 }}>
+              <div style={{ fontSize: 13.5, marginBottom: 10, color: sum.ready ? "var(--ok)" : addDays(planStart.get(o.id).start, -avLead) < today ? "var(--bad)" : "var(--muted)", fontWeight: sum.ready ? 600 : addDays(planStart.get(o.id).start, -avLead) < today ? 600 : 400 }}>
                 {sum.ready ? "Arbeitsvorbereitung ist bereit." : "Arbeitsvorbereitung muss bis " + fmtShort(addDays(planStart.get(o.id).start, -avLead)) + " fertig sein" + (addDays(planStart.get(o.id).start, -avLead) < today ? " und ist überfällig" : "") + " (" + avLead + " Tage vor dem Start)."}
               </div>
             )}
             {pred && (
-              <div style={{ fontSize: 12.5, color: "var(--muted)", marginBottom: 10 }}>
+              <div style={{ fontSize: 13.5, color: "var(--muted)", marginBottom: 10 }}>
                 ↳ folgt auf {posNo(pred)}
                 {pm ? ` (${pm.short})` : ""}: startet, wenn dieser Arbeitsgang fertig ist
               </div>
@@ -1910,7 +2043,7 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
                 <div className="bigbar" style={{ "--mc": pl ? pl.m.c : "var(--ink)" }}>
                   <i style={{ width: `${percent || 0}%` }} />
                 </div>
-                <div style={{ fontSize: 12, color: "var(--muted)", margin: "5px 0 14px" }}>
+                <div style={{ fontSize: 13, color: "var(--muted)", margin: "5px 0 14px" }}>
                   {percent != null ? `${it && it.estimated ? "~" : ""}${percent} % ${it && it.estimated ? "geschätzt" : "erledigt"} · ` : ""}Rest {fmtH(remaining)} h
                   {it && it.stale ? " · Fortschritt prüfen" : ""}
                   {o.hours_plan != null && o.hours > o.hours_plan + 0.05 ? ` · Mehraufwand +${fmtH(o.hours - o.hours_plan)} h (Plan ${fmtH(o.hours_plan)} h)` : ""}
@@ -1956,13 +2089,12 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
               </label>
             </div>
             {externEditor(o)}
-            {metaLine(o) && <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 10 }}>{metaLine(o)}</div>}
+            {metaLine(o) && <div style={{ fontSize: 13, color: "var(--muted)", marginTop: 10 }}>{metaLine(o)}</div>}
             <Terminverlauf o={o} />
-          </div>
+          </Fold>
           )}
 
-          <div className="dsec">
-            <h4>Zuständig</h4>
+          <Fold id="zustaendig" title="Zuständig">
             <div className="staffgrid">
               {ACTIVITIES.map((a) => {
                 const own = staff.overrides.get(`${o.id}|${a.id}`) || "";
@@ -1984,10 +2116,9 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
                 );
               })}
             </div>
-          </div>
+          </Fold>
 
-          <div className="dsec">
-            <h4>Arbeitsvorbereitung</h4>
+          <Fold id="av" title="Arbeitsvorbereitung" extra={<span className={`pill ${sum.ready ? "ok" : "mute"}`}>{sum.ready ? "fertig" : `${avDone} von ${sum.states.length}`}</span>}>
             {repeatOf.get(o.id) && (
               <div className="note" style={{ marginBottom: 12 }}>
                 <b>Wiederholteil:</b> Das gleiche Teil wurde schon als {posNo(repeatOf.get(o.id))} vorbereitet. Programm, Werkzeuge, Spannmittel, Prüfplan und EMPB samt Zuständigem können übernommen werden.
@@ -2038,23 +2169,18 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
               );
             })}
             {sum.ready ? (
-              <div style={{ marginTop: 6, color: "var(--ok)", fontWeight: 600, fontSize: 13 }}>Alles bereit. Die Planung kann starten.</div>
+              <div style={{ marginTop: 6, color: "var(--ok)", fontWeight: 600, fontSize: 14 }}>Alles bereit. Die Planung kann starten.</div>
             ) : (
-              <div style={{ marginTop: 6, color: "var(--muted)", fontSize: 13 }}>
+              <div style={{ marginTop: 6, color: "var(--muted)", fontSize: 14 }}>
                 Fehlt: {sum.open.map((s) => s.label).join(", ")}
                 {sum.readyDate ? ` · bereit ab ${fmtShort(sum.readyDate)}` : ""}. Das ist nur eine Warnung, einplanen geht trotzdem.
               </div>
             )}
-          </div>
+          </Fold>
 
           {!inLane && !o.done && (
           <div className="dact">
-            {onMachine && (
-              <button type="button" className="btn primary" title="Fertig produziert: die Position geht in die QS (ohne QS-Prüfung ist sie damit erledigt)" onClick={() => finishProduced(o)}>
-                <Ico n="check" s={16} />
-                Fertig produziert
-              </button>
-            )}
+            <span className="dact-lab">Weitere Aktionen</span>
             <label className="chk" title="Muss die Position durch die QS-Prüfung?">
               <input type="checkbox" checked={o.qs_required !== false} onChange={(ev) => patchOrder(o.id, { qs_required: ev.target.checked })} />
               QS-Prüfung
@@ -2090,17 +2216,6 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
                 {o.pinned ? "Fixiert" : "Fixieren"}
               </button>
             )}
-            {prio && prio.darf && !o.done && (
-              <button
-                type="button"
-                className={`btn prio-btn${prioKeys.has(groupKeyOf(o)) ? " on" : ""}`}
-                aria-pressed={prioKeys.has(groupKeyOf(o))}
-                onClick={() => togglePrio(o)}
-                title="Prio gilt für den ganzen Auftrag: steht oben in der Planung und bei „Mein Arbeitsplatz“, rotes Zeichen auf den Karten. Den Plan schiebt der Schalter nicht um."
-              >
-                {prioKeys.has(groupKeyOf(o)) ? "Prio ✓" : "Prio"}
-              </button>
-            )}
             {o.machine !== "m1" && (
               <label className="chkline" title="Die M1 kann nicht alle Teile. Planvorschlag und Plan neu ordnen legen ein Teil nur auf die M1, wenn es dort schon lief, Odoo die M1 nennt oder hier angehakt ist.">
                 <input type="checkbox" checked={!!o.restricted_ok} onChange={(ev) => patchOrder(o.id, { restricted_ok: ev.target.checked })} />
@@ -2116,6 +2231,17 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
     );
   };
 
+  // Versand: Hinweis + „Jetzt prüfen“ (im Fenster der Spur und im Fenster einer Position)
+  const versandHint = () => (
+    <div className="lane-hint">
+      <span>Ist die Lieferung in Odoo bestätigt, geht die Position von selbst nach „Erledigt“ (alle 10 Minuten).</span>
+      <button type="button" className="btn sm" disabled={versandBusy} onClick={versandPruefen} title="Lieferungen jetzt in Odoo prüfen">
+        <Ico n="refresh" s={14} />
+        {versandBusy ? "Prüfe …" : "Jetzt prüfen"}
+      </button>
+    </div>
+  );
+
   // ---------- Inhalt einer Position an einem Ort (QS, Extern, Versand): Termine, Knöpfe ----------
   const laneSection = (o) => {
     const lane = laneOf(o.machine);
@@ -2126,12 +2252,12 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
     return (
       <>
                 <LaneInfo o={o} />
-                <div style={{ color: "var(--muted)", fontSize: 12.5, marginTop: 4 }}>
+                <div style={{ color: "var(--muted)", fontSize: 13.5, marginTop: 4 }}>
                   {o.source ? `Auftrag ${o.source} · ` : ""}
                   {start != null ? `seit ${fmtShort(o.extern_start)}, ${fmtDuration(daysIn(o))} (bis ca. ${fmtShort(endDateOf(start + daysIn(o)))})` : "ohne Beginn"}
                   {g && g.status === "late" ? ` · Auftrag ${days(g.lateDays)} zu spät` : ""}
                 </div>
-                {metaLine(o, false) && <div style={{ fontSize: 12.5, marginTop: 4 }}>{metaLine(o, false)}</div>}
+                {metaLine(o, false) && <div style={{ fontSize: 13.5, marginTop: 4 }}>{metaLine(o, false)}</div>}
                 <div className="fgrid" style={{ marginTop: 12 }}>
                   <label className="f">
                     Beginn
@@ -2187,7 +2313,7 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
                 <div style={{ marginTop: 8 }}>
                   <FehlerMelden o={o} />
                 </div>
-                <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 8 }}>{lane.id === "versand" ? (o.extern_start ? `versandbereit seit ${fmtShort(o.extern_start)}` : "") : end != null ? `${lane.id === "qs" ? "fertig" : "zurück"} ca. ${fmtShort(endDateOf(end))}` : "Beginn eintragen"}</div>
+                <div style={{ fontSize: 13, color: "var(--muted)", marginTop: 8 }}>{lane.id === "versand" ? (o.extern_start ? `versandbereit seit ${fmtShort(o.extern_start)}` : "") : end != null ? `${lane.id === "qs" ? "fertig" : "zurück"} ca. ${fmtShort(endDateOf(end))}` : "Beginn eintragen"}</div>
       </>
     );
   };
@@ -2208,13 +2334,14 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
               <LaneTile id={lane.id} c={lane.c} />
               <div>
                 <h3 style={{ fontFamily: "var(--f-display)" }}>{lane.name}</h3>
-                <div style={{ color: "var(--muted)", fontSize: 13 }}>{lane.cap}</div>
+                <div style={{ color: "var(--muted)", fontSize: 14 }}>{lane.cap}</div>
               </div>
             </div>
             <button type="button" className="btn icon quiet" aria-label="Schließen" onClick={closeDrawer}>
               <Ico n="x" />
             </button>
           </div>
+          {lane.id === "versand" && versandHint()}
           {list.map((o) => (
             <div className="dsec" key={o.id}>
                 <div style={{ display: "flex", gap: 10, alignItems: "baseline", flexWrap: "wrap" }}>
@@ -2282,7 +2409,7 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
                 Arbeitsgang
               </button>
             )}
-            <span style={{ color: "var(--muted)", fontSize: 13 }}>Summe {fmtH(sum)} h (bisher {fmtH(o.hours)} h)</span>
+            <span style={{ color: "var(--muted)", fontSize: 14 }}>Summe {fmtH(sum)} h (bisher {fmtH(o.hours)} h)</span>
             <span style={{ flex: 1 }} />
             <button type="button" className="btn" onClick={() => setOpsFor(null)}>
               Abbrechen
@@ -2291,7 +2418,7 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
               Anlegen
             </button>
           </div>
-          <div style={{ color: "var(--muted)", fontSize: 12, marginTop: 10 }}>Der letzte Arbeitsgang behält Odoo-Link, QS und Oberfläche.</div>
+          <div style={{ color: "var(--muted)", fontSize: 13, marginTop: 10 }}>Der letzte Arbeitsgang behält Odoo-Link, QS und Oberfläche.</div>
           {opsFor.error && <div style={{ color: "var(--bad)", marginTop: 8 }}>{opsFor.error}</div>}
         </div>
       </div>
@@ -2322,7 +2449,7 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
             </label>
           </div>
           {part1 != null && (
-            <div style={{ color: "var(--muted)", fontSize: 13, marginTop: 12 }}>
+            <div style={{ color: "var(--muted)", fontSize: 14, marginTop: 12 }}>
               Teil 1: {fmtH(n)} Stück, {fmtH(part1)} h · Rest: {fmtH(o.quantity - n)} Stück, {fmtH(round1(o.hours - part1))} h
             </div>
           )}
@@ -2367,7 +2494,7 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
             </label>
           </div>
           {valid && (
-            <div style={{ color: "var(--muted)", fontSize: 13, marginTop: 12 }}>
+            <div style={{ color: "var(--muted)", fontSize: 14, marginTop: 12 }}>
               {toSplit} Positionen werden geteilt, {whole} liefern vollständig mit der ersten Lieferung (höchstens {fmtH(n)} Stück).
             </div>
           )}
@@ -2401,11 +2528,11 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
             ].map(([n, t]) => (
               <div className="card" key={t} style={{ padding: 14, boxShadow: "none" }}>
                 <b style={{ font: "600 26px var(--f-display)" }}>{n}</b>
-                <div style={{ color: "var(--muted)", fontSize: 13 }}>{t}</div>
+                <div style={{ color: "var(--muted)", fontSize: 14 }}>{t}</div>
               </div>
             ))}
           </div>
-          {r.closed.length > 0 && <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 12 }}>Auf erledigt, weil sie im Export fehlen: {r.closed.join(", ")}</div>}
+          {r.closed.length > 0 && <div style={{ fontSize: 13, color: "var(--muted)", marginTop: 12 }}>Auf erledigt, weil sie im Export fehlen: {r.closed.join(", ")}</div>}
           <div className="actions" style={{ marginTop: 18, justifyContent: "flex-end" }}>
             <button type="button" className="btn" onClick={() => setImportPreview(null)}>
               Abbrechen
@@ -2436,7 +2563,7 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
                 {r.created.length > 0 ? " Neu angelegte (letzte 3 Tage) kommen jetzt in „Noch nicht eingeplant“:" : " Ab jetzt kommen neu bestätigte Fertigungsaufträge von selbst in „Noch nicht eingeplant“."}
               </p>
               {r.created.map((c) => (
-                <div key={c.ref} style={{ fontSize: 13, padding: "3px 0" }}>
+                <div key={c.ref} style={{ fontSize: 14, padding: "3px 0" }}>
                   <b className="mono">{c.ref}</b> · {c.source || "ohne Auftrag"} · {c.quantity != null ? fmtH(c.quantity) + " Stück · " : ""}{c.product}
                 </div>
               ))}
@@ -2453,7 +2580,7 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
                 {[[r.created.length, "neu in „Noch nicht eingeplant“"], [r.updated, "bekannte Aufträge aktualisiert (Menge, Produkt, Material)"], [r.closing.length, "zum Schließen vorgeschlagen"]].map(([n, t]) => (
                   <div className="card" key={t} style={{ padding: 14, boxShadow: "none" }}>
                     <b style={{ font: "600 26px var(--f-display)" }}>{n}</b>
-                    <div style={{ color: "var(--muted)", fontSize: 13 }}>{t}</div>
+                    <div style={{ color: "var(--muted)", fontSize: 14 }}>{t}</div>
                   </div>
                 ))}
               </div>
@@ -2461,7 +2588,7 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
                 <div style={{ marginTop: 14 }}>
                   <div style={{ font: "600 12px var(--f-display)", letterSpacing: ".1em", textTransform: "uppercase", color: "var(--muted)", marginBottom: 6 }}>Neu</div>
                   {r.created.map((c) => (
-                    <div key={c.ref} style={{ fontSize: 13, padding: "3px 0" }}>
+                    <div key={c.ref} style={{ fontSize: 14, padding: "3px 0" }}>
                       <b className="mono">{c.ref}</b> · {c.source || "ohne Auftrag"} · {c.quantity != null ? fmtH(c.quantity) + " Stück · " : ""}{c.product}{c.supplier ? " · extern bei " + c.supplier : ""}
                     </div>
                   ))}
@@ -2471,7 +2598,7 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
                 <div style={{ marginTop: 14 }}>
                   <div style={{ font: "600 12px var(--f-display)", letterSpacing: ".1em", textTransform: "uppercase", color: "var(--muted)", marginBottom: 6 }}>In der App schließen? (angekreuzt = wird geschlossen)</div>
                   {r.closing.map((c) => (
-                    <label key={c.ref} className="chk" style={{ display: "flex", alignItems: "flex-start", gap: 8, padding: "5px 0", fontSize: 13, color: "var(--ink)" }}>
+                    <label key={c.ref} className="chk" style={{ display: "flex", alignItems: "flex-start", gap: 8, padding: "5px 0", fontSize: 14, color: "var(--ink)" }}>
                       <input
                         type="checkbox"
                         checked={syncDlg.closeSel.has(c.ref)}
@@ -2566,7 +2693,7 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
       <>
         <div className="page-head rise" style={{ "--i": 0 }}>
           <div>
-            <h1>Produktionssteuerung</h1>
+            <h1>Produktionssteuerung <HilfeKnopf thema="steuerung" /></h1>
             <p>
               {tag}, {fmtShort(today)}
               {today.slice(0, 4)} · vom Auftragseingang bis zur Rechnung: was heute zu entscheiden ist
@@ -2575,13 +2702,18 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
           <div className="actions">
             <DiensteStatus />
             {odooStatus && odooStatus.enabled && (
-              <button className="sync" type="button" onClick={openSync} title="Jetzt mit Odoo abgleichen">
+              <button className="sync" type="button" onClick={openSync} title={odooStatus.lastError ? `Letzter Abgleich mit Fehler: ${odooStatus.lastError}. Klicken: neu abgleichen` : "Jetzt mit Odoo abgleichen"}>
                 <span className={"ok" + (odooStatus.lastError ? " err" : "")} />
-                {odooStatus.lastSync ? "Odoo · vor " + (Math.max(0, Math.round((Date.now() - Date.parse(odooStatus.lastSync)) / 60000)) || "<1") + " Min." : "Odoo abgleichen"}
+                {odooStatus.lastError
+                  ? "Odoo-Abgleich mit Fehler"
+                  : odooStatus.lastSync
+                  ? `Odoo abgeglichen ${new Date(odooStatus.lastSync).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })} Uhr`
+                  : "Mit Odoo abgleichen"}
                 {odooStatus.pendingClosing && odooStatus.pendingClosing.length > 0 && <b className="tag warn" style={{ fontStyle: "normal" }}>{odooStatus.pendingClosing.length} zu schließen</b>}
                 <Ico n="refresh" s={15} />
               </button>
             )}
+            <SucheKnopf />
           </div>
         </div>
 
@@ -2764,7 +2896,7 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
             pastEnd: it.pastStart != null ? it.start : null,
             end: it.end,
             label: posNo(it.o),
-            sub: `${fmtH(it.remaining)} h${it.percent != null ? ` · ${it.estimated ? "~" : ""}${it.percent} %` : ""}${tagsOf(it.o).length ? " · extern" : ""}`,
+            sub: `noch ${fmtH(it.remaining)} h${it.percent != null ? ` · ${it.estimated ? "~" : ""}${it.percent} % fertig` : ""}${tagsOf(it.o).length ? " · danach extern" : ""}`,
             percent: it.percent,
             toggle: null,
             select: it.o.id,
@@ -2786,7 +2918,7 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
               pastEnd: block.doneEnd,
               end: block.end,
               label: g ? g.label : groupLabelOf(block.items[0].o),
-              sub: `${multi ? `${block.items.length} Pos. · ` : ""}${fmtH(block.remaining)} h${block.percent != null ? ` · ${block.estimated ? "~" : ""}${block.percent} %` : ""}${externCount ? ` · ${externCount} extern` : ""}`,
+              sub: `${multi ? `${block.items.length} Pos. · ` : ""}noch ${fmtH(block.remaining)} h${block.percent != null ? ` · ${block.estimated ? "~" : ""}${block.percent} % fertig` : ""}${externCount ? ` · ${externCount} danach extern` : ""}`,
               percent: block.percent,
               toggle: multi ? toggleKey : null,
               select: multi ? null : block.items[0].o.id,
@@ -2819,7 +2951,7 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
             " · " +
             fmtShort(g.due) +
             " · " +
-            (gap < 0 ? Math.max(1, Math.ceil(-gap)) + " T zu spät" : days0 + " T Puffer") +
+            (gap < 0 ? Math.max(1, Math.ceil(-gap)) + (Math.max(1, Math.ceil(-gap)) === 1 ? " Tag zu spät" : " Tage zu spät") : days0 + (days0 === 1 ? " Tag Puffer" : " Tage Puffer")) +
             (g.dueEnd > viewEnd ? " ▶" : "");
           if (b > a || g.dueEnd < viewStart || g.dueEnd > viewEnd) {
             strips.push({
@@ -2853,7 +2985,8 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
         const grpCls = activeAuftrag && !hoverStrip && part.ids.some((id) => { const o = orders.find((x) => x.id === id); return o && groupKeyOf(o) === activeAuftrag; }) ? " grpx" : "";
         const isSel = part.select != null && part.select === detailId;
         const isFresh = fresh != null && part.ids.includes(fresh);
-        const tag = status === "late" ? <em className="tag bad" style={{ fontStyle: "normal" }}>+{g.lateDays} T</em> : status === "tight" && g && g.diff != null ? <em className="tag warn" style={{ fontStyle: "normal" }}>Puffer {Math.max(1, Math.floor(-g.diff))} T</em> : null;
+        const tageTxt = (n) => `${n} ${n === 1 ? "Tag" : "Tage"}`;
+        const tag = status === "late" ? <em className="tag bad" style={{ fontStyle: "normal" }} title={`Wird ${tageTxt(g.lateDays)} nach dem Liefertermin fertig`}>+{tageTxt(g.lateDays)}</em> : status === "tight" && g && g.diff != null ? <em className="tag warn" style={{ fontStyle: "normal" }} title="So viel Luft bis zum Liefertermin">Puffer {tageTxt(Math.max(1, Math.floor(-g.diff)))}</em> : null;
         const miss = notReady(part.ids);
         const tipHtml = tipFor(part.tipTitle, miss.length ? [...part.tip, `Nicht startklar: ${miss.join(", ")}`] : part.tip, partImg(orders.find((x) => x.id === part.ids[0])));
         bars.push(
@@ -3343,7 +3476,7 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
         <div className="tl-foot">
           <span><i className="sw amp-ok" />im Plan</span>
           <span><i className="sw amp-tight" />Puffer unter {tightDays} Tage, gefährdet</span>
-          <span><i className="sw amp-late" />Liefertermin wird verfehlt <i className="tag bad">+3 T</i></span>
+          <span><i className="sw amp-late" />Liefertermin wird verfehlt <i className="tag bad">+3 Tage</i></span>
           <span><i className="sw" style={{ border: "1.5px dashed var(--line-strong)" }} />wartet auf Material, Arbeitsgang oder Start</span>
           <span><i className="sw" style={{ background: "repeating-linear-gradient(135deg, var(--hatch) 0 3px, transparent 3px 6px)", border: "1px solid var(--line)" }} />Sonntag, freier Tag</span>
           <span><i className="sw" style={{ background: "repeating-linear-gradient(135deg, rgba(0,0,0,.25) 0 3px, transparent 3px 6px)", border: "1px solid var(--line)" }} />schon gelaufen</span>
@@ -3428,7 +3561,7 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
               </button>
             ))}
           </div>
-          {assignable.length === 0 ? <span style={{ color: "var(--muted)", fontSize: 12 }}>Stunden fehlen</span> : assignable.length < selectedOrders.length && <span style={{ color: "var(--muted)", fontSize: 12 }}>{selectedOrders.length - assignable.length} ohne Stunden werden übersprungen</span>}
+          {assignable.length === 0 ? <span style={{ color: "var(--muted)", fontSize: 13 }}>Stunden fehlen</span> : assignable.length < selectedOrders.length && <span style={{ color: "var(--muted)", fontSize: 13 }}>{selectedOrders.length - assignable.length} ohne Stunden werden übersprungen</span>}
           <button type="button" className="btn sm quiet" onClick={() => setSelected({})}>
             Auswahl aufheben
           </button>
@@ -3538,7 +3671,7 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
                       Std
                     </div>
                     <span className={`av ${av.s.ready ? "bereit" : ""}`} title={av.s.ready ? "Arbeitsvorbereitung bereit" : `Arbeitsvorbereitung: fehlt ${av.s.open.map((s) => s.label).join(", ")}${av.s.readyDate ? ` · bereit ab ${fmtShort(av.s.readyDate)}` : ""}`}>
-                      AV {av.done}/{av.total}
+                      AV {av.done} von {av.total}
                     </span>
                     <div className="segwrap">
                       <div className="seg" role="group" aria-label="Maschine wählen">
@@ -3656,7 +3789,7 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
         <div className="bd-chips">
           {pill ? <span className={`pill ${pill.cls}`}>{pill.text}</span> : <span className="pill mute">{dd == null ? "kein Termin" : `Termin ${fmtShort(o.due)}`}</span>}
           <span className={`av ${av.s.ready ? "bereit" : ""}`} title={av.s.ready ? "Arbeitsvorbereitung bereit" : `Arbeitsvorbereitung: fehlt ${av.s.open.map((s) => s.label).join(", ")}`}>
-            AV {av.done}/{av.total}
+            AV {av.done} von {av.total}
           </span>
           {waiting && <span className="pill warn">{waiting}</span>}
         </div>
@@ -3713,7 +3846,7 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
           <div className="bd-chips">
             {pill ? <span className={`pill ${pill.cls}`}>{pill.text}</span> : null}
             <span className={`av ${worst.s.ready ? "bereit" : ""}`} title="Schlechtester AV-Stand der Positionen">
-              AV {worst.done}/{worst.total}
+              AV {worst.done} von {worst.total}
             </span>
             {miss.length > 0 && <span className="pill warn" title={`Nicht startklar: ${miss.join(", ")}`}>nicht startklar</span>}
           </div>
@@ -3883,7 +4016,7 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
                           </div>
                         )}
                         {g.externTags.length > 0 && (
-                          <div title={g.externTags.join(", ")} style={{ fontSize: 12, color: "var(--muted)" }}>
+                          <div title={g.externTags.join(", ")} style={{ fontSize: 13, color: "var(--muted)" }}>
                             extern: {g.externTags.join(", ")}
                             {g.externDays ? ` · ${fmtDuration(g.externDays)}` : ""}
                           </div>
@@ -3899,12 +4032,12 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
                           aria-label={`Liefertermin ${g.label}`}
                         />
                         {deviating && !pending && (
-                          <div title={`Abweichende Liefertermine in diesem Auftrag: ${dues.map((d) => fmtShort(d)).join(", ")}`} style={{ fontSize: 12, color: "var(--warn)", marginTop: 3 }}>
+                          <div title={`Abweichende Liefertermine in diesem Auftrag: ${dues.map((d) => fmtShort(d)).join(", ")}`} style={{ fontSize: 13, color: "var(--warn)", marginTop: 3 }}>
                             {dues.length} verschiedene Termine
                           </div>
                         )}
                         {pending && (
-                          <div style={{ fontSize: 12, marginTop: 4 }}>
+                          <div style={{ fontSize: 13, marginTop: 4 }}>
                             <div style={{ color: "var(--warn)" }}>{open.filter((o) => o.due && o.due !== pending.value).length} Positionen mit eigenem Termin überschreiben?</div>
                             <div className="actions" style={{ marginTop: 4 }}>
                               <button type="button" className="btn sm" onClick={() => applyDue(pending.value)}>Ja</button>
@@ -3919,12 +4052,12 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
                       <td>{g.end != null ? `${fmtShort(endDateOf(g.end))} · ${g.endMachine}` : "–"}</td>
                       <td>
                         {g.end == null ? <span className="pill mute">noch nicht eingeplant</span> : pp ? <span className={`pill ${pp.cls}`}>{pp.text}</span> : <span className="pill ok">im Plan</span>}
-                        {g.end != null && g.unscheduled > 0 && <span style={{ fontSize: 12, color: "var(--muted)", marginLeft: 6 }}>{g.unscheduled} Pos. offen</span>}
+                        {g.end != null && g.unscheduled > 0 && <span style={{ fontSize: 13, color: "var(--muted)", marginLeft: 6 }}>{g.unscheduled} Pos. offen</span>}
                       </td>
                       <td className="num">{g.finished}/{g.total} erledigt</td>
                       <td>
                         <span className="meter"><i style={{ width: `${g.percent || 0}%` }} /></span>{" "}
-                        <span className="num" style={{ color: "var(--muted)", fontSize: 12 }}>{g.percent != null ? `${g.percent} %` : "–"}</span>
+                        <span className="num" style={{ color: "var(--muted)", fontSize: 13 }}>{g.percent != null ? `${g.percent} %` : "–"}</span>
                       </td>
                       <td onClick={(e) => e.stopPropagation()}>
                         <div className="ab-cell">
@@ -3975,7 +4108,7 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
                                 )}
                               </td>
                               <td colSpan={4}>
-                                <span className="num" style={{ color: "var(--muted)", fontSize: 12.5 }}>
+                                <span className="num" style={{ color: "var(--muted)", fontSize: 13.5 }}>
                                   {o.hours > 0 ? `${fmtH(o.hours)} h` : "Stunden fehlen"}
                                   {f && f.it.percent != null ? ` · ${f.it.estimated ? "~" : ""}${f.it.percent} %` : ""}
                                 </span>
@@ -3998,7 +4131,7 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
           {showDone && (
             <div style={{ marginTop: 10 }}>
               {doneOrders.map((o) => (
-                <div key={o.id} style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", padding: "8px 0", borderTop: "1px solid var(--line)", fontSize: 13 }}>
+                <div key={o.id} style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", padding: "8px 0", borderTop: "1px solid var(--line)", fontSize: 14 }}>
                   <span className="mono" style={{ fontWeight: 600 }}>{posNo(o)}</span>
                   <span style={{ color: "var(--muted)" }}>
                     {laneOf(o.machine)?.name ?? MACHINES.find((m) => m.id === o.machine)?.short ?? "nicht eingeplant"} · {fmtH(o.hours)} h{o.source ? ` · ${o.source}` : ""}
@@ -4161,7 +4294,7 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
                 <MTile c={m.c} img={m.img} imgZoom={m.imgZoom} size={40} />
                 <b style={{ font: "600 15px var(--f-display)", minWidth: 120 }}>{m.name}</b>
                 <input type="number" min={0} step="any" placeholder={fmtH(defaults.now)} value={rates[m.id] ?? ""} onChange={(ev) => setRate(m.id, ev.target.value)} style={{ width: 90 }} aria-label={`Wochenleistung ${m.short}`} />
-                <span style={{ color: "var(--muted)", fontSize: 12.5 }}>h pro Woche · {own ? `eigener Wert (leer = ${shift.label} ${fmtH(shift.hours)} h × ${utilization} %)` : `${shift.label} ${fmtH(shift.hours)} h × ${utilization} %`}</span>
+                <span style={{ color: "var(--muted)", fontSize: 13.5 }}>h pro Woche · {own ? `eigener Wert (leer = ${shift.label} ${fmtH(shift.hours)} h × ${utilization} %)` : `${shift.label} ${fmtH(shift.hours)} h × ${utilization} %`}</span>
               </div>
             );
           })}
@@ -4177,7 +4310,7 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
         </div>
         <div style={{ padding: "6px 18px 16px" }}>
           {future.map((d) => (
-            <div key={d} style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13, padding: "6px 0", borderTop: "1px solid var(--line)" }}>
+            <div key={d} style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 14, padding: "6px 0", borderTop: "1px solid var(--line)" }}>
               <span className="mono" style={{ width: 150 }}>ab KW {isoWeekOf(d).week} ({fmtShort(d)})</span>
               <span>{modelName(weekCap[d])} · {fmtH(weekCap[d])} h</span>
               <span style={{ flex: 1 }} />
@@ -4204,7 +4337,7 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
             <button type="button" className="btn" disabled={!formOk} onClick={() => { setPreview({ date: formDate, hours: newShift.hours }); setTab("zeit"); }}>
               Vorschau ansehen
             </button>
-            {newShift.date && !formOk && <span style={{ fontSize: 12, color: "var(--bad)" }}>Das Datum muss in der Zukunft liegen</span>}
+            {newShift.date && !formOk && <span style={{ fontSize: 13, color: "var(--bad)" }}>Das Datum muss in der Zukunft liegen</span>}
           </div>
         </div>
       </div>
@@ -4233,12 +4366,12 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
             <button type="button" className="btn" onClick={addFreeDays} disabled={!canAddFree}>
               Hinzufügen
             </button>
-            {freeFromOk && freeToOk && freeSpan > 120 && <span style={{ fontSize: 12, color: "var(--bad)" }}>Höchstens 120 Tage auf einmal</span>}
-            {freeFromOk && freeToOk && freeSpan < 1 && <span style={{ fontSize: 12, color: "var(--bad)" }}>„Bis“ liegt vor „Von“</span>}
+            {freeFromOk && freeToOk && freeSpan > 120 && <span style={{ fontSize: 13, color: "var(--bad)" }}>Höchstens 120 Tage auf einmal</span>}
+            {freeFromOk && freeToOk && freeSpan < 1 && <span style={{ fontSize: 13, color: "var(--bad)" }}>„Bis“ liegt vor „Von“</span>}
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: "0 18px" }}>
             {upcomingFree.map((d) => (
-              <div key={d.date} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, padding: "5px 0", borderBottom: "1px solid var(--line)" }}>
+              <div key={d.date} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14, padding: "5px 0", borderBottom: "1px solid var(--line)" }}>
                 <span className="mono" style={{ width: 92, color: "var(--muted)" }}>
                   {wd(d.date)} {fmtShort(d.date)}
                   {d.date.slice(2, 4)}
@@ -4251,7 +4384,7 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
                 </button>
               </div>
             ))}
-            {upcomingFree.length === 0 && <div style={{ fontSize: 13, color: "var(--muted)" }}>Keine freien Tage in der Zukunft.</div>}
+            {upcomingFree.length === 0 && <div style={{ fontSize: 14, color: "var(--muted)" }}>Keine freien Tage in der Zukunft.</div>}
           </div>
         </div>
       </div>
@@ -4265,7 +4398,7 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
     <>
       <div className="page-head rise" style={{ "--i": 0 }}>
         <div>
-          <h1>Produktionsplanung</h1>
+          <h1>Produktionsplanung <HilfeKnopf thema="planung" /></h1>
           <p>
             {dayName}, {fmtShort(today)}
             {today.slice(0, 4)} · KW {isoWeekOf(today).week} · {shift.label}, {fmtH(shift.hours)} h pro Woche × {utilization} % Nutzung
@@ -4274,13 +4407,18 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
         <div className="actions">
           <DiensteStatus />
           {odooStatus && odooStatus.enabled && (
-            <button className="sync" type="button" onClick={openSync} title="Jetzt mit Odoo abgleichen">
+            <button className="sync" type="button" onClick={openSync} title={odooStatus.lastError ? `Letzter Abgleich mit Fehler: ${odooStatus.lastError}. Klicken: neu abgleichen` : "Jetzt mit Odoo abgleichen"}>
               <span className={"ok" + (odooStatus.lastError ? " err" : "")} />
-              {odooStatus.lastSync ? "Odoo · vor " + (Math.max(0, Math.round((Date.now() - Date.parse(odooStatus.lastSync)) / 60000)) || "<1") + " Min." : "Odoo abgleichen"}
+              {odooStatus.lastError
+                ? "Odoo-Abgleich mit Fehler"
+                : odooStatus.lastSync
+                ? `Odoo abgeglichen ${new Date(odooStatus.lastSync).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })} Uhr`
+                : "Mit Odoo abgleichen"}
               {odooStatus.pendingClosing && odooStatus.pendingClosing.length > 0 && <b className="tag warn" style={{ fontStyle: "normal" }}>{odooStatus.pendingClosing.length} zu schließen</b>}
               <Ico n="refresh" s={15} />
             </button>
           )}
+          <SucheKnopf />
           <input ref={fileInput} type="file" accept=".xlsx" onChange={onImportFile} style={{ display: "none" }} />
           <button className="btn" type="button" onClick={() => fileInput.current.click()} title="Reserve: Fertigungsaufträge aus einer Excel-Datei aus Odoo importieren">
             <Ico n="down" s={16} />
@@ -4289,22 +4427,63 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
         </div>
       </div>
 
-      <PrioLeiste data={prio} setData={setPrio} spaet={prioSpaet} onOpen={(id) => { setTab("zeit"); openDetail(id); }} toast={toast} />
+      {/* Überblick in einer Zeile: Heute, Prio und Kennzahlen; „Details“ klappt Prio-Leiste und Heute-Liste auf (gemerkt je Gerät) */}
+      {(() => {
+        const wichtig = korb.filter((i) => i.tone !== "mute");
+        const rot = wichtig.filter((i) => i.tone === "bad").length;
+        const prioN = ((prio && prio.items) || []).length;
+        const stat = (key, n, label, tone) => (
+          <button type="button" className={`ov-item${tone ? " " + tone : ""}${hl === key ? " active" : ""}`} onClick={() => { setHl(hl === key ? null : key); setHlSel(null); setTab("zeit"); }} title="Im Zeitstrahl hervorheben">
+            <b>{n}</b>
+            <span>{label}</span>
+          </button>
+        );
+        return (
+          <div className="ov-strip card rise" style={{ "--i": 1 }}>
+            <button type="button" className={`ov-item heute${rot ? " bad" : wichtig.length ? " warn" : " ok"}`} onClick={() => setOvOpen(!ovOpen)} aria-expanded={ovOpen} title="Was heute zu tun ist">
+              <b>{wichtig.length || "✓"}</b>
+              <span>{wichtig.length ? (wichtig.length === 1 ? "Punkt für heute" : "Punkte für heute") : "Heute alles erledigt"}</span>
+            </button>
+            {prioN > 0 && (
+              <button type="button" className="ov-item prio" onClick={() => setOvOpen(true)} title="Prio-Aufträge dieser Woche">
+                <b>{prioN}</b>
+                <span>{prioN === 1 ? "Prio-Auftrag" : "Prio-Aufträge"}</span>
+              </button>
+            )}
+            <i className="ov-sep" aria-hidden="true" />
+            {stat("late", warnings.length, "Liefertermin gefährdet", warnings.length ? "bad" : "")}
+            {stat("pool", poolOrders.length, "noch ohne Maschine", "")}
+            {stat("soon", urgentIds.size, "starten bald, nicht bereit", urgentIds.size ? "warn" : "")}
+            <span className="ov-item static">
+              <span>Nächste freie Maschine</span>
+              <b className="ov-free">{nextFree ? `${nextFree.m.short} ${nextFree.at <= todayOff ? "jetzt frei" : `ab ${fmtShort(dateOf(nextFree.at))}`}` : "–"}</b>
+            </span>
+            <span style={{ flex: 1 }} />
+            <button type="button" className="btn sm" onClick={() => setOvOpen(!ovOpen)} aria-expanded={ovOpen}>
+              {ovOpen ? "Weniger zeigen" : "Heute & Prio zeigen"}
+              <Ico n={ovOpen ? "chevu" : "chevd"} s={15} />
+            </button>
+          </div>
+        );
+      })()}
 
-      <Arbeitskorb
-        bereich="planung"
-        reloadKey={fwKey}
-        onJump={jump}
-        onCounts={setKorb}
-        onChanged={() => fetch("/api/orders").then((r) => r.json()).then((d) => setOrders(d.orders)).catch(() => {})}
-        onHighlight={(ids) => {
-          setVorschlagIds(ids);
-          setHl("vorschlag");
-          setHlSel(ids.length ? { ids, anchor: ids[0] } : null);
-          setTab("zeit");
-          scrollTo("planverbessern");
-        }}
-      />
+      <div hidden={!ovOpen}>
+        <PrioLeiste data={prio} setData={setPrio} spaet={prioSpaet} onOpen={(id) => { setTab("zeit"); openDetail(id); }} toast={toast} />
+        <Arbeitskorb
+          bereich="planung"
+          reloadKey={fwKey}
+          onJump={jump}
+          onCounts={setKorb}
+          onChanged={() => fetch("/api/orders").then((r) => r.json()).then((d) => setOrders(d.orders)).catch(() => {})}
+          onHighlight={(ids) => {
+            setVorschlagIds(ids);
+            setHl("vorschlag");
+            setHlSel(ids.length ? { ids, anchor: ids[0] } : null);
+            setTab("zeit");
+            scrollTo("planverbessern");
+          }}
+        />
+      </div>
 
       {preview && (
         <div className="note warn rise" style={{ "--i": 1 }}>
@@ -4326,25 +4505,6 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
           </div>
         </div>
       )}
-
-      <div className="card stats rise" style={{ "--i": 1 }}>
-        <button className={`stat${hl === "late" ? " active" : ""}`} type="button" onClick={() => { setHl(hl === "late" ? null : "late"); setHlSel(null); setTab("zeit"); }}>
-          <span className="k"><i className="dot" style={{ "--c": "var(--bad)" }} /><span>Liefertermin gefährdet</span></span>
-          <b><span>{warnings.length}</span> {warnings.length === 1 ? "Auftrag" : "Aufträge"}</b>
-        </button>
-        <button className={`stat${hl === "pool" ? " active" : ""}`} type="button" onClick={() => { setHl(hl === "pool" ? null : "pool"); setHlSel(null); setTab("zeit"); }}>
-          <span className="k"><i className="dot" style={{ "--c": "var(--faint)" }} /><span>Noch keine Maschine</span></span>
-          <b><span>{poolOrders.length}</span> Positionen</b>
-        </button>
-        <button className={`stat${hl === "soon" ? " active" : ""}`} type="button" onClick={() => { setHl(hl === "soon" ? null : "soon"); setHlSel(null); setTab("zeit"); }}>
-          <span className="k"><i className="dot" style={{ "--c": "var(--warn)" }} /><span>Starten bald, nicht bereit</span></span>
-          <b><span>{urgentIds.size}</span> Positionen</b>
-        </button>
-        <div className="stat">
-          <span className="k"><i className="dot" style={{ "--c": "var(--ok)" }} /><span>Nächste freie Maschine</span></span>
-          <b>{nextFree ? `${nextFree.m.short} ${nextFree.at <= todayOff ? "jetzt frei" : `ab ${fmtShort(dateOf(nextFree.at))}`}` : "–"}</b>
-        </div>
-      </div>
 
       <div className="tabs rise" style={{ "--i": 2 }}>
         <button type="button" className={tab === "zeit" ? "on" : ""} onClick={() => setTab("zeit")}>

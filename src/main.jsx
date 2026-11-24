@@ -11,6 +11,7 @@ import "@fontsource/ibm-plex-mono/500.css";
 import "@fontsource/ibm-plex-mono/600.css";
 import "./app.css";
 import "./look.css";
+import "./bedienung.css";
 import App from "./App.jsx";
 import { registerOffline } from "./offline.js";
 

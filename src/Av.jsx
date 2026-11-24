@@ -7,6 +7,7 @@ import BomHinweis from "./BomHinweis.jsx";
 import Vollstaendig from "./Vollstaendig.jsx";
 import Terminverlauf from "./Terminverlauf.jsx";
 import FehlerMelden from "./FehlerMelden.jsx";
+import { HilfeKnopf, SucheKnopf } from "./Bedienhilfe.jsx";
 import AvAktionen from "./AvAktionen.jsx";
 import { AvPaket, useFreigaben, aenderungen } from "./Freigaben.jsx";
 import { ArbeitsplanKette, ArbeitsplanPanel } from "./Arbeitsplan.jsx";
@@ -403,7 +404,7 @@ export default function AvView({ avStdOf = () => null, orders, checks, planStart
               </span>
             )}
           </div>
-          <div style={{ color: "var(--muted)", fontSize: 12, maxWidth: 240, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={o.product || ""}>
+          <div style={{ color: "var(--muted)", fontSize: 13, maxWidth: 240, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={o.product || ""}>
             {[o.quantity != null ? `${o.quantity} Stück` : null, o.product].filter(Boolean).join(" · ")}
           </div>
           {(o.customer || o.sale_date) && (
@@ -516,7 +517,7 @@ export default function AvView({ avStdOf = () => null, orders, checks, planStart
     <>
       <div className="page-head rise" style={{ "--i": 0 }}>
         <div>
-          <h1>Arbeitsvorbereitung</h1>
+          <h1>Arbeitsvorbereitung <HilfeKnopf thema="av" /></h1>
           <p>Was ist bereit, was fehlt noch? Die Maschine weist die Planung zu.</p>
           <BomHinweis />
           <Vollstaendig onChanged={onReload} />
@@ -667,7 +668,7 @@ export default function AvView({ avStdOf = () => null, orders, checks, planStart
           </table>
         </div>
       </div>
-      <div className="rise" style={{ "--i": 2, marginTop: 12, fontSize: 12.5, color: "var(--muted)", lineHeight: 1.6 }}>
+      <div className="rise" style={{ "--i": 2, marginTop: 12, fontSize: 13.5, color: "var(--muted)", lineHeight: 1.6 }}>
         „Muss bis“ ist der Tag, bis zu dem alles bereit sein muss: Start auf der Maschine minus {leadDays} {leadDays === 1 ? "Tag" : "Tage"} Vorlauf (einstellbar unter Planung, Einstellungen). Ein Klick auf einen Status schaltet ihn weiter (offen, in Arbeit, bereit). Ein Klick auf die Zeile öffnet die Details mit Termin, Zuständigem und Notiz. Der späteste Termin der offenen Punkte ist das „Bereit ab“: Bis dahin wartet die Position in der Planung. Fehlt etwas, ist das nur eine Warnung.
       </div>
     </>

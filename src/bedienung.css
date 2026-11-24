@@ -1,0 +1,247 @@
+/* Bedienung, Stufe 1 (24.11.2026): einfacher zu bedienen, ohne etwas umzustellen.
+   Grundsätze: Was man anklicken kann, sieht aus wie ein Knopf (Fläche, Rahmen, Hand-Zeiger) oder wie ein Link (blau).
+   Was nur Zustand anzeigt (Etiketten, „Pillen“), ist flach, ohne Rahmen und nicht rund wie ein Knopf.
+   Rot nur, wo jetzt gehandelt werden muss. Sätze in normaler Schrift, keine Großbuchstaben-Zeilen.
+   Gilt für beide Looks; Feinheiten für den neuen Look unten. Die Schriftgrößen sind in app.css/look.css selbst eine Stufe größer. */
+
+:root {
+  --link: #1F5FCC;
+  --btn-bg: #FFFFFF;
+  --btn-bg-hover: #EEF2F7;
+  --btn-edge: rgba(30, 40, 60, .26);
+  --btn-edge-hover: rgba(30, 40, 60, .42);
+  --btn-shadow: 0 1px 2px rgba(30, 40, 60, .14);
+  --tag-bad: #B4232F;
+  --tag-bad-bg: #FBE4E6;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --link: #7DB3FF;
+    --btn-bg: rgba(255, 255, 255, .10);
+    --btn-bg-hover: rgba(255, 255, 255, .17);
+    --btn-edge: rgba(255, 255, 255, .26);
+    --btn-edge-hover: rgba(255, 255, 255, .40);
+    --btn-shadow: 0 2px 6px rgba(0, 0, 0, .30), inset 0 1px 0 rgba(255, 255, 255, .08);
+    --tag-bad: #FF9AA1;
+    --tag-bad-bg: rgba(255, 90, 100, .17);
+  }
+}
+:root[data-theme="dark"] {
+  --link: #7DB3FF;
+  --btn-bg: rgba(255, 255, 255, .10);
+  --btn-bg-hover: rgba(255, 255, 255, .17);
+  --btn-edge: rgba(255, 255, 255, .26);
+  --btn-edge-hover: rgba(255, 255, 255, .40);
+  --btn-shadow: 0 2px 6px rgba(0, 0, 0, .30), inset 0 1px 0 rgba(255, 255, 255, .08);
+  --tag-bad: #FF9AA1;
+  --tag-bad-bg: rgba(255, 90, 100, .17);
+}
+
+/* ---------- 1 Knöpfe: eindeutig klickbar ---------- */
+html .btn:not(.primary):not(.quiet):not(.odoo):not(.ok):not(.pinned):not(.prio-btn.on) {
+  background: var(--btn-bg); border: 1px solid var(--btn-edge); box-shadow: var(--btn-shadow);
+}
+html .btn:not(.primary):not(.quiet):not(.odoo):not(.ok):not(.pinned):not(.prio-btn.on):not(:disabled):hover {
+  background: var(--btn-bg-hover); border-color: var(--btn-edge-hover);
+}
+html .btn { min-height: 36px; font-weight: 600; cursor: pointer; transition: background-color .12s, border-color .12s, transform .06s; }
+html .btn.sm { min-height: 32px; }
+html .btn.icon { min-height: 0; }
+html .btn:not(:disabled):active { transform: translateY(1px); }
+html .btn:disabled { cursor: not-allowed; }
+html .btn svg { flex: none; }
+
+/* Leise Knöpfe sind Links: blau, beim Darüberfahren unterstrichen (das X zum Schließen bleibt grau) */
+html .btn.quiet { color: var(--link); background: transparent; border-color: transparent; box-shadow: none; }
+html .btn.quiet:not(:disabled):hover { background: transparent; color: var(--link); text-decoration: underline; text-underline-offset: 3px; }
+html .btn.quiet.icon { color: var(--muted); }
+html .btn.quiet.icon:hover { color: var(--ink); text-decoration: none; background: var(--btn-bg-hover); }
+.pr-aus { color: var(--link) !important; }
+
+/* Reiter und Umschalter: größer und als Schalter erkennbar */
+.tabs button { font-size: 15.5px; padding: 10px 2px 12px; cursor: pointer; }
+.tabs button:not(.on):hover { color: var(--ink); }
+.tabs button.on { font-weight: 700; }
+.seg button { min-height: 30px; cursor: pointer; }
+.seg button:not(.on):not(:disabled):hover { color: var(--ink); background: var(--btn-bg-hover); }
+.chipf { cursor: pointer; }
+
+/* Tastatur: sichtbarer Rahmen */
+:focus-visible { outline: 2px solid var(--link); outline-offset: 2px; }
+
+/* ---------- 2 Etiketten (Pillen): zeigen Zustand, sind keine Knöpfe ---------- */
+html .pill { border-radius: 6px; border-color: transparent; padding: 3px 9px; cursor: default; }
+html .pill.bad { color: var(--tag-bad); background: var(--tag-bad-bg); }
+html[data-look="neu"] .pill { font-size: 13px; }
+html[data-look="neu"] .pill.bad { color: var(--tag-bad); background: var(--tag-bad-bg); border-color: transparent; }
+html[data-look="neu"] .pill.ok, html[data-look="neu"] .pill.warn, html[data-look="neu"] .pill.mute { border-color: transparent; }
+/* Pillen, die doch etwas tun (button.pill), bekommen Rahmen und Hand-Zeiger */
+html button.pill { cursor: pointer; border: 1px solid var(--btn-edge); }
+html button.pill:hover { border-color: var(--btn-edge-hover); }
+
+/* ---------- 3 Weniger Alarm ---------- */
+/* Zähler in der Leiste: neutral; Rot bleibt den Zahlen vorbehalten, die jetzt Handeln verlangen (AV in der Navigation) */
+.ghost-dark .cnt2 { background: rgba(255, 255, 255, .16); color: var(--side-ink); animation: none; }
+html:not([data-theme="dark"]) .ghost-dark .cnt2 { background: rgba(20, 24, 29, .10); color: #14181D; }
+
+/* ---------- 4 Beschriftungen: normale Schrift statt Großbuchstaben-Zeilen ---------- */
+html[data-look="neu"] .stat .k, html[data-look="neu"] .stat .k span, html[data-look="neu"] .kpi .lab, html[data-look="neu"] .mcard .lab {
+  font: 600 13.5px/1.3 var(--f-body); letter-spacing: 0; text-transform: none;
+}
+html[data-look="neu"] .lane .lab small { font: 500 13px/1.3 var(--f-body); letter-spacing: 0; text-transform: none; }
+.dsec h4 { font: 700 14px/1.3 var(--f-body); letter-spacing: 0; text-transform: none; color: var(--ink); }
+/* Tabellenköpfe und Zwischenüberschriften: normale Schreibweise, gut lesbar */
+.tbl th, .vs-table th, .alerts .g, .pal li.hd, .pdocs-head b, .avp-facts small, .apl-head, .fw-info h5, .mj-heute,
+html[data-look="neu"] .ap-hero h3, html[data-look="neu"] .ap-card h3, html[data-look="neu"] .ap-tile small {
+  text-transform: none; letter-spacing: .01em; font-family: var(--f-body); font-weight: 600;
+}
+.tbl th, .vs-table th { font-size: 13px; color: var(--muted); }
+
+/* Hinweiszeilen in Fenstern */
+.hint-txt { font-size: 13.5px; color: var(--muted); }
+.lane-hint { display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; margin-top: 14px; padding: 10px 12px; border-radius: 12px; background: var(--btn-bg-hover); font-size: 14px; color: var(--muted); }
+.lane-hint span { flex: 1 1 220px; min-width: 0; }
+
+/* ---------- 5 Eingabefelder: heller und leicht vertieft = hier kann man schreiben oder auswählen ----------
+   Knöpfe sind erhaben und rund, Felder flach-eckig mit eigener Fläche. Beim Anklicken blauer Rahmen. */
+:root {
+  --field-bg: #FFFFFF;
+  --field-edge: rgba(30, 40, 60, .30);
+  --field-edge-hover: rgba(30, 40, 60, .55);
+  --field-ink: #14181D;
+  --field-inset: inset 0 1px 2px rgba(30, 40, 60, .10);
+  --field-ring: rgba(31, 95, 204, .22);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --field-bg: #262D37;
+    --field-edge: rgba(255, 255, 255, .22);
+    --field-edge-hover: rgba(255, 255, 255, .40);
+    --field-ink: #F3F5F8;
+    --field-inset: inset 0 1px 3px rgba(0, 0, 0, .35);
+    --field-ring: rgba(125, 179, 255, .30);
+  }
+}
+:root[data-theme="dark"] {
+  --field-bg: #262D37;
+  --field-edge: rgba(255, 255, 255, .22);
+  --field-edge-hover: rgba(255, 255, 255, .40);
+  --field-ink: #F3F5F8;
+  --field-inset: inset 0 1px 3px rgba(0, 0, 0, .35);
+  --field-ring: rgba(125, 179, 255, .30);
+}
+/* doppeltes [data-look] hebt die Gewichtung über die Regeln in look.css */
+html[data-look][data-look] :is(input[type=text], input[type=number], input[type=date], input[type=time], input[type=search], input[type=email], input[type=tel], input[type=password], input:not([type]), select, textarea),
+html:not([data-look]) :is(input[type=text], input[type=number], input[type=date], input[type=time], input[type=search], input[type=email], input[type=tel], input[type=password], input:not([type]), select, textarea) {
+  background-color: var(--field-bg); color: var(--field-ink);
+  border: 1px solid var(--field-edge); border-radius: 9px; box-shadow: var(--field-inset);
+  min-height: 38px; padding: 7px 11px; font-size: 15px; box-sizing: border-box; max-width: 100%;
+  transition: border-color .12s, box-shadow .12s;
+}
+html[data-look][data-look] :is(input, select, textarea):not([type=checkbox]):not([type=radio]):not([type=file]):not([type=range]):not(:disabled):hover,
+html:not([data-look]) :is(input, select, textarea):not([type=checkbox]):not([type=radio]):not([type=file]):not([type=range]):not(:disabled):hover {
+  border-color: var(--field-edge-hover);
+}
+html[data-look][data-look] :is(input, select, textarea):not([type=checkbox]):not([type=radio]):focus,
+html:not([data-look]) :is(input, select, textarea):not([type=checkbox]):not([type=radio]):focus {
+  outline: none; border-color: var(--link); box-shadow: var(--field-inset), 0 0 0 3px var(--field-ring);
+}
+html[data-look][data-look] select, html:not([data-look]) select {
+  appearance: none; -webkit-appearance: none; cursor: pointer; padding-right: 34px;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'><path d='M1 1.5l5 5 5-5' fill='none' stroke='%238C97A5' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/></svg>");
+  background-repeat: no-repeat; background-position: right 12px center; background-size: 12px 8px;
+}
+:is(input, textarea)::placeholder { color: var(--faint); opacity: 1; }
+/* Nicht änderbar: ohne Fläche und Rahmen, damit es nicht nach Eingabe aussieht */
+html[data-look][data-look] :is(input, select, textarea):is(:disabled, [readonly]),
+html:not([data-look]) :is(input, select, textarea):is(:disabled, [readonly]) {
+  background-color: transparent; box-shadow: none; border-style: dashed; cursor: not-allowed; opacity: .75;
+}
+input[type=checkbox], input[type=radio] { accent-color: var(--link); width: 18px; height: 18px; cursor: pointer; }
+input[type=date]::-webkit-calendar-picker-indicator { cursor: pointer; opacity: .85; }
+:root[data-theme="dark"] :is(input, select) { color-scheme: dark; }
+/* Feldbeschriftungen über den Feldern; die Felder füllen ihre Spalte, ohne über den Rand zu ragen */
+label.f { font-weight: 600; font-size: 14px; color: var(--muted); min-width: 0; }
+.fgrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+label.f > :is(input, select, textarea) { width: 100%; min-width: 0; }
+
+/* ---------- Planung: Überblick in einer Zeile ---------- */
+.ov-strip { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 8px 10px; margin-bottom: 14px; }
+.ov-item { display: inline-flex; align-items: baseline; gap: 7px; padding: 7px 12px; border-radius: 12px; border: 1px solid transparent; background: transparent; color: var(--ink); font: inherit; font-size: 14.5px; cursor: pointer; white-space: nowrap; }
+.ov-item b { font: 600 20px/1 var(--f-mono); }
+.ov-item span { color: var(--muted); }
+button.ov-item:hover { background: var(--btn-bg-hover); border-color: var(--btn-edge); }
+.ov-item.active { background: var(--btn-bg-hover); border-color: var(--link); }
+.ov-item.bad b { color: var(--bad); }
+.ov-item.warn b { color: var(--warn); }
+.ov-item.ok b { color: var(--ok); }
+.ov-item.heute { border-color: var(--btn-edge); background: var(--btn-bg); }
+.ov-item.heute.bad { border-color: color-mix(in srgb, var(--bad) 55%, transparent); }
+.ov-item.heute.warn { border-color: color-mix(in srgb, var(--warn) 55%, transparent); }
+.ov-item.prio b { color: var(--nl-acc, var(--bad)); }
+.ov-item.static { cursor: default; flex-direction: column; align-items: flex-start; gap: 2px; }
+.ov-item.static span { font-size: 13px; }
+.ov-item .ov-free { font: 600 15px/1.2 var(--f-body); }
+.ov-sep { width: 1px; align-self: stretch; margin: 4px 6px; background: var(--line); }
+@media (max-width: 760px) { .ov-sep { display: none; } }
+
+/* ---------- Positionsfenster: Satz oben, aufklappbare Abschnitte ---------- */
+.drawer .eyebrow { font-size: 12.5px; font-weight: 600; color: var(--muted); letter-spacing: .02em; margin-bottom: 2px; }
+.status-satz { margin: 12px 0 0; padding: 10px 12px; border-radius: 12px; background: var(--btn-bg-hover); font-size: 15px; line-height: 1.45; color: var(--ink); }
+.status-satz.warn { box-shadow: inset 3px 0 0 var(--warn); }
+.status-satz.bad { box-shadow: inset 3px 0 0 var(--bad); }
+.fold-head { display: flex; align-items: center; gap: 10px; width: 100%; padding: 2px 0; margin: 0; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.fold-head h4 { margin: 0 !important; }
+.fold-head .fold-ch { margin-left: auto; color: var(--muted); display: inline-flex; transition: transform .15s; transform: rotate(-90deg); }
+.fold.open .fold-head .fold-ch { transform: none; }
+.fold-head:hover h4, .fold-head:hover .fold-ch { color: var(--link); }
+.fold-body { margin-top: 12px; }
+.dact .dact-lab { flex-basis: 100%; font-size: 13px; font-weight: 600; color: var(--muted); }
+
+/* ---------- Suchfeld und Hilfe oben auf den Seiten ---------- */
+.suche-knopf {
+  display: inline-flex; align-items: center; gap: 8px; min-width: 210px; min-height: 36px; padding: 6px 10px 6px 12px;
+  border-radius: 9px; border: 1px solid var(--field-edge); background: var(--field-bg); box-shadow: var(--field-inset);
+  color: var(--faint); font: inherit; font-size: 14.5px; cursor: text; text-align: left;
+}
+.suche-knopf span { flex: 1; }
+.suche-knopf kbd { font: 500 12px var(--f-mono); color: var(--muted); border: 1px solid var(--field-edge); border-radius: 5px; padding: 1px 6px; }
+.suche-knopf:hover { border-color: var(--field-edge-hover); color: var(--muted); }
+@media (max-width: 760px) { .suche-knopf { min-width: 0; } .suche-knopf kbd { display: none; } }
+.page-head h1 { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.hilfe-knopf { position: relative; display: inline-flex; }
+.hilfe-q { width: 28px; height: 28px; min-height: 0 !important; padding: 0 !important; justify-content: center; border-radius: 50% !important; font: 700 15px/1 var(--f-body) !important; color: var(--muted); }
+.hilfe-pop {
+  position: absolute; z-index: 60; top: calc(100% + 8px); left: 0; width: min(380px, 80vw);
+  padding: 14px 16px; border-radius: 14px; background: var(--surface); border: 1px solid var(--line-strong);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, .35); font: 400 14.5px/1.5 var(--f-body); color: var(--ink); letter-spacing: 0; text-transform: none;
+}
+.hilfe-pop b { display: block; font-size: 15px; margin-bottom: 6px; }
+.hilfe-pop p { margin: 0 0 8px; color: var(--muted); }
+html[data-look="neu"][data-theme="dark"] .hilfe-pop { background: #1C222A; }
+
+/* ---------- Werkstatt: Tablet / Touch (Finger, auch mit Handschuh) ---------- */
+@media (pointer: coarse) {
+  html .btn, html .seg button, .chipf, .ov-item, .ghost-dark, .nav button { min-height: 46px; }
+  html .btn.sm { min-height: 42px; }
+  html .btn { padding-left: 18px; padding-right: 18px; font-size: 16px; }
+  html[data-look][data-look] :is(input[type=text], input[type=number], input[type=date], input[type=time], input[type=search], select, textarea) { min-height: 46px; font-size: 16px; }
+  input[type=checkbox], input[type=radio] { width: 24px; height: 24px; }
+  .hilfe-q { width: 40px; height: 40px; }
+  .alerts .it-hide { padding: 0 18px; }
+}
+/* Team-Tafel im Vollbild (Halle): größer, damit man es aus ein paar Metern lesen kann */
+.app.kiosk .main { font-size: 17px; }
+.app.kiosk .page-head h1 { font-size: 36px; }
+
+/* ---------- Hinweise: je Eintrag „für heute ausblenden“ ---------- */
+.alerts .it-row { display: flex; align-items: stretch; }
+.alerts .it-row .it { flex: 1; min-width: 0; }
+.alerts .it-hide { flex: none; border: 0; background: transparent; color: var(--faint); padding: 0 14px; cursor: pointer; opacity: .7; }
+.alerts .it-hide:hover { opacity: 1; color: var(--ink); background: var(--btn-bg-hover); }
+
+/* ---------- 6 Linke Leiste: „Mehr“ ---------- */
+.side-more { display: flex; flex-direction: column; gap: inherit; padding-top: 6px; border-top: 1px solid rgba(255, 255, 255, .10); }
+html:not([data-theme="dark"]) .side-more { border-top-color: rgba(20, 24, 29, .10); }
+.ghost-dark { cursor: pointer; }
+.ghost-dark.more-sw.on { color: var(--side-ink); }
