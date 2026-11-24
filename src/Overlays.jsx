@@ -64,9 +64,24 @@ export function alertsList(shared, { mitAusgeblendet = false } = {}) {
     });
   const soon = [...soonBy.values()].map((s) => ({ key: s.key, id: s.id, title: s.title, text: `${s.n > 1 ? `${s.n} Positionen starten` : "startet"} ab ${fmtShort(s.start)}, fehlt: ${[...s.fehlt].join(", ")}` }));
   const soonIds = new Set(pos.filter((p) => p.urgent).map((p) => p.id));
-  const mat = pos
-    .filter((p) => p.start && (p.materialWiderspruch ? p.startIn <= 14 : p.startIn <= 7 && p.materialMissing && !soonIds.has(p.id)))
-    .map((p) => ({ key: `mat:${p.id}`, id: p.id, title: p.no, text: p.materialWiderspruch ? `${p.source} · AV sagt da, Odoo sagt fehlt: bitte klären, Start ${fmtShort(p.start)}` : `${p.source} · Material fehlt laut Odoo, Start ${fmtShort(p.start)}` }));
+  // Material: nur bei Start in den nächsten 7 Tagen, je Auftrag zusammengefasst; was schon unter „startet bald“ steht, nicht doppelt
+  const matBy = new Map();
+  pos
+    .filter((p) => p.start && p.startIn <= 7 && (p.materialWiderspruch || (p.materialMissing && !soonIds.has(p.id))))
+    .sort((a, b) => String(a.start).localeCompare(String(b.start)))
+    .forEach((p) => {
+      const k = p.source || p.no;
+      if (!matBy.has(k)) matBy.set(k, { key: `mat:${k}`, id: p.id, title: k, n: 0, wider: 0, start: p.start });
+      const m = matBy.get(k);
+      m.n += 1;
+      if (p.materialWiderspruch) m.wider += 1;
+    });
+  const mat = [...matBy.values()].map((m) => ({
+    key: m.key,
+    id: m.id,
+    title: m.title,
+    text: `${m.n > 1 ? `${m.n} Positionen` : "1 Position"} ab ${fmtShort(m.start)}: ${m.wider ? "AV sagt da, Odoo sagt fehlt, bitte klären" : "Material fehlt laut Odoo"}`,
+  }));
   const keep = (list) => list.filter((i) => !hidden[i.key]);
   return [
     { title: "Liefertermin gefährdet", color: "var(--bad)", items: keep(late) },

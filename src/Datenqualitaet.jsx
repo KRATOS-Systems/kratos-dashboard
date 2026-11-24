@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { ODOO_URL } from "./planLogic.js";
+import MaterialKlaeren from "./MaterialKlaeren.jsx";
 
 // Datenqualität: was in Odoo, Kalkulation oder App fehlt und die KI ausbremst, als Arbeitsliste mit Links (server/datenqualitaet.js).
 
@@ -7,6 +8,8 @@ export default function Datenqualitaet({ reloadKey, onCount }) {
   const [d, setD] = useState(null);
   const [err, setErr] = useState("");
   const [open, setOpen] = useState(null);
+  const [kl, setKl] = useState(null); // Position, deren „Material klären“ offen ist
+  const [reload, setReload] = useState(0);
   useEffect(() => {
     fetch("/api/datenqualitaet")
       .then(async (r) => {
@@ -16,7 +19,7 @@ export default function Datenqualitaet({ reloadKey, onCount }) {
         onCount && onCount(j.gesamt);
       })
       .catch((e) => setErr(e.message));
-  }, [reloadKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [reloadKey, reload]); // eslint-disable-line react-hooks/exhaustive-deps
   if (err && !d) return <div className="card dq fg-faint">Datenqualität: {err}</div>;
   if (!d) return <div className="card dq fg-faint">Datenqualität wird geladen …</div>;
   const offen = d.gruppen.filter((g) => g.n > 0);
@@ -52,6 +55,16 @@ export default function Datenqualitaet({ reloadKey, onCount }) {
                     <span className="fg-faint">
                       {[x.source, x.customer, x.product, x.grund].filter(Boolean).join(" · ")}
                     </span>
+                    {x.klaeren === "material" && x.orderId && (
+                      <button type="button" className="btn sm" style={{ marginLeft: "auto" }} onClick={() => setKl(kl === x.orderId ? null : x.orderId)} aria-expanded={kl === x.orderId}>
+                        Klären
+                      </button>
+                    )}
+                    {kl === x.orderId && x.klaeren === "material" && (
+                      <div style={{ flexBasis: "100%" }}>
+                        <MaterialKlaeren orderId={x.orderId} avBereit onClose={() => setKl(null)} onAvReset={() => { setKl(null); setReload((v) => v + 1); }} />
+                      </div>
+                    )}
                   </li>
                 ))}
                 {g.n > g.items.length && <li className="fg-faint">… und {g.n - g.items.length} weitere</li>}

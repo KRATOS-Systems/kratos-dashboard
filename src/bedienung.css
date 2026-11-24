@@ -234,6 +234,24 @@ html[data-look="neu"][data-theme="dark"] .hilfe-pop { background: #1C222A; }
 .app.kiosk .main { font-size: 17px; }
 .app.kiosk .page-head h1 { font-size: 36px; }
 
+/* ---------- Material klären ---------- */
+.matk { margin-top: 10px; padding: 12px 14px; border-radius: 12px; border: 1px solid color-mix(in srgb, var(--warn) 45%, var(--line)); background: var(--btn-bg-hover); font-size: 14.5px; }
+.matk-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.matk-komp + .matk-komp { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
+.matk-name { font-weight: 600; }
+.matk-facts { display: flex; flex-wrap: wrap; gap: 6px 16px; margin: 4px 0 6px; color: var(--muted); }
+.matk-facts b { color: var(--ink); font-family: var(--f-mono); }
+.matk-facts .neg b { color: var(--bad); }
+.matk-po { margin: 4px 0 8px; padding-left: 18px; }
+.matk-po a { color: var(--link); font-weight: 600; }
+.matk-hint { color: var(--warn); }
+.matk-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.matk-actions a.btn { text-decoration: none; }
+.matk-av { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line); }
+.matk-note { margin-top: 10px; font-size: 13px; }
+.matk-err { color: var(--bad); }
+.dq-items li { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+
 /* ---------- Hinweise: je Eintrag „für heute ausblenden“ ---------- */
 .alerts .it-row { display: flex; align-items: stretch; }
 .alerts .it-row .it { flex: 1; min-width: 0; }

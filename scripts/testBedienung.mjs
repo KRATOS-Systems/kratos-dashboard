@@ -80,6 +80,15 @@ try {
   const g = (id) => dq.gruppen.find((x) => x.id === id);
   for (const id of ["stueckliste", "zeichnung", "kalkulation", "material", "stunden", "schliessen", "einkauf", "stempel"]) assert.ok(g(id), id);
   assert.deepEqual(g("material").items.map((x) => x.ref), ["FA01334"], JSON.stringify(g("material")));
+  assert.equal(g("material").items[0].orderId, row("FA01334").id, "Eintrag trägt die Position für „Klären“");
+  // Material klären: liest Odoo (nur lesen), ohne Fertigungsauftrag gibt es eine klare Antwort statt eines Fehlers
+  const mk = await api("GET", `/api/material/${row("FA01334").id}`);
+  assert.equal(mk.status, 200, JSON.stringify(mk));
+  assert.ok(mk.verfuegbar === false || Array.isArray(mk.komponenten), JSON.stringify(mk));
+  const ohne = await api("POST", "/api/orders", { machine: "qs" });
+  const mk2 = await api("GET", `/api/material/${ohne.id}`);
+  assert.equal(mk2.verfuegbar, false);
+  assert.equal((await api("GET", "/api/material/999999")).status, 404);
   assert.ok(g("stunden").items.some((x) => x.ref === "FA01309"), JSON.stringify(g("stunden")));
   assert.deepEqual(g("einkauf").items.map((x) => x.ref).sort(), ["P00557", "WH/IN/00296"]);
   assert.equal(dq.gesamt, dq.gruppen.reduce((s, x) => s + x.n, 0));

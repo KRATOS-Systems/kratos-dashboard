@@ -29,7 +29,7 @@ export default function Laufkarte({ ablauf, onAction }) {
           </div>
           {s.state === "now" && ACTION[s.id] && onAction && (
             <button type="button" className="btn sm" onClick={() => onAction(s)}>
-              {ACTION[s.id]}
+              {s.klaeren ? "Klären" : ACTION[s.id]}
             </button>
           )}
         </li>
