@@ -65,7 +65,7 @@ export default function Auslastung({ reloadKey }) {
                     key={w.monday}
                     title={
                       w.kapazitaet > 0
-                        ? `${h(w.belegt)} von ${h(w.kapazitaet)} h belegt, ${h(w.frei)} h frei` + (w.zuSpaet.length ? "\nZu spät fertig: " + w.zuSpaet.map((z) => `${z.auftrag}${z.fa && z.fa !== z.auftrag ? " (" + z.fa + ")" : ""} +${z.tage} T`).join(", ") : "")
+                        ? `${h(w.belegt)} von ${h(w.kapazitaet)} h belegt, ${h(w.frei)} h frei` + (w.zuSpaet.length ? "\nZu spät fertig: " + w.zuSpaet.map((z) => `${z.auftrag}${z.fa && z.fa !== z.auftrag ? " (" + z.fa + ")" : ""} +${z.tage} ${z.tage === 1 ? "Tag" : "Tage"}`).join(", ") : "")
                         : "Keine Arbeitstage"
                     }
                   >

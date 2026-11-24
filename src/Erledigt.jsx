@@ -78,7 +78,7 @@ export default function Erledigt({ reloadKey, onOpen }) {
                 <tr key={g.auftrag} onClick={() => onOpen(g.ids[0])} tabIndex={0} onKeyDown={(e) => e.key === "Enter" && onOpen(g.ids[0])} title="Details öffnen">
                   <td className="mono">
                     <b>{g.auftrag}</b>
-                    {g.teilweiseOffen && <div className="fg-faint" style={{ fontSize: 12 }}>Rest noch offen</div>}
+                    {g.teilweiseOffen && <div className="fg-faint" style={{ fontSize: 13 }}>Rest noch offen</div>}
                   </td>
                   <td>{g.kunde || "–"}</td>
                   <td className="vs-art">{g.artikel.join(", ") || "–"}</td>

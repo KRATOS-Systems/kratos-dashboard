@@ -66,6 +66,8 @@ const IC = {
   pin: '<path d="M9 4h6l-1 6 3 3H7l3-3zM12 13v7"/>',
   spark: '<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8zM18 16l.8 2.2L21 19l-2.2.8L18 22l-.8-2.2L15 19l2.2-.8z"/>',
   refresh: '<path d="M20 11a8 8 0 0 0-14-4M4 5v4h4M4 13a8 8 0 0 0 14 4M20 19v-4h-4"/>',
+  more: '<circle cx="5" cy="12" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="19" cy="12" r="1.4"/>',
+  flag: '<path d="M6 21V4M6 4h11l-2 4 2 4H6"/>',
   save: '<path d="M5 4h11l3 3v13H5z"/><path d="M8 4v5h7V4M8 20v-6h8v6"/>',
   ext: '<path d="M14 5h5v5M19 5l-8 8M18 14v5H5V6h5"/>',
   cal: '<rect x="4" y="6" width="16" height="14" rx="2"/><path d="M4 11h16M9 3v4M15 3v4"/>',

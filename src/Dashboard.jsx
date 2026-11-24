@@ -323,7 +323,7 @@ function Trend({ rows, metric, hidden }) {
 function CapacityPicker({ value, onChange, label }) {
   return (
     <div className="actions" style={{ gap: 10 }}>
-      <span style={{ color: "var(--muted)", fontSize: 13 }}>{label}</span>
+      <span style={{ color: "var(--muted)", fontSize: 14 }}>{label}</span>
       <div className="seg">
         {SHIFT_MODELS.map((s) => (
           <button key={s.label} type="button" className={value === s.hours ? "on" : ""} title={`${s.label}: ${s.hours} h pro Woche`} onClick={() => onChange(s.hours)}>
@@ -341,7 +341,7 @@ function CapacityPicker({ value, onChange, label }) {
         style={{ width: 70, textAlign: "center" }}
         aria-label="Stunden pro Woche"
       />
-      <span style={{ color: "var(--muted)", fontSize: 13 }}>h pro Woche</span>
+      <span style={{ color: "var(--muted)", fontSize: 14 }}>h pro Woche</span>
     </div>
   );
 }
@@ -579,13 +579,13 @@ export default function Dashboard({ weekCap, saveCapacity, today, openTalos }) {
         <>
           <div className="card rise" style={{ "--i": 1, padding: "12px 18px", marginBottom: 14, display: "flex", gap: 14, alignItems: "center", flexWrap: "wrap" }}>
             <CapacityPicker value={modelOf(period.from)} onChange={(h) => saveCapacity(period.from, h)} label={capLabelWeek} />
-            <span style={{ color: "var(--muted)", fontSize: 13 }}>
+            <span style={{ color: "var(--muted)", fontSize: 14 }}>
               = {dec(totals.cap / Math.max(1, cur.filter((c) => c.e).length))} h pro Maschine
               {lostDays(period.from) > 0 ? ` (${lostDays(period.from)} freier Tag${lostDays(period.from) > 1 ? "e" : ""} abgezogen)` : ""}
             </span>
           </div>
           {anySpread && (
-            <div className="rise" style={{ "--i": 1, color: "var(--muted)", fontSize: 13, marginBottom: 12 }}>
+            <div className="rise" style={{ "--i": 1, color: "var(--muted)", fontSize: 14, marginBottom: 12 }}>
               Mindestens eine Ablesung fehlt: Die Werte sind gleichmäßig auf die Wochen dazwischen verteilt.
             </div>
           )}
@@ -856,7 +856,7 @@ export default function Dashboard({ weekCap, saveCapacity, today, openTalos }) {
                       <input type="number" min={0} step="any" disabled={!entryValid} value={c?.spindle_total ?? ""} onChange={(ev) => updateReading(m.id, "spindle_total", ev.target.value)} />
                     </label>
                   </div>
-                  <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 10, lineHeight: 1.5 }}>
+                  <div style={{ fontSize: 13, color: "var(--muted)", marginTop: 10, lineHeight: 1.5 }}>
                     {pv ? (
                       <>
                         Vorherige Ablesung {fmtShort(pv.date)}: <span className="mono">{fmtH(pv.machine_total)} / {fmtH(pv.spindle_total)}</span>

@@ -70,7 +70,7 @@ export function Alerts({ shared, onClose, onOpenPosition }) {
             </div>
           ) : null
         )}
-        {n === 0 && <div style={{ padding: "10px 16px 16px", color: "var(--muted)", fontSize: 13 }}>Es gibt zurzeit nichts, was Aufmerksamkeit braucht.</div>}
+        {n === 0 && <div style={{ padding: "10px 16px 16px", color: "var(--muted)", fontSize: 14 }}>Es gibt zurzeit nichts, was Aufmerksamkeit braucht.</div>}
       </div>
     </div>
   );
