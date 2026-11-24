@@ -234,6 +234,48 @@ html[data-look="neu"][data-theme="dark"] .hilfe-pop { background: #1C222A; }
 .app.kiosk .main { font-size: 17px; }
 .app.kiosk .page-head h1 { font-size: 36px; }
 
+/* ---------- AV auf Tablet und schmalen Fenstern: Karten statt 12 Spalten ----------
+   Oben die Position, dann zuerst die sechs AV-Punkte (was fehlt), danach Termine. Aufgeklapptes bleibt darunter. */
+@media (max-width: 1150px) {
+  .avtbl { min-width: 0 !important; width: 100%; }
+  .avtbl thead { display: none; }
+  .avtbl, .avtbl tbody { display: block; }
+  .avtbl tr.row { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px 14px; padding: 14px 12px; border-bottom: 1px solid var(--line); }
+  .avtbl tr.row > td { display: block; border: 0 !important; padding: 0 !important; min-width: 0; }
+  .avtbl tr.row > td:first-child { grid-column: 1 / -1; order: 0; }
+  .avtbl tr.row > td.avc { order: 1; }
+  .avtbl tr.row > td:not(:first-child):not(.avc) { order: 2; }
+  .avtbl tr.row > td[data-label]::before { content: attr(data-label); display: block; margin-bottom: 4px; font-size: 13px; font-weight: 600; color: var(--muted); }
+  .avtbl tr:not(.row), .avtbl tr:not(.row) > td { display: block; }
+}
+
+/* ---------- Handy: „Unterwegs“ (nur lesen) ---------- */
+.uw { display: flex; flex-direction: column; gap: 14px; max-width: 640px; margin: 0 auto; }
+.uw-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.uw-head h1 { margin: 0; font-size: 28px; }
+.uw-head p { margin: 2px 0 0; color: var(--muted); font-size: 15px; }
+.uw-card { padding: 14px 16px; border-radius: 18px; background: var(--surface); border: 1px solid var(--line); }
+html[data-look="neu"] .uw-card { background: var(--nl-glass); border-color: var(--nl-edge); box-shadow: var(--nl-shadow); }
+.uw-card h2 { margin: 0 0 10px; font: 700 18px/1.3 var(--f-body); }
+.uw-row { display: grid; grid-template-columns: 10px auto 1fr; gap: 10px; align-items: baseline; padding: 9px 0; border-top: 1px solid var(--line); font-size: 16px; }
+.uw-row:first-of-type { border-top: 0; }
+.uw-row > i { width: 10px; height: 10px; border-radius: 50%; align-self: center; }
+.uw-row > b { font: 600 18px/1 var(--f-mono); }
+.uw-row .uw-auf { font-size: 16px; }
+.uw-row small { display: block; margin-top: 3px; color: var(--muted); font-size: 14px; }
+.uw-row.mute { color: var(--muted); }
+.uw-voll { justify-content: center; min-height: 48px; }
+
+/* ---------- Steuerung: je Reiter die eine Zahl ---------- */
+.leit { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 26px; padding: 14px 18px; margin-bottom: 14px; }
+.leit-z { display: inline-flex; align-items: baseline; gap: 10px; }
+.leit-z b { font: 600 34px/1 var(--f-mono); }
+.leit-z span { font-size: 16px; color: var(--muted); }
+.leit small { flex-basis: 100%; font-size: 14px; color: var(--muted); }
+.leit.ok .leit-z b { color: var(--ok); }
+.leit.warn .leit-z b { color: var(--warn); }
+.leit.bad .leit-z b { color: var(--bad); }
+
 /* ---------- Material klären ---------- */
 .matk { margin-top: 10px; padding: 12px 14px; border-radius: 12px; border: 1px solid color-mix(in srgb, var(--warn) 45%, var(--line)); background: var(--btn-bg-hover); font-size: 14.5px; }
 .matk-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }

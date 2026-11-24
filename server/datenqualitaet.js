@@ -84,6 +84,41 @@ export default function registerDatenqualitaet(app, db) {
     }
     add("einkauf", "Altlasten im Einkauf", "In Odoo prüfen: abschließen, stornieren oder Wareneingang anlegen.", einkauf.map((a) => ({ ref: a.ref, odooId: null, source: null, customer: a.lieferant, grund: `${a.grund}${a.datum ? ", " + a.datum : ""}` })));
 
+    // Bestand im Minus: verbraucht, aber nie als Wareneingang gebucht (Ursache der meisten Material-Widersprüche).
+    // Rohmaterial als Variante: widerspricht der Regel „eigener Artikel, nie Varianten“ (AV001).
+    let minus = [];
+    try {
+      const read = app.locals.odooRead;
+      if (read) {
+        const quants = await read("stock.quant", { domain: [["quantity", "<", 0], ["location_id.usage", "=", "internal"]], fields: ["product_id", "quantity", "location_id"], limit: 1000 });
+        const byP = new Map();
+        for (const q of quants) {
+          const pid = Array.isArray(q.product_id) ? q.product_id[0] : q.product_id;
+          if (!pid) continue;
+          if (!byP.has(pid)) byP.set(pid, { pid, name: Array.isArray(q.product_id) ? q.product_id[1] : String(pid), menge: 0 });
+          byP.get(pid).menge += Number(q.quantity) || 0;
+        }
+        const pids = [...byP.keys()];
+        const prods = pids.length ? await read("product.product", { domain: [["id", "in", pids]], fields: ["product_tmpl_id", "product_template_variant_value_ids"], limit: 1000 }) : [];
+        minus = [...byP.values()]
+          .sort((a, b) => a.menge - b.menge)
+          .map((x) => {
+            const p = prods.find((y) => y.id === x.pid) || {};
+            const variante = Array.isArray(p.product_template_variant_value_ids) && p.product_template_variant_value_ids.length > 0;
+            return {
+              ref: x.name,
+              odooId: null,
+              link: `/odoo/product.product/${x.pid}`,
+              source: null,
+              grund: `Bestand ${String(Math.round(x.menge * 100) / 100).replace(".", ",")}${variante ? " · ist eine Variante (Regel: eigener Artikel)" : ""}`,
+            };
+          });
+      }
+    } catch {
+      minus = [];
+    }
+    add("bestand", "Bestand im Minus in Odoo", "Verbraucht, aber nie eingebucht. Im Artikel „Bestand aktualisieren“ und die echte Menge eintragen; künftig beim Eintreffen den Wareneingang buchen.", minus);
+
     let stempel = [];
     try {
       const read = app.locals.odooRead;

@@ -2774,6 +2774,31 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
           </button>
         </div>
 
+      {/* Je Reiter oben die eine Zahl, die zählt, mit einem Satz dazu */}
+      {(() => {
+        const rech = korb.find((i) => i.id === "rechnung") || {};
+        const leit =
+          sTab === "versand"
+            ? { tone: vN || rN ? "warn" : "ok", teile: [[vN, vN === 1 ? "Auftrag versandbereit" : "Aufträge versandbereit"], [rN, rN === 1 ? "Auftrag geliefert, nicht berechnet" : "Aufträge geliefert, nicht berechnet"]], hint: rN ? rech.hint || "" : vN ? "Verpacken, Lieferschein in Odoo bestätigen: dann geht es von selbst nach „Erledigt“." : "Nichts zu versenden, alles berechnet." }
+            : sTab === "extern"
+            ? { tone: ex.some((i) => i.tone === "bad") ? "bad" : exN ? "warn" : "ok", teile: [[exN, exN === 1 ? "Punkt bei Lieferanten und Wareneingang" : "Punkte bei Lieferanten und Wareneingang"]], hint: exN ? ex.slice(0, 2).map((i) => i.text).join(" · ") : "Alle Lieferanten im Plan." }
+            : sTab === "dq"
+            ? { tone: dqN ? "warn" : "ok", teile: [[dqN || 0, "Punkte in der Datenpflege"]], hint: "Jeder erledigte Punkt macht Anzeigen und Vorschläge genauer. Größter Hebel: Bestände in Odoo, die im Minus stehen." }
+            : null;
+        if (!leit) return null;
+        return (
+          <div className={`leit card rise ${leit.tone}`} style={{ "--i": 3 }}>
+            {leit.teile.map(([n, l], i) => (
+              <span className="leit-z" key={i}>
+                <b>{n}</b>
+                <span>{l}</span>
+              </span>
+            ))}
+            {leit.hint && <small>{leit.hint}</small>}
+          </div>
+        );
+      })()}
+
       {sTab === "extern" && (
         <div className="rise" style={{ "--i": 3 }}>
           <Suspense fallback={<div className="card fg-faint">Extern wird geladen …</div>}>

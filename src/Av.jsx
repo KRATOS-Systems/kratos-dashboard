@@ -317,7 +317,7 @@ export default function AvView({ avStdOf = () => null, orders, checks, planStart
     const late = st.due && st.status !== "bereit" && st.status !== "entfaellt" && st.due < today;
     const key = `${r.o.id}|${item.id}`;
     return (
-      <td key={item.id}>
+      <td key={item.id} className="avc" data-label={item.label}>
         <div className="avcell">
           <button
             type="button"
@@ -458,7 +458,7 @@ export default function AvView({ avStdOf = () => null, orders, checks, planStart
         data-avrow={o.id}
       >
         <td>{posCell(r, showOrder)}</td>
-        <td className="num" style={dueLate ? { color: "var(--bad)", fontWeight: 600 } : undefined}>
+        <td className="num" data-label="Liefertermin" style={dueLate ? { color: "var(--bad)", fontWeight: 600 } : undefined}>
           {o.due ? fmtShort(o.due) : "–"}
           {o.due_original && (
             <small className="dueorig" title={`Liefertermin ${o.due_shifts}× verschoben, ursprünglich ${fmtShort(o.due_original)}${o.due_original.slice(0, 4)}`}>
@@ -471,7 +471,7 @@ export default function AvView({ avStdOf = () => null, orders, checks, planStart
             </small>
           )}
         </td>
-        <td>
+        <td data-label="Planung">
           {plan ? (
             <span style={{ display: "inline-flex", alignItems: "center", gap: 7 }}>
               {plan.machine} · ab {fmtShort(plan.start)}
@@ -481,9 +481,9 @@ export default function AvView({ avStdOf = () => null, orders, checks, planStart
           )}
           {o.odoo_id && ap.plans[o.odoo_id] && <div><ArbeitsplanKette steps={ap.plans[o.odoo_id]} cardMachineId={o.machine} /></div>}
         </td>
-        <td>{mussCell(r)}</td>
+        <td data-label="Muss bis">{mussCell(r)}</td>
         {AV_ITEMS.map((it) => cell(r, it))}
-        <td className="num" style={{ fontWeight: 600, color: sum.ready ? "var(--ok)" : "var(--ink)" }}>
+        <td className="num" data-label="Bereit ab" style={{ fontWeight: 600, color: sum.ready ? "var(--ok)" : "var(--ink)" }}>
           {sum.ready ? "bereit" : sum.readyDate ? fmtShort(sum.readyDate) : "offen"}
         </td>
       </tr>
