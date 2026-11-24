@@ -49,14 +49,16 @@ export default function registerDatenqualitaet(app, db) {
       .prepare(
         `SELECT o.id, o.odoo_ref, o.odoo_id, o.order_no, o.source, o.product, o.customer, o.component_status FROM orders o
          JOIN av_checks c ON c.order_id = o.id AND c.item = 'material' AND c.status = 'bereit'
-         WHERE o.done = 0 AND lower(COALESCE(o.component_status, '')) LIKE '%nicht verf%'`
+         WHERE o.done = 0 AND lower(COALESCE(o.component_status, '')) LIKE '%nicht verf%'
+         GROUP BY COALESCE(o.odoo_ref, 'id' || o.id)
+         ORDER BY o.source, o.odoo_ref`
       )
       .all();
     add(
       "material",
       "Material: AV sagt da, Odoo sagt fehlt",
       "Liegt die Ware da, in Odoo den Wareneingang bzw. Bestand buchen (dann ist sie reserviert). Fehlt sie doch, in der AV den Punkt Material zurücksetzen.",
-      matWider.map((o) => pos(o, { grund: `Odoo: ${o.component_status}` }))
+      matWider.map((o) => pos(o, { grund: `Odoo: ${o.component_status}`, orderId: o.id, klaeren: "material" }))
     );
 
     add(

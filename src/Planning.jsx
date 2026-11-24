@@ -27,6 +27,7 @@ import Avatar from "./Avatar.jsx";
 import { AppTile, Ico, LaneIcon, LaneTile, MTile, Thumb, useToast, partImg } from "./ui.jsx";
 import DiensteStatus from "./DiensteStatus.jsx";
 import { SucheKnopf, HilfeKnopf } from "./Bedienhilfe.jsx";
+import MaterialKlaeren from "./MaterialKlaeren.jsx";
 import { pollEvery } from "./poll.js";
 import {
   DEFAULT_TIGHT_DAYS,
@@ -246,6 +247,7 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
   const [docsFor, setDocsFor] = useState(null); // Position, deren Zeichnung und 3D-Modell gerade offen sind
   const [pvOpen, setPvOpen] = useState(false); // "Plan verbessern" aufgeklappt
   const [korb, setKorb] = useState([]); // Zeilen aus "Heute" (für die Zähler an den Reitern)
+  const [mkOpen, setMkOpen] = useState(null); // Position, deren „Material klären“ offen ist
   // Planung: Prio-Leiste und Heute-Liste aufgeklappt? (gemerkt je Gerät; zu = Zeitstrahl rückt nach oben)
   const [ovOpen, setOvOpenRaw] = useState(() => {
     try {
@@ -1920,9 +1922,28 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
             {wt && <span className="pill warn">{it.waitReason === "dep" ? "wartet auf Arbeitsgang" : it.waitReason === "av" ? "wartet auf AV" : it.waitReason === "material" ? "wartet auf Material" : "wartet auf Start"}</span>}
             <span className={`pill ${sum.ready ? "ok" : "mute"}`} title="Arbeitsvorbereitung: erledigte Punkte von allen">{sum.ready ? "AV fertig" : `AV: ${avDone} von ${sum.states.length} erledigt`}</span>
             <MaterialBadge o={o} checks={checks} />
+            {["widerspruch", "fehlt", "erwartet"].includes((materialStand(o, checks) || {}).st) && o.odoo_id && (
+              <button type="button" className="btn sm" onClick={() => setMkOpen(mkOpen === o.id ? null : o.id)} aria-expanded={mkOpen === o.id} title="Rohmaterial, Bestand und Bestellungen aus Odoo ansehen und den Widerspruch lösen">
+                Material klären
+              </button>
+            )}
             {o.odoo_draft && <span className="pill warn" title="Der Fertigungsauftrag ist in Odoo noch im Entwurf. Freigegeben wird er in Odoo.">nicht freigegeben</span>}
             {o.due_shifts > 0 && o.due_original && <span className="pill warn" title={`Ursprünglicher Liefertermin: ${fmtShort(o.due_original)}${o.due_original.slice(0, 4)}`}>Termin {o.due_shifts}× verschoben</span>}
             {/* „nicht startklar: …“ steht jetzt im Satz darunter („Es fehlt noch: …“) */}
+            {mkOpen === o.id && (
+              <div style={{ flexBasis: "100%" }}>
+                <MaterialKlaeren
+                  orderId={o.id}
+                  avBereit={avState(checks, o.id, "material").status === "bereit"}
+                  onClose={() => setMkOpen(null)}
+                  onAvReset={() => {
+                    setAv(o.id, "material", { status: "offen" });
+                    setMkOpen(null);
+                    toast(`${posNo(o)}: Material in der AV wieder offen`);
+                  }}
+                />
+              </div>
+            )}
             {o.odoo_bom === "muster" && <span className="pill warn" title="Die Stückliste in Odoo hat nur Musterwerte (Referenz MUSTER oder jeder Arbeitsgang genau 60 Minuten). Maschine und Zeit sind nicht geprüft: Zeiten aus der Kalkulation oder Erfahrung in Odoo eintragen.">Zeit ungeprüft (Muster)</span>}
             {o.odoo_bom === "none" && <span className="pill warn" title="In Odoo hat der Fertigungsauftrag keine Stückliste, damit auch keine Arbeitsgänge.">keine Stückliste</span>}
             {o.odoo_bom === "leer" && <span className="pill warn" title="Die Stückliste in Odoo hat keine Arbeitsgänge.">keine Arbeitsgänge</span>}
@@ -3929,6 +3950,14 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
   // Wohin ein Schritt der Laufkarte springt: AV-Schritte in die Arbeitsvorbereitung der betroffenen Position, Einplanen in die Liste
   const ablaufAction = (step, o) => {
     const id = (step.ids && step.ids[0]) || (o && o.id);
+    // Material-Widerspruch: gleich „Material klären“ für diese Position öffnen statt in die AV zu springen
+    const mo = step.id === "material" ? orders.find((x) => x.id === id) : null;
+    if (mo && (materialStand(mo, checks) || {}).st === "widerspruch" && mo.odoo_id) {
+      if (detailId !== id) openDetail(id);
+      setMkOpen(id);
+      setTimeout(() => document.querySelector(".drawer")?.scrollTo({ top: 0, behavior: "smooth" }), 80);
+      return;
+    }
     if (["zeiten", "material", "fa", "av"].includes(step.id)) {
       if (goTo) {
         setAvFocus(id);

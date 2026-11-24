@@ -39,6 +39,7 @@ export function ablaufOf(positions, checks) {
   // Widerspruch AV ↔ Odoo: nicht als erledigt zählen, sondern zum Klären melden (gleiche Regel wie das Etikett oben im Fenster)
   const wider = vor.filter((o) => (materialStand(o, checks) || {}).st === "widerspruch");
   r.material = {
+    klaeren: wider.length > 0,
     done: !mat.length && !wider.length,
     ids: (wider.length ? wider : mat).map((o) => o.id),
     detail: wider.length ? `${ref(wider)}: AV sagt da, Odoo sagt fehlt, bitte klären` : !mat.length ? "Material da" : nb.length ? `${plural(nb.length, "Position", "Positionen")}: nur Anfrage in Odoo, Material klären` : unterwegs.length ? `bestellt, kommt ${unterwegs.map((o) => o.material_date).sort()[0].split("-").reverse().join(".").slice(0, 6)}` : `${ref(mat)}: Material anlegen oder bestellen`,

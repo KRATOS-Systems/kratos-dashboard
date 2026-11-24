@@ -35,6 +35,7 @@ import registerProgramme from "./programme.js";
 import registerSollIst from "./sollIst.js";
 import registerZeichnung from "./zeichnung.js";
 import registerDatenqualitaet from "./datenqualitaet.js";
+import registerMaterialKlaeren from "./materialKlaeren.js";
 import registerPrio from "./prio.js";
 import registerAvAktionen from "./avAktionen.js";
 import registerVersand from "./versand.js";
@@ -1262,6 +1263,7 @@ registerMorgenbericht(app, db);
 registerSollIst(app, db);
 registerZeichnung(app, db);
 registerDatenqualitaet(app, db);
+registerMaterialKlaeren(app, db);
 registerPrio(app, db, { staffName });
 registerAvAktionen(app, db);
 
