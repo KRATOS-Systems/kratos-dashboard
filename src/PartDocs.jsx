@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
-import { Ico } from "./ui.jsx";
+import { Ico, docsKey } from "./ui.jsx";
 
 // Zeichnung (PDF) und 3D-Modell (STEP) eines Artikels, aus Odoo geholt. Das 3D-Modell wird im Browser gelesen (occt-import-js).
 
@@ -384,7 +384,7 @@ function Thumbnail({ make, file, label, kind, onOpen }) {
 
 // Die beiden Vorschaubilder (Zeichnung oben, 3D darunter). Ein Klick öffnet das große Fenster.
 export function FileThumbs({ o }) {
-  const { loading, files, error, enabled } = useFiles(o.odoo_id);
+  const { loading, files, error, enabled } = useFiles(docsKey(o));
   const [dlg, setDlg] = useState(null); // "pdf" | "step"
   if (error) return <div className="fthumbs-msg">Dateien konnten nicht geladen werden: {error}</div>;
   if (loading) return <div className="fthumbs-msg">Dateien aus Odoo werden geladen …</div>;
@@ -421,7 +421,7 @@ function printPdf(file) {
 
 // Zeichnung und 3D-Modell als eigenes Fenster, ohne den Umweg über die Arbeitsvorbereitung (z. B. aus QS oder Extern in der Planung)
 export function DocsDialog({ o, onClose }) {
-  const { loading, files, error } = useFiles(o.odoo_id);
+  const { loading, files, error } = useFiles(docsKey(o));
   if (loading || error || !files.length)
     return (
       <div className="modal fdlg-bg" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>

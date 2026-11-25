@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { fmtShort } from "./lib.js";
+import { Thumb } from "./ui.jsx";
 
 // Extern & Wareneingang: bestellt, aber noch nicht da (Wareneingang nicht validiert), wer muss nachfragen, wo fehlt eine Bestellung,
 // wie pünktlich sind die Lieferanten. Daten aus server/extern.js (Odoo, nur lesen). Die App sendet keine Mails selbst.
@@ -133,8 +134,11 @@ function Karte({ x, onChanged }) {
           .filter((l) => l.offen > 0)
           .slice(0, 6)
           .map((l, i) => (
-            <li key={i}>
-              {l.offen} × {l.name}
+            <li key={i} className="ex-line">
+              {l.id ? <Thumb src={`/api/part-image/po/${l.id}`} size={34} /> : null}
+              <span>
+                {l.offen} × {l.name}
+              </span>
             </li>
           ))}
         {x.lines.filter((l) => l.offen > 0).length > 6 && <li className="fg-faint">… {x.lines.filter((l) => l.offen > 0).length - 6} weitere</li>}

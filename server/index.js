@@ -36,6 +36,7 @@ import registerSollIst from "./sollIst.js";
 import registerZeichnung from "./zeichnung.js";
 import registerDatenqualitaet from "./datenqualitaet.js";
 import registerMaterialKlaeren from "./materialKlaeren.js";
+import registerQsPruefung from "./qsPruefung.js";
 import registerPrio from "./prio.js";
 import registerAvAktionen from "./avAktionen.js";
 import registerVersand from "./versand.js";
@@ -1264,6 +1265,7 @@ registerSollIst(app, db);
 registerZeichnung(app, db);
 registerDatenqualitaet(app, db);
 registerMaterialKlaeren(app, db);
+registerQsPruefung(app, db, { splitOrder });
 registerPrio(app, db, { staffName });
 registerAvAktionen(app, db);
 

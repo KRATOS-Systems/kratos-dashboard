@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useLayoutEffect, useRef, useMemo, useCallback } from "react";
 import { DEFAULT_WEEK_CAPACITY, SHIFT_MODELS, todayStr } from "./lib.js";
 import Planning from "./Planning.jsx";
+import Unterwegs from "./Unterwegs.jsx";
 import Dashboard from "./Dashboard.jsx";
 import Team from "./Team.jsx";
 import Arbeitsplatz from "./Arbeitsplatz.jsx";
@@ -238,6 +239,28 @@ export default function App() {
       lsSet("kratos-mehr", n ? "1" : "0");
       return n;
     });
+  // Handy (schmaler Bildschirm): Planung und Steuerung zeigen „Unterwegs“ (nur lesen); „Volle Ansicht“ gilt bis zum Schließen des Tabs
+  const [phone, setPhone] = useState(() => typeof window !== "undefined" && window.matchMedia && window.matchMedia("(max-width: 640px)").matches);
+  useEffect(() => {
+    if (!window.matchMedia) return undefined;
+    const mq = window.matchMedia("(max-width: 640px)");
+    const f = () => setPhone(mq.matches);
+    mq.addEventListener ? mq.addEventListener("change", f) : mq.addListener(f);
+    return () => (mq.removeEventListener ? mq.removeEventListener("change", f) : mq.removeListener(f));
+  }, []);
+  const [vollAufHandy, setVollRaw] = useState(() => {
+    try {
+      return sessionStorage.getItem("kratos-voll") === "1";
+    } catch {
+      return false;
+    }
+  });
+  const setVollAufHandy = (v) => {
+    setVollRaw(v);
+    try {
+      sessionStorage.setItem("kratos-voll", v ? "1" : "0");
+    } catch {}
+  };
   // Suchfeld und Hilfe oben auf den Seiten (Bedienhilfe.jsx) melden sich per Ereignis
   useEffect(() => {
     const suche = () => {
@@ -395,7 +418,8 @@ export default function App() {
           </div>
         </aside>}
         <main className={`main${anim ? " anim" : ""}`} key={PLAN_PAGES.includes(page) ? "plan" : page}>
-          {PLAN_PAGES.includes(page) && (
+          {phone && !vollAufHandy && (page === "planung" || page === "steuerung") && <Unterwegs onVoll={() => setVollAufHandy(true)} />}
+          {PLAN_PAGES.includes(page) && !(phone && !vollAufHandy && (page === "planung" || page === "steuerung")) && (
             <Planning
               section={page}
               today={today}

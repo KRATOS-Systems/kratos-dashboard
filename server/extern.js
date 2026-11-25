@@ -205,7 +205,7 @@ export default function registerExtern(app, db, helpers) {
 
     const offen = pos
       .map((p) => {
-        const ls = lines.filter((l) => m2oId(l.order_id) === p.id && !l.display_type).map((l) => ({ name: firstLine(l.name), code: codeOf(l.name) || codeOf(m2oName(l.product_id)), menge: l.product_qty, offen: Math.max(0, (l.product_qty || 0) - (l.qty_received || 0)), termin: dayPart(l.date_planned) }));
+        const ls = lines.filter((l) => m2oId(l.order_id) === p.id && !l.display_type).map((l) => ({ id: l.id, name: firstLine(l.name), code: codeOf(l.name) || codeOf(m2oName(l.product_id)), menge: l.product_qty, offen: Math.max(0, (l.product_qty || 0) - (l.qty_received || 0)), termin: dayPart(l.date_planned) }));
         const pk = picks.filter((x) => m2oId(x.purchase_id) === p.id);
         const st = statusOf.get(p.name) || null;
         // ursprünglich zugesagt: Frist des Wareneingangs (bleibt beim Verschieben), sonst Plan

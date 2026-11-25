@@ -198,7 +198,13 @@ export function AppTile({ id, size = 34, i = 0, color, children }) {
 }
 
 // Bild des Teils aus Odoo (Fertigungsauftrag): kommt vom Server, ohne Bild bleibt das neutrale Symbol
-export const partImg = (o) => (o && o.odoo_id ? "/api/part-image/" + o.odoo_id : null);
+// Bild und Dateien des Bauteils: über den Fertigungsauftrag (odoo_id) oder – bei Fremdfertigung – über die Bestellzeile ("P00617-<Zeile>")
+const poLineOf = (o) => {
+  const m = o && !o.odoo_id ? /^P\d+-(\d+)$/.exec(String(o.odoo_ref || "")) : null;
+  return m ? Number(m[1]) : null;
+};
+export const partImg = (o) => (o && o.odoo_id ? "/api/part-image/" + o.odoo_id : poLineOf(o) ? "/api/part-image/po/" + poLineOf(o) : null);
+export const docsKey = (o) => (o && o.odoo_id ? String(o.odoo_id) : poLineOf(o) ? "po/" + poLineOf(o) : null);
 const failedImages = new Set();
 
 // Vorschaubild eines Teils: freigestellt auf dem Zeichenblatt, ohne Bild ein neutrales Symbol

@@ -34,6 +34,8 @@ const WRITE_METHODS = {
   // write: nur das zugesagte Lieferdatum (Kunde über neuen Termin informiert, server/fruehwarnung.js)
   "sale.order": new Set(["activity_schedule", "message_post", "write"]),
   "hr.employee": new Set(["activity_schedule", "message_post"]),
+  // QS-Prüfung bei Fremdfertigung: Ergebnis als interne Notiz an der Bestellung (server/qsPruefung.js)
+  "purchase.order": new Set(["message_post"]),
 };
 // Beim Nachtragen der Endzeit darf nur Ende und Beschreibung geändert werden
 const PRODUCTIVITY_FIELDS = new Set(["date_end", "description"]);

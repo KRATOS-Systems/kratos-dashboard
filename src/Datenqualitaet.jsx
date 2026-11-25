@@ -45,7 +45,11 @@ export default function Datenqualitaet({ reloadKey, onCount }) {
               <ul className="dq-items">
                 {g.items.map((x, i) => (
                   <li key={x.ref + i}>
-                    {x.odooId ? (
+                    {x.link ? (
+                      <a href={`${ODOO_URL.replace(/\/odoo\/.*$/, "")}${x.link}`} target="_blank" rel="noopener noreferrer" title="In Odoo öffnen">
+                        {x.ref}
+                      </a>
+                    ) : x.odooId ? (
                       <a href={`${ODOO_URL}/${x.odooId}`} target="_blank" rel="noopener noreferrer">
                         {x.ref}
                       </a>
