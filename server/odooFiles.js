@@ -1,5 +1,6 @@
 // Zeichnung (PDF) und 3D-Modell (STEP) eines Artikels aus Odoo (nur lesen).
 // GET /api/product-files/:id   Liste der Dateien am Artikel (id = Fertigungsauftrag in Odoo, in der App "odoo_id")
+// GET /api/product-files/po/:line  dasselbe für eine Bestellzeile der Fremdfertigung (Cache-Schlüssel = -Zeile)
 // GET /api/product-file/:att   die Datei selbst (Anhang in Odoo), wird beim ersten Abruf geholt und in der Datenbank gemerkt
 // Nur Anhänge von Artikeln und nur PDF, STEP und IGES werden herausgegeben. Odoo wird nur mit ODOO_URL und ODOO_API_KEY gefragt.
 
@@ -52,7 +53,8 @@ export default function registerOdooFiles(app, db) {
   };
 
   async function loadList(id) {
-    const [prod] = await odoo("mrp.production", "read", { ids: [id], fields: ["product_id"] });
+    // Positiver Schlüssel: Fertigungsauftrag; negativer: Bestellzeile (Fremdfertigung)
+    const [prod] = id > 0 ? await odoo("mrp.production", "read", { ids: [id], fields: ["product_id"] }) : await odoo("purchase.order.line", "read", { ids: [-id], fields: ["product_id"] });
     const productId = prod && Array.isArray(prod.product_id) ? prod.product_id[0] : null;
     if (!productId) return { product: null, files: [] };
     const [p] = await odoo("product.product", "read", { ids: [productId], fields: ["display_name", "product_tmpl_id"] });
@@ -65,9 +67,17 @@ export default function registerOdooFiles(app, db) {
     return { product: { id: productId, name: p ? p.display_name : null }, files };
   }
 
-  app.get("/api/product-files/:id", async (req, res) => {
+  app.get("/api/product-files/po/:line", (req, res) => {
+    const line = Number(req.params.line);
+    if (!Number.isInteger(line) || line <= 0) return res.status(400).end();
+    return liste(-line, res);
+  });
+  app.get("/api/product-files/:id", (req, res) => {
     const id = Number(req.params.id);
     if (!Number.isInteger(id) || id <= 0) return res.status(400).end();
+    return liste(id, res);
+  });
+  async function liste(id, res) {
     const row = getList.get(id);
     const age = row ? Date.now() - Date.parse(row.fetched_at) : Infinity;
     if (row && age < LIST_MINUTES * 60000) return res.json({ ...JSON.parse(row.json), enabled });
@@ -81,7 +91,7 @@ export default function registerOdooFiles(app, db) {
       console.error("Dateiliste laden fehlgeschlagen", id, err.message);
       res.status(err.busy ? 503 : 502).json({ error: err.message });
     }
-  });
+  }
 
   app.get("/api/product-file/:att", async (req, res) => {
     const att = Number(req.params.att);

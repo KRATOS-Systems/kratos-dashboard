@@ -24,10 +24,11 @@ const DocsDialog = lazy(() => import("./PartDocs.jsx").then((m) => ({ default: m
 import { AV_ITEMS, AV_STATUS, AV_TEAM, isNewAv, avKey, avState, avSummary, startklar, materialStand } from "./avLib.js";
 import { STAFF, ACTIVITIES, STAFF_DEFAULTS, responsible, avResponsible, sharedMachine } from "./staffLib.js";
 import Avatar from "./Avatar.jsx";
-import { AppTile, Ico, LaneIcon, LaneTile, MTile, Thumb, useToast, partImg } from "./ui.jsx";
+import { AppTile, Ico, LaneIcon, LaneTile, MTile, Thumb, useToast, partImg, docsKey } from "./ui.jsx";
 import DiensteStatus from "./DiensteStatus.jsx";
 import { SucheKnopf, HilfeKnopf } from "./Bedienhilfe.jsx";
 import MaterialKlaeren from "./MaterialKlaeren.jsx";
+import QsPruefung from "./QsPruefung.jsx";
 import { pollEvery } from "./poll.js";
 import {
   DEFAULT_TIGHT_DAYS,
@@ -1145,6 +1146,24 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
     }
   }
 
+  // Ergebnis der QS-Prüfung (QsPruefung): i.O. geht weiter wie „Geprüft“, teilweise i.O. -> die abgeteilte gute Menge geht weiter,
+  // nicht i.O. -> bleibt in der QS (Nacharbeit über den Knopf darunter)
+  async function qsFertig(o, r) {
+    if (r.notiz && r.notiz.startsWith("fehler")) toast(`Notiz in Odoo nicht angelegt: ${r.notiz.slice(8)}`);
+    if (r.ergebnis === "io") return markChecked(o);
+    if (r.ergebnis === "teil") {
+      const d = await fetch("/api/orders").then((x) => x.json()).catch(() => null);
+      if (d && d.orders) {
+        setOrders(d.orders);
+        const n = d.orders.find((x) => x.id === r.neueId);
+        if (n) markChecked(n);
+      }
+      return toast(`${posNo(o)}: gute Menge geht weiter, der Rest bleibt in der QS`);
+    }
+    reloadOrders();
+    toast(`${posNo(o)}: nicht i.O. vermerkt, bleibt in der QS. Zurück an die Maschine mit „Nacharbeit“.`);
+  }
+
   function sendRework(o, rest) {
     const machine = o.from_machine || MACHINES[0].id;
     const patch = {
@@ -1848,12 +1867,9 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
         </>
       );
     }
+    // QS: Ergebnis kommt aus der Prüfung darüber (QsPruefung); hier bleibt „Nacharbeit“ (zurück an die Maschine)
     return (
       <>
-        <button type="button" className="btn sm primary" onClick={() => markChecked(o)} title={tagsOf(o).length ? "Geprüft: weiter zu OBERFLÄCHE EXTERN" : needsShipping(o) ? "Geprüft: weiter in den Versand" : "Geprüft: Position ist erledigt"}>
-          <Ico n="check" s={14} />
-          Geprüft
-        </button>
         <button type="button" className="btn sm" onClick={() => { setReworkId(o.id); setReworkText(""); }} title="Nicht in Ordnung: zurück an die Maschine">
           Nacharbeit
         </button>
@@ -2007,7 +2023,7 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
                   In Arbeitsvorbereitung öffnen <Ico n="muss" s={15} />
                 </button>
               )}
-              {o.odoo_id && (
+              {docsKey(o) && (
                 <button type="button" className="btn" onClick={() => setDocsFor(o)} title="Zeichnung und 3D-Modell aus Odoo ansehen">
                   Zeichnung und 3D
                 </button>
@@ -2272,6 +2288,7 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
     const g = groupByKey.get(groupKeyOf(o));
     return (
       <>
+                {lane.id === "qs" && <QsPruefung o={o} checks={checks} pruefer={whoOf(o, "qs")} people={people} onFertig={(r) => qsFertig(o, r)} />}
                 <LaneInfo o={o} />
                 <div style={{ color: "var(--muted)", fontSize: 13.5, marginTop: 4 }}>
                   {o.source ? `Auftrag ${o.source} · ` : ""}
@@ -2323,7 +2340,7 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
                 {lane.id !== "versand" && externEditor(o)}
                 <div className="dact" style={{ marginTop: 14 }}>
                   {laneButtons(o)}
-                  {o.odoo_id && (
+                  {docsKey(o) && (
                     <button type="button" className="btn" onClick={() => setDocsFor(o)} title="Zeichnung und 3D-Modell aus Odoo ansehen">
                       Zeichnung und 3D
                     </button>
@@ -3270,6 +3287,15 @@ export default function Planning({ section = "planung", today, shift, weekCap, o
               onMouseMove={(e) => onBarMove(e, tipHtml)}
               onMouseLeave={hideTip}
             >
+              {(() => {
+                // Bauteilbild auch bei Fremdfertigung (über die Bestellzeile), damit man sieht, was beim Lieferanten ist
+                const src = partImg(orders.find((x) => x.id === b.ids[0]));
+                return src ? (
+                  <span className="bar-img" aria-hidden="true">
+                    <img src={src} alt="" loading="lazy" onError={(e) => (e.currentTarget.parentElement.style.display = "none")} />
+                  </span>
+                ) : null;
+              })()}
               {lane.id === "qs" &&
                 (() => {
                   const o0 = orders.find((x) => x.id === b.ids[0]);

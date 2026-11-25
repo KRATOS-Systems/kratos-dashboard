@@ -89,6 +89,22 @@ try {
   const mk2 = await api("GET", `/api/material/${ohne.id}`);
   assert.equal(mk2.verfuegbar, false);
   assert.equal((await api("GET", "/api/material/999999")).status, 404);
+
+  // QS-Prüfung: Ergebnis speichern; „teilweise i.O.“ teilt die gute Menge ab, „nicht i.O.“ braucht einen Grund
+  const q = await api("POST", "/api/orders", { machine: "qs" });
+  await api("PUT", `/api/orders/${q.id}`, { machine: "qs", source: "A01700", product: "[Q-1] Prüfteil", quantity: 10, extern_start: "2026-11-25" });
+  assert.equal((await api("POST", `/api/qs/${q.id}/ergebnis`, { art: "sicht", ergebnis: "nio", pruefer: "Aurel" })).status, 400, "nicht i.O. ohne Grund geht nicht");
+  assert.equal((await api("POST", `/api/qs/${q.id}/ergebnis`, { art: "sicht", ergebnis: "teil", gut: 10, grund: "x" })).status, 400, "gute Menge muss kleiner sein");
+  const teil = await api("POST", `/api/qs/${q.id}/ergebnis`, { art: "sicht", ergebnis: "teil", gut: 7, grund: "3 Stück Grat", checks: ["menge", "oberflaeche", "quatsch"], pruefer: "Aurel" });
+  assert.equal(teil.status, 200, JSON.stringify(teil));
+  assert.ok(teil.neueId, "neue Position für die gute Menge");
+  const alle = (await api("GET", "/api/orders")).orders;
+  assert.equal(alle.find((x) => x.id === teil.neueId).quantity, 7);
+  assert.equal(alle.find((x) => x.id === q.id).quantity, 3, "Rest bleibt in der QS");
+  assert.equal(teil.notiz, "aus", "ohne BDE_WRITE keine Notiz in Odoo");
+  const qv = await api("GET", `/api/qs/${q.id}`);
+  assert.equal(qv.verlauf[0].ergebnis, "teil");
+  assert.equal(qv.verlauf[0].gut, 7);
   assert.ok(g("stunden").items.some((x) => x.ref === "FA01309"), JSON.stringify(g("stunden")));
   assert.deepEqual(g("einkauf").items.map((x) => x.ref).sort(), ["P00557", "WH/IN/00296"]);
   assert.equal(dq.gesamt, dq.gruppen.reduce((s, x) => s + x.n, 0));

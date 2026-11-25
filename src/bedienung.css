@@ -276,6 +276,28 @@ html[data-look="neu"] .uw-card { background: var(--nl-glass); border-color: var(
 .leit.warn .leit-z b { color: var(--warn); }
 .leit.bad .leit-z b { color: var(--bad); }
 
+/* ---------- Bauteilbild auf den Balken der Spuren (QS, Extern, Versand) ---------- */
+.bar .bar-img { float: left; width: 30px; height: 30px; margin: 0 7px 0 -2px; border-radius: 7px; overflow: hidden; background: #fff; display: inline-flex; align-items: center; justify-content: center; }
+.bar .bar-img img { width: 100%; height: 100%; object-fit: contain; }
+
+.fg-notes li.ex-line { display: flex; align-items: center; gap: 10px; list-style: none; margin-left: -18px; padding: 3px 0; }
+
+/* ---------- QS-Prüfung ---------- */
+.qsp { display: flex; flex-direction: column; gap: 12px; margin: 12px 0 4px; padding: 14px; border-radius: 14px; border: 1px solid var(--line-strong); background: var(--btn-bg-hover); }
+.qsp-art { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.qsp-vorgaben { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; border-radius: 10px; background: var(--surface); border: 1px solid var(--line); font-size: 14.5px; }
+html[data-look="neu"][data-theme="dark"] .qsp-vorgaben { background: rgba(0, 0, 0, .18); }
+.qsp-zeile { white-space: pre-line; }
+.qsp-mess { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.qsp-mess a.btn { text-decoration: none; }
+.qsp-checks { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px 16px; }
+.qsp-checks .chkline { display: flex; align-items: center; gap: 9px; font-size: 15px; cursor: pointer; }
+.qsp-detail { display: grid; grid-template-columns: minmax(0, 200px) minmax(0, 1fr); gap: 10px; }
+@media (max-width: 520px) { .qsp-detail { grid-template-columns: 1fr; } }
+.qsp-knoepfe { display: flex; flex-wrap: wrap; gap: 8px; }
+.qsp-err { color: var(--bad); font-weight: 600; }
+.qsp-verlauf { margin: 0; padding-left: 18px; font-size: 13.5px; color: var(--muted); }
+
 /* ---------- Material klären ---------- */
 .matk { margin-top: 10px; padding: 12px 14px; border-radius: 12px; border: 1px solid color-mix(in srgb, var(--warn) 45%, var(--line)); background: var(--btn-bg-hover); font-size: 14.5px; }
 .matk-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }

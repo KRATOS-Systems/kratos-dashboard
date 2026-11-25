@@ -1,5 +1,6 @@
 // Vorschaubilder der Bauteile aus Odoo (nur lesen).
-// GET /api/part-image/:id  (id = Fertigungsauftrag in Odoo, in der App "odoo_id")
+// GET /api/part-image/:id       (id = Fertigungsauftrag in Odoo, in der App "odoo_id")
+// GET /api/part-image/po/:line  (Bestellzeile der Fremdfertigung, aus odoo_ref "P00617-<Zeile>"; Cache-Schlüssel = -Zeile)
 // Das Bild des Artikels wird beim ersten Aufruf aus Odoo geholt, in der Datenbank zwischengespeichert und danach von dort geliefert.
 // Odoo wird nur angefragt, wenn ODOO_URL und ODOO_API_KEY gesetzt sind (Umgebungsvariablen auf dem Server, nie im Code).
 // Anfragen laufen nacheinander mit kleiner Pause, damit das Anfragelimit von Odoo (HTTP 429) nicht greift.
@@ -47,7 +48,8 @@ export default function registerPartImages(app, db) {
 
   const inflight = new Map();
   async function load(id) {
-    const [prod] = await odoo("mrp.production", "read", { ids: [id], fields: ["product_id"] });
+    // Positiver Schlüssel: Fertigungsauftrag; negativer: Bestellzeile (Fremdfertigung)
+    const [prod] = id > 0 ? await odoo("mrp.production", "read", { ids: [id], fields: ["product_id"] }) : await odoo("purchase.order.line", "read", { ids: [-id], fields: ["product_id"] });
     const productId = prod && Array.isArray(prod.product_id) ? prod.product_id[0] : null;
     if (!productId) {
       put.run(id, null, null, "none", new Date().toISOString());
@@ -64,9 +66,17 @@ export default function registerPartImages(app, db) {
     return png;
   }
 
-  app.get("/api/part-image/:id", async (req, res) => {
+  app.get("/api/part-image/po/:line", (req, res) => {
+    const line = Number(req.params.line);
+    if (!Number.isInteger(line) || line <= 0) return res.status(400).end();
+    return serve(-line, res);
+  });
+  app.get("/api/part-image/:id", (req, res) => {
     const id = Number(req.params.id);
     if (!Number.isInteger(id) || id <= 0) return res.status(400).end();
+    return serve(id, res);
+  });
+  async function serve(id, res) {
     const row = get.get(id);
     const age = row ? Date.now() - Date.parse(row.fetched_at) : Infinity;
     const send = (png) => {
@@ -86,5 +96,5 @@ export default function registerPartImages(app, db) {
       console.error("Teilebild laden fehlgeschlagen", id, err.message);
       return res.status(err.busy ? 503 : 404).end();
     }
-  });
+  }
 }
